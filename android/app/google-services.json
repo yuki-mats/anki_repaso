@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "967790239352",
+    "project_id": "repaso-rbaqy4",
+    "storage_bucket": "repaso-rbaqy4.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:967790239352:android:1a275d083f0224f88fd78d",
+        "android_client_info": {
+          "package_name": "com.example.repaso"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "967790239352-rqnpj950uv8106nql3dluleigdpudaeq.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDB4R3rv97-zOeMcdhzgWtT_L3mJ-iczuo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "967790239352-rqnpj950uv8106nql3dluleigdpudaeq.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "967790239352-0kdq2n0d7ln631dscch8bu9899qioqlc.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.repaso"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
