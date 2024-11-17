@@ -304,7 +304,7 @@ class _QuestionCreationPageState extends State<QuestionCreationPage> {
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
             color: isSelected ? AppColors.blue500 : AppColors.gray100,
-            width: 1,
+            width: 1.0,
           ),
         ),
         child: Text(
