@@ -303,7 +303,7 @@ class _QuestionCreationPageState extends State<QuestionCreationPage> {
           color: isSelected ? AppColors.blue100 : Colors.white,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: isSelected ? AppColors.blue500 : Colors.grey,
+            color: isSelected ? AppColors.blue500 : AppColors.gray100,
             width: 1.0,
           ),
         ),
