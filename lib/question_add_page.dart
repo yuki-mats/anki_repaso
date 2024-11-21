@@ -55,6 +55,22 @@ class _QuestionCreationPageState extends State<QuestionCreationPage> {
     });
   }
 
+  void _clearFields() {
+    _questionController.clear();
+    _answerController.clear();
+    _option1Controller.clear();
+    _option2Controller.clear();
+    _option3Controller.clear();
+
+    setState(() {
+      _trueFalseAnswer = true;
+      _selectedQuestionType = '正誤問題';
+      _isSaveEnabled = false;
+    });
+
+    FocusScope.of(context).requestFocus(_questionFocusNode);
+  }
+
   Future<void> _saveQuestion() async {
     if (!_isSaveEnabled) return;
 
@@ -65,7 +81,7 @@ class _QuestionCreationPageState extends State<QuestionCreationPage> {
       'type': _selectedQuestionType,
       'question': _questionController.text,
       'correctAnswer': _selectedQuestionType == '正誤問題'
-          ? _trueFalseAnswer
+          ? (_trueFalseAnswer ? "true" : "false")
           : _answerController.text,
       'options': _selectedQuestionType == '4択問題'
           ? [
@@ -79,27 +95,44 @@ class _QuestionCreationPageState extends State<QuestionCreationPage> {
       'subcategoryRef': subcategoryRef,
     };
 
-    await FirebaseFirestore.instance.collection('questions').add(questionData);
-    _clearFields();
+    try {
+      // Firestoreに新しい質問を追加
+      await FirebaseFirestore.instance.collection('questions').add(questionData);
 
-    // 保存成功時にスナックバーを表示
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('問題を保存しました')),
-    );
+      // カテゴリとサブカテゴリの問題数を更新
+      await _updateQuestionCount(categoryRef, subcategoryRef);
+
+      // 入力フィールドをクリア
+      _clearFields();
+
+      // 保存成功時にスナックバーを表示
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('問題を保存しました')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('問題の保存に失敗しました')),
+      );
+      print('Error saving question: $e');
+    }
   }
 
-  void _clearFields() {
-    _questionController.clear();
-    _answerController.clear();
-    _option1Controller.clear();
-    _option2Controller.clear();
-    _option3Controller.clear();
-    setState(() {
-      _trueFalseAnswer = true;
-      _selectedQuestionType = '正誤問題';
-      _isSaveEnabled = false;
+  Future<void> _updateQuestionCount(
+      DocumentReference categoryRef, DocumentReference subcategoryRef) async {
+    final batch = FirebaseFirestore.instance.batch();
+
+    // サブカテゴリの問題数をインクリメント
+    batch.update(subcategoryRef, {
+      'questionCount': FieldValue.increment(1),
     });
-    FocusScope.of(context).requestFocus(_questionFocusNode);
+
+    // カテゴリの問題数をインクリメント
+    batch.update(categoryRef, {
+      'questionCount': FieldValue.increment(1),
+    });
+
+    // バッチ操作を実行
+    await batch.commit();
   }
 
   @override
@@ -237,15 +270,15 @@ class _QuestionCreationPageState extends State<QuestionCreationPage> {
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: BorderSide(
-            color: AppColors.gray50, // 非フォーカス時の枠線の色
-            width: 1.0,         // 枠線の太さ
+            color: AppColors.gray50,
+            width: 1.0,
           ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: BorderSide(
-            color: AppColors.gray50, // フォーカス時の枠線の色
-            width: 2.0,               // 枠線の太さ
+            color: AppColors.gray50,
+            width: 2.0,
           ),
         ),
       ),
@@ -297,7 +330,7 @@ class _QuestionCreationPageState extends State<QuestionCreationPage> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: double.infinity, // 横幅をいっぱいに広げる
+        width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
         decoration: BoxDecoration(
           color: isSelected ? AppColors.blue100 : Colors.white,
@@ -309,7 +342,7 @@ class _QuestionCreationPageState extends State<QuestionCreationPage> {
         ),
         child: Text(
           label,
-          textAlign: TextAlign.start, // テキストを中央揃え
+          textAlign: TextAlign.start,
           style: TextStyle(
             color: isSelected ? AppColors.blue500 : Colors.black,
             fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,

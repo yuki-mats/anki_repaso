@@ -46,7 +46,8 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
           _questionController.text = data['question'] ?? '';
           _selectedQuestionType = data['type'] ?? '正誤問題';
           if (_selectedQuestionType == '正誤問題') {
-            _trueFalseAnswer = data['correctAnswer'] ?? true;
+            // correctAnswerをStringで扱うように変換
+            _trueFalseAnswer = (data['correctAnswer'] == "true");
           } else {
             _answerController.text = data['options']?.first ?? '';
             _option1Controller.text = data['options']?[1] ?? '';
@@ -69,7 +70,7 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
       'type': _selectedQuestionType,
       'question': _questionController.text,
       'correctAnswer': _selectedQuestionType == '正誤問題'
-          ? _trueFalseAnswer
+          ? (_trueFalseAnswer ? "true" : "false") // Stringとして保存
           : _answerController.text,
       'options': _selectedQuestionType == '4択問題'
           ? [
@@ -92,6 +93,22 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
     );
     Navigator.pop(context); // 前のページに戻る
   }
+
+  void _clearFields() {
+    // 入力フィールドをクリア
+    _questionController.clear();
+    _answerController.clear();
+    _option1Controller.clear();
+    _option2Controller.clear();
+    _option3Controller.clear();
+
+    // 状態を初期化
+    setState(() {
+      _trueFalseAnswer = true; // 正誤問題の初期値
+      _selectedQuestionType = '正誤問題'; // 問題タイプをリセット
+    });
+  }
+
 
   @override
   void dispose() {

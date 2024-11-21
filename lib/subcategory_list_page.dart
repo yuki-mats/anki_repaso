@@ -398,6 +398,7 @@ class _SubCategoryListPageState extends State<SubCategoryListPage> {
               itemCount: subcategories.length,
               itemBuilder: (context, index) {
                 final subcategory = subcategories[index];
+                final questionCount = subcategory['questionCount'] ?? 0;
                 return Padding(
                   padding: const EdgeInsets.only(left: 16.0, right: 16.0),
                   child: Column(
@@ -442,9 +443,9 @@ class _SubCategoryListPageState extends State<SubCategoryListPage> {
                                         ),
                                       ),
                                       const SizedBox(height: 8),
-                                      const Text(
-                                        '問題数: 10',
-                                        style: TextStyle(fontSize: 14),
+                                      Text(
+                                        '問題数: ${questionCount.toString()}', // 動的に問題数を表示
+                                        style: const TextStyle(fontSize: 14),
                                       ),
                                     ],
                                   ),

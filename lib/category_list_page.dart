@@ -500,6 +500,7 @@ class CategoryListState extends State<CategoryListPage> {
           itemCount: categories.length,
           itemBuilder: (context, index) {
             final category = categories[index];
+            final questionCount = category['questionCount'] ?? 0; // Firestoreから取得した値
             return Padding(
               padding: const EdgeInsets.only(left: 16.0, right: 16.0),
               child: Column(
@@ -544,8 +545,8 @@ class CategoryListState extends State<CategoryListPage> {
                                     ),
                                   ),
                                   const SizedBox(height: 8),
-                                  const Text(
-                                    '問題数: 10',
+                                  Text(
+                                    '問題数: $questionCount', // 問題数を表示
                                     style: TextStyle(fontSize: 14),
                                   ),
                                 ],
