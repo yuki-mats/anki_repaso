@@ -1,7 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:repaso/category_list_page.dart';
+import 'package:repaso/folder_list_page.dart';
 import 'package:repaso/sign_up_page.dart';
 import 'app_colors.dart';
 
@@ -43,7 +43,7 @@ class _LoginPageState extends State<LoginPage> {
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(
-          builder: (context) => const CategoryListPage(title: 'ホーム'),
+          builder: (context) => const FolderListPage(title: 'ホーム'),
         ),
             (Route<dynamic> route) => false,
       );
@@ -136,7 +136,7 @@ class _LoginPageState extends State<LoginPage> {
                         Navigator.pushAndRemoveUntil(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const CategoryListPage(
+                            builder: (context) => const FolderListPage(
                               title: 'ホーム',
                             ),
                           ),

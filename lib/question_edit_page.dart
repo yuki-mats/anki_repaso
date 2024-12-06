@@ -15,13 +15,13 @@ class QuestionEditPage extends StatefulWidget {
 }
 
 class _QuestionEditPageState extends State<QuestionEditPage> {
-  final TextEditingController _questionController = TextEditingController();
-  final TextEditingController _answerController = TextEditingController();
-  final TextEditingController _option1Controller = TextEditingController();
-  final TextEditingController _option2Controller = TextEditingController();
-  final TextEditingController _option3Controller = TextEditingController();
+  final TextEditingController _questionTextController = TextEditingController();
+  final TextEditingController _correctChoiceTextController = TextEditingController();
+  final TextEditingController _incorrectChoice1TextController = TextEditingController();
+  final TextEditingController _incorrectChoice2TextController = TextEditingController();
+  final TextEditingController _incorrectChoice3TextController = TextEditingController();
 
-  String _selectedQuestionType = '正誤問題';
+  String _selectedQuestionType = 'true_false';
   bool _trueFalseAnswer = true;
   bool _isLoading = true;
 
@@ -33,27 +33,29 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
 
   Future<void> _loadQuestionData() async {
     try {
-      // Firestoreから指定された問題を取得
-      DocumentSnapshot questionDoc = await FirebaseFirestore.instance
+      final questionDoc = await FirebaseFirestore.instance
           .collection('questions')
           .doc(widget.questionId)
           .get();
 
       if (questionDoc.exists) {
-        Map<String, dynamic> data = questionDoc.data() as Map<String, dynamic>;
+        final data = questionDoc.data() as Map<String, dynamic>;
 
         setState(() {
-          _questionController.text = data['question'] ?? '';
-          _selectedQuestionType = data['type'] ?? '正誤問題';
-          if (_selectedQuestionType == '正誤問題') {
-            // correctAnswerをStringで扱うように変換
-            _trueFalseAnswer = (data['correctAnswer'] == "true");
-          } else {
-            _answerController.text = data['options']?.first ?? '';
-            _option1Controller.text = data['options']?[1] ?? '';
-            _option2Controller.text = data['options']?[2] ?? '';
-            _option3Controller.text = data['options']?[3] ?? '';
+          _questionTextController.text = data['questionText'] ?? '';
+          _selectedQuestionType = data['questionType'] ?? 'true_false';
+
+          if (_selectedQuestionType == 'true_false') {
+            // 正誤問題の場合
+            _trueFalseAnswer = data['correctChoiceText'] == '正しい';
+          } else if (_selectedQuestionType == 'single_choice') {
+            // 四択問題の場合
+            _correctChoiceTextController.text = data['correctChoiceText'] ?? '';
+            _incorrectChoice1TextController.text = data['incorrectChoice1Text'] ?? '';
+            _incorrectChoice2TextController.text = data['incorrectChoice2Text'] ?? '';
+            _incorrectChoice3TextController.text = data['incorrectChoice3Text'] ?? '';
           }
+
           _isLoading = false;
         });
       }
@@ -67,56 +69,48 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
 
   Future<void> _updateQuestion() async {
     final questionData = {
-      'type': _selectedQuestionType,
-      'question': _questionController.text,
-      'correctAnswer': _selectedQuestionType == '正誤問題'
-          ? (_trueFalseAnswer ? "true" : "false") // Stringとして保存
-          : _answerController.text,
-      'options': _selectedQuestionType == '4択問題'
-          ? [
-        _answerController.text,
-        _option1Controller.text,
-        _option2Controller.text,
-        _option3Controller.text
-      ]
-          : [],
+      'questionText': _questionTextController.text.trim(),
+      'questionType': _selectedQuestionType,
+      'correctChoiceText': _selectedQuestionType == 'true_false'
+          ? (_trueFalseAnswer ? '正しい' : '間違い')
+          : _correctChoiceTextController.text.trim(),
+      'incorrectChoice1Text': _selectedQuestionType == 'true_false'
+          ? (!_trueFalseAnswer ? '正しい' : '間違い')
+          : _incorrectChoice1TextController.text.trim(),
+      'incorrectChoice2Text': _selectedQuestionType == 'single_choice'
+          ? _incorrectChoice2TextController.text.trim()
+          : null,
+      'incorrectChoice3Text': _selectedQuestionType == 'single_choice'
+          ? _incorrectChoice3TextController.text.trim()
+          : null,
+      'updatedAt': FieldValue.serverTimestamp(),
     };
 
-    await FirebaseFirestore.instance
-        .collection('questions')
-        .doc(widget.questionId)
-        .update(questionData);
+    try {
+      await FirebaseFirestore.instance
+          .collection('questions')
+          .doc(widget.questionId)
+          .update(questionData);
 
-    // 保存成功時にスナックバーを表示
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('問題を更新しました')),
-    );
-    Navigator.pop(context); // 前のページに戻る
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('問題が更新されました')),
+      );
+      Navigator.pop(context);
+    } catch (e) {
+      print('Error updating question: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('問題の更新に失敗しました')),
+      );
+    }
   }
-
-  void _clearFields() {
-    // 入力フィールドをクリア
-    _questionController.clear();
-    _answerController.clear();
-    _option1Controller.clear();
-    _option2Controller.clear();
-    _option3Controller.clear();
-
-    // 状態を初期化
-    setState(() {
-      _trueFalseAnswer = true; // 正誤問題の初期値
-      _selectedQuestionType = '正誤問題'; // 問題タイプをリセット
-    });
-  }
-
 
   @override
   void dispose() {
-    _questionController.dispose();
-    _answerController.dispose();
-    _option1Controller.dispose();
-    _option2Controller.dispose();
-    _option3Controller.dispose();
+    _questionTextController.dispose();
+    _correctChoiceTextController.dispose();
+    _incorrectChoice1TextController.dispose();
+    _incorrectChoice2TextController.dispose();
+    _incorrectChoice3TextController.dispose();
     super.dispose();
   }
 
@@ -135,13 +129,13 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: TextButton(
-              onPressed: _questionController.text.trim().isNotEmpty
+              onPressed: _questionTextController.text.trim().isNotEmpty
                   ? _updateQuestion
                   : null,
               child: Text(
                 '保存',
                 style: TextStyle(
-                  color: _questionController.text.trim().isNotEmpty
+                  color: _questionTextController.text.trim().isNotEmpty
                       ? Colors.white
                       : Colors.white.withOpacity(0.5),
                   fontSize: 16,
@@ -163,34 +157,34 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
                 _buildChip(
                   label: '正誤問題',
                   icon: Icons.check_circle_outline,
-                  isSelected: _selectedQuestionType == '正誤問題',
+                  isSelected: _selectedQuestionType == 'true_false',
                   onTap: () {
                     setState(() {
-                      _selectedQuestionType = '正誤問題';
+                      _selectedQuestionType = 'true_false';
                     });
                   },
                 ),
                 const SizedBox(width: 8),
                 _buildChip(
-                  label: '選択問題',
+                  label: '四択問題',
                   icon: Icons.list_alt,
-                  isSelected: _selectedQuestionType == '4択問題',
+                  isSelected: _selectedQuestionType == 'single_choice',
                   onTap: () {
                     setState(() {
-                      _selectedQuestionType = '4択問題';
+                      _selectedQuestionType = 'single_choice';
                     });
                   },
                 ),
               ],
             ),
             const SizedBox(height: 24),
-            _buildExpandableTextField(_questionController, '問題文'),
+            _buildExpandableTextField(_questionTextController, '問題文'),
             const SizedBox(height: 16),
-            if (_selectedQuestionType == '正誤問題')
+            if (_selectedQuestionType == 'true_false')
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildSelectionTile(
+                  _buildTrueFalseSelectionTile(
                     label: '正しい',
                     value: true,
                     groupValue: _trueFalseAnswer,
@@ -201,7 +195,7 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
                     },
                   ),
                   const SizedBox(height: 8),
-                  _buildSelectionTile(
+                  _buildTrueFalseSelectionTile(
                     label: '間違い',
                     value: false,
                     groupValue: _trueFalseAnswer,
@@ -213,14 +207,14 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
                   ),
                 ],
               ),
-            if (_selectedQuestionType == '4択問題') ...[
-              _buildExpandableTextField(_answerController, '正解の選択肢'),
+            if (_selectedQuestionType == 'single_choice') ...[
+              _buildExpandableTextField(_correctChoiceTextController, '正解の選択肢'),
               const SizedBox(height: 16),
-              _buildExpandableTextField(_option1Controller, '誤答1'),
+              _buildExpandableTextField(_incorrectChoice1TextController, '誤答1'),
               const SizedBox(height: 16),
-              _buildExpandableTextField(_option2Controller, '誤答2'),
+              _buildExpandableTextField(_incorrectChoice2TextController, '誤答2'),
               const SizedBox(height: 16),
-              _buildExpandableTextField(_option3Controller, '誤答3'),
+              _buildExpandableTextField(_incorrectChoice3TextController, '誤答3'),
             ],
           ],
         ),
@@ -244,21 +238,20 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: BorderSide(
-            color: Colors.grey, // 非フォーカス時の枠線の色
-            width: 0.1,         // 枠線の太さ
+            color: Colors.grey,
+            width: 0.1,
           ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: BorderSide(
-            color: AppColors.blue300, // フォーカス時の枠線の色
-            width: 1.5,               // 枠線の太さ
+            color: AppColors.blue300,
+            width: 1.5,
           ),
         ),
       ),
     );
   }
-
 
   Widget _buildChip({
     required String label,
@@ -295,7 +288,7 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
     );
   }
 
-  Widget _buildSelectionTile({
+  Widget _buildTrueFalseSelectionTile({
     required String label,
     required bool value,
     required bool groupValue,
@@ -305,7 +298,7 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: double.infinity, // 横幅をいっぱいに広げる
+        width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
         decoration: BoxDecoration(
           color: isSelected ? AppColors.blue100 : Colors.white,
@@ -317,7 +310,6 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
         ),
         child: Text(
           label,
-          textAlign: TextAlign.start, // テキストを中央揃え
           style: TextStyle(
             color: isSelected ? AppColors.blue500 : Colors.black,
             fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,

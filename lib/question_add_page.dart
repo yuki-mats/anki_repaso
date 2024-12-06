@@ -1,139 +1,171 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:repaso/app_colors.dart';
 
-class QuestionCreationPage extends StatefulWidget {
-  final String categoryId;
-  final String subcategoryId;
+class QuestionAddPage extends StatefulWidget {
+  final String folderId;
+  final String questionSetId;
 
-  const QuestionCreationPage({
+  const QuestionAddPage({
     Key? key,
-    required this.categoryId,
-    required this.subcategoryId,
+    required this.folderId,
+    required this.questionSetId,
   }) : super(key: key);
 
   @override
-  _QuestionCreationPageState createState() => _QuestionCreationPageState();
+  _QuestionAddPageState createState() => _QuestionAddPageState();
 }
 
-class _QuestionCreationPageState extends State<QuestionCreationPage> {
-  final TextEditingController _questionController = TextEditingController();
-  final TextEditingController _answerController = TextEditingController();
-  final TextEditingController _option1Controller = TextEditingController();
-  final TextEditingController _option2Controller = TextEditingController();
-  final TextEditingController _option3Controller = TextEditingController();
-  final FocusNode _questionFocusNode = FocusNode();
+class _QuestionAddPageState extends State<QuestionAddPage> {
+  final TextEditingController _questionTextController = TextEditingController();
+  final TextEditingController _correctChoiceTextController = TextEditingController();
+  final TextEditingController _incorrectChoice1TextController = TextEditingController();
+  final TextEditingController _incorrectChoice2TextController = TextEditingController();
+  final TextEditingController _incorrectChoice3TextController = TextEditingController();
+  final FocusNode _questionTextFocusNode = FocusNode();
 
-  String _selectedQuestionType = '正誤問題';
+  String _selectedQuestionType = 'true_false';
   bool _trueFalseAnswer = true;
   bool _isSaveEnabled = false;
 
   @override
   void initState() {
     super.initState();
-    _questionController.addListener(_onQuestionTextChanged);
+    _questionTextController.addListener(_onQuestionTextChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      FocusScope.of(context).requestFocus(_questionFocusNode);
+      FocusScope.of(context).requestFocus(_questionTextFocusNode);
     });
   }
 
   @override
   void dispose() {
-    _questionController.removeListener(_onQuestionTextChanged);
-    _questionController.dispose();
-    _answerController.dispose();
-    _option1Controller.dispose();
-    _option2Controller.dispose();
-    _option3Controller.dispose();
-    _questionFocusNode.dispose();
+    _questionTextController.removeListener(_onQuestionTextChanged);
+    _questionTextController.dispose();
+    _correctChoiceTextController.dispose();
+    _incorrectChoice1TextController.dispose();
+    _incorrectChoice2TextController.dispose();
+    _incorrectChoice3TextController.dispose();
+    _questionTextFocusNode.dispose();
     super.dispose();
   }
 
   void _onQuestionTextChanged() {
     setState(() {
-      _isSaveEnabled = _questionController.text.trim().isNotEmpty;
+      _isSaveEnabled = _questionTextController.text.trim().isNotEmpty;
     });
   }
 
   void _clearFields() {
-    _questionController.clear();
-    _answerController.clear();
-    _option1Controller.clear();
-    _option2Controller.clear();
-    _option3Controller.clear();
+    _questionTextController.clear();
+    _correctChoiceTextController.clear();
+    _incorrectChoice1TextController.clear();
+    _incorrectChoice2TextController.clear();
+    _incorrectChoice3TextController.clear();
 
     setState(() {
       _trueFalseAnswer = true;
-      _selectedQuestionType = '正誤問題';
+      _selectedQuestionType = 'true_false';
       _isSaveEnabled = false;
     });
 
-    FocusScope.of(context).requestFocus(_questionFocusNode);
+    FocusScope.of(context).requestFocus(_questionTextFocusNode);
   }
 
   Future<void> _saveQuestion() async {
     if (!_isSaveEnabled) return;
 
-    final categoryRef = FirebaseFirestore.instance.collection('categories').doc(widget.categoryId);
-    final subcategoryRef = categoryRef.collection('subcategories').doc(widget.subcategoryId);
+    final folderRef = FirebaseFirestore.instance.collection('folders').doc(widget.folderId);
+    final questionSetRef = FirebaseFirestore.instance.collection('questionSets').doc(widget.questionSetId);
 
+    // データモデルに合わせて選択肢を設定
     final questionData = {
-      'type': _selectedQuestionType,
-      'question': _questionController.text,
-      'correctAnswer': _selectedQuestionType == '正誤問題'
-          ? (_trueFalseAnswer ? "true" : "false")
-          : _answerController.text,
-      'options': _selectedQuestionType == '4択問題'
-          ? [
-        _answerController.text,
-        _option1Controller.text,
-        _option2Controller.text,
-        _option3Controller.text
-      ]
-          : [],
-      'categoryRef': categoryRef,
-      'subcategoryRef': subcategoryRef,
+      'folder': folderRef,
+      'questionSet': questionSetRef,
+      'questionText': _questionTextController.text.trim(),
+      'questionType': 'true_false',
+      'correctChoiceText': _trueFalseAnswer ? '正しい' : '間違い', // 正しい選択肢
+      'incorrectChoice1Text': !_trueFalseAnswer ? '正しい' : '間違い', // 誤答選択肢
+      'tags': [],
+      'isFlagged': false,
+      'notes': null,
+      'examYear': null,
+      'createdBy': FirebaseFirestore.instance.collection('users').doc(FirebaseAuth.instance.currentUser!.uid),
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
     };
 
     try {
-      // Firestoreに新しい質問を追加
       await FirebaseFirestore.instance.collection('questions').add(questionData);
 
-      // カテゴリとサブカテゴリの問題数を更新
-      await _updateQuestionCount(categoryRef, subcategoryRef);
+      // 質問数を更新
+      await _updateQuestionCounts(folderRef, questionSetRef);
 
-      // 入力フィールドをクリア
       _clearFields();
 
-      // 保存成功時にスナックバーを表示
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('問題を保存しました')),
+        const SnackBar(content: Text('問題が保存されました')),
       );
     } catch (e) {
+      print('Error saving question: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('問題の保存に失敗しました')),
       );
-      print('Error saving question: $e');
     }
   }
 
-  Future<void> _updateQuestionCount(
-      DocumentReference categoryRef, DocumentReference subcategoryRef) async {
-    final batch = FirebaseFirestore.instance.batch();
 
-    // サブカテゴリの問題数をインクリメント
-    batch.update(subcategoryRef, {
-      'questionCount': FieldValue.increment(1),
-    });
 
-    // カテゴリの問題数をインクリメント
-    batch.update(categoryRef, {
-      'questionCount': FieldValue.increment(1),
-    });
+  Future<void> _updateQuestionCounts(
+      DocumentReference folderRef, DocumentReference questionSetRef) async {
+    try {
+      // フォルダに関連する質問数をカウント
+      final folderQuestionCountSnapshot = await FirebaseFirestore.instance
+          .collection('questions')
+          .where('folder', isEqualTo: folderRef)
+          .count()
+          .get();
 
-    // バッチ操作を実行
-    await batch.commit();
+      final folderTotalQuestions = folderQuestionCountSnapshot.count;
+
+      // 問題集に関連する質問数をカウント
+      final questionSetCountSnapshot = await FirebaseFirestore.instance
+          .collection('questions')
+          .where('questionSet', isEqualTo: questionSetRef)
+          .count()
+          .get();
+
+      final questionSetTotalQuestions = questionSetCountSnapshot.count;
+
+      // フォルダと問題集の`totalQuestions`フィールドを更新
+      final batch = FirebaseFirestore.instance.batch();
+
+      // 問題集の質問数を更新
+      batch.update(questionSetRef, {
+        'totalQuestions': questionSetTotalQuestions,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      // フォルダの質問数を更新
+      batch.update(folderRef, {
+        'totalQuestions': folderTotalQuestions,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      // バッチ操作を実行
+      await batch.commit();
+
+      print('Counts updated successfully:');
+      print('Folder totalQuestions: $folderTotalQuestions');
+      print('QuestionSet totalQuestions: $questionSetTotalQuestions');
+    } catch (e) {
+      print('Error updating question counts: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('質問数の更新に失敗しました')),
+      );
+    }
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -168,34 +200,34 @@ class _QuestionCreationPageState extends State<QuestionCreationPage> {
                 _buildChip(
                   label: '正誤問題',
                   icon: Icons.check_circle_outline,
-                  isSelected: _selectedQuestionType == '正誤問題',
+                  isSelected: _selectedQuestionType == 'true_false',
                   onTap: () {
                     setState(() {
-                      _selectedQuestionType = '正誤問題';
+                      _selectedQuestionType = 'true_false';
                     });
                   },
                 ),
                 const SizedBox(width: 8),
                 _buildChip(
-                  label: '4択問題',
+                  label: '四択問題',
                   icon: Icons.list_alt,
-                  isSelected: _selectedQuestionType == '4択問題',
+                  isSelected: _selectedQuestionType == 'single_choice',
                   onTap: () {
                     setState(() {
-                      _selectedQuestionType = '4択問題';
+                      _selectedQuestionType = 'single_choice';
                     });
                   },
                 ),
               ],
             ),
             const SizedBox(height: 24),
-            _buildExpandableTextField(_questionController, '問題文'),
+            _buildExpandableTextField(_questionTextController, '問題文'),
             const SizedBox(height: 16),
-            if (_selectedQuestionType == '正誤問題')
+            if (_selectedQuestionType == 'true_false')
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildSelectionTile(
+                  _buildTrueFalseSelectionTile(
                     label: '正しい',
                     value: true,
                     groupValue: _trueFalseAnswer,
@@ -206,7 +238,7 @@ class _QuestionCreationPageState extends State<QuestionCreationPage> {
                     },
                   ),
                   const SizedBox(height: 8),
-                  _buildSelectionTile(
+                  _buildTrueFalseSelectionTile(
                     label: '間違い',
                     value: false,
                     groupValue: _trueFalseAnswer,
@@ -218,14 +250,14 @@ class _QuestionCreationPageState extends State<QuestionCreationPage> {
                   ),
                 ],
               ),
-            if (_selectedQuestionType == '4択問題') ...[
-              _buildExpandableTextField(_answerController, '正解の選択肢'),
+            if (_selectedQuestionType == 'single_choice') ...[
+              _buildExpandableTextField(_correctChoiceTextController, '正解の選択肢'),
               const SizedBox(height: 16),
-              _buildExpandableTextField(_option1Controller, '誤答1'),
+              _buildExpandableTextField(_incorrectChoice1TextController, '誤答1'),
               const SizedBox(height: 16),
-              _buildExpandableTextField(_option2Controller, '誤答2'),
+              _buildExpandableTextField(_incorrectChoice2TextController, '誤答2'),
               const SizedBox(height: 16),
-              _buildExpandableTextField(_option3Controller, '誤答3'),
+              _buildExpandableTextField(_incorrectChoice3TextController, '誤答3'),
             ],
             const SizedBox(height: 24),
             SizedBox(
@@ -249,37 +281,6 @@ class _QuestionCreationPageState extends State<QuestionCreationPage> {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildExpandableTextField(TextEditingController controller, String labelText) {
-    return TextField(
-      controller: controller,
-      maxLines: null,
-      decoration: InputDecoration(
-        labelText: labelText,
-        labelStyle: const TextStyle(color: Colors.grey),
-        floatingLabelStyle: TextStyle(color: AppColors.blue700),
-        filled: true,
-        fillColor: Colors.white,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(
-            color: AppColors.gray50,
-            width: 1.0,
-          ),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(
-            color: AppColors.gray50,
-            width: 2.0,
-          ),
         ),
       ),
     );
@@ -320,7 +321,7 @@ class _QuestionCreationPageState extends State<QuestionCreationPage> {
     );
   }
 
-  Widget _buildSelectionTile({
+  Widget _buildTrueFalseSelectionTile({
     required String label,
     required bool value,
     required bool groupValue,
@@ -347,6 +348,37 @@ class _QuestionCreationPageState extends State<QuestionCreationPage> {
             color: isSelected ? AppColors.blue500 : Colors.black,
             fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
             fontSize: 16,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExpandableTextField(TextEditingController controller, String labelText) {
+    return TextField(
+      controller: controller,
+      maxLines: null,
+      decoration: InputDecoration(
+        labelText: labelText,
+        labelStyle: const TextStyle(color: Colors.grey),
+        floatingLabelStyle: TextStyle(color: AppColors.blue700),
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(
+            color: AppColors.gray50,
+            width: 1.0,
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(
+            color: AppColors.gray50,
+            width: 2.0,
           ),
         ),
       ),

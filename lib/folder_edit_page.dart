@@ -3,32 +3,32 @@ import 'package:flutter/material.dart';
 
 import 'app_colors.dart';
 
-class CategoryEditPage extends StatefulWidget {
-  final String initialCategoryName;
-  final String categoryId;
+class FolderEditPage extends StatefulWidget {
+  final String initialFolderName;
+  final String folderId;
 
-  const CategoryEditPage({Key? key, required this.initialCategoryName, required this.categoryId}) : super(key: key);
+  const FolderEditPage({Key? key, required this.initialFolderName, required this.folderId}) : super(key: key);
 
   @override
-  _CategoryEditPageState createState() => _CategoryEditPageState();
+  _FolderEditPageState createState() => _FolderEditPageState();
 }
 
-class _CategoryEditPageState extends State<CategoryEditPage> {
+class _FolderEditPageState extends State<FolderEditPage> {
   bool _isButtonEnabled = false;
-  final TextEditingController _categoryNameController = TextEditingController();
+  final TextEditingController _folderNameController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _categoryNameController.text = widget.initialCategoryName; // 初期値を設定
-    _categoryNameController.addListener(() {
-      updateButtonState(_categoryNameController.text.isNotEmpty);
+    _folderNameController.text = widget.initialFolderName; // 初期値を設定
+    _folderNameController.addListener(() {
+      updateButtonState(_folderNameController.text.trim().isNotEmpty);
     });
   }
 
   @override
   void dispose() {
-    _categoryNameController.dispose();
+    _folderNameController.dispose();
     super.dispose();
   }
 
@@ -38,11 +38,36 @@ class _CategoryEditPageState extends State<CategoryEditPage> {
     });
   }
 
+  Future<void> _updateFolder() async {
+    final folderName = _folderNameController.text.trim();
+    if (folderName.isEmpty) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('folders')
+          .doc(widget.folderId) // ドキュメントIDを使って更新
+          .update({
+        'name': folderName,
+        'updatedAt': FieldValue.serverTimestamp(), // 更新日時を設定
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('フォルダ名が更新されました')),
+      );
+
+      Navigator.of(context).pop(true); // 更新完了後、前の画面に戻る
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('更新に失敗しました: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('編集'),
+        title: const Text('フォルダの編集'),
       ),
       body: Padding(
         padding: const EdgeInsets.all(24.0),
@@ -51,7 +76,7 @@ class _CategoryEditPageState extends State<CategoryEditPage> {
           children: [
             const SizedBox(height: 16),
             TextField(
-              controller: _categoryNameController,
+              controller: _folderNameController,
               autofocus: true,
               minLines: 1,
               maxLines: 1,
@@ -74,14 +99,7 @@ class _CategoryEditPageState extends State<CategoryEditPage> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                onPressed: _isButtonEnabled ? () async {
-                  final categoryName = _categoryNameController.text;
-                  await FirebaseFirestore.instance
-                      .collection('categories')
-                      .doc(widget.categoryId) // ドキュメントIDを使って更新
-                      .update({'name': categoryName});
-                  Navigator.of(context).pop(true);
-                } : null,
+                onPressed: _isButtonEnabled ? _updateFolder : null,
                 child: Text(
                   '保存',
                   style: TextStyle(
@@ -97,9 +115,11 @@ class _CategoryEditPageState extends State<CategoryEditPage> {
   }
 }
 
-void navigateToAddCategoryPage(BuildContext context) {
+void navigateToFolderEditPage(BuildContext context, String initialFolderName, String folderId) {
   Navigator.push(
     context,
-    MaterialPageRoute(builder: (context) => CategoryEditPage(initialCategoryName: '', categoryId: '',)),
+    MaterialPageRoute(
+      builder: (context) => FolderEditPage(initialFolderName: initialFolderName, folderId: folderId),
+    ),
   );
 }

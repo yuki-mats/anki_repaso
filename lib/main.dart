@@ -1,7 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:repaso/category_list_page.dart';
+import 'package:repaso/folder_list_page.dart';
 import 'package:repaso/lobby_page.dart';
 import 'app_colors.dart';
 import 'firebase_options.dart';
@@ -53,7 +53,7 @@ class MyApp extends StatelessWidget {
           ),
         ),
       ),
-      home: islogin ? const CategoryListPage(title: 'ホーム') : const LobbyPage(),
+      home: islogin ? const FolderListPage(title: 'ホーム') : const LobbyPage(),
     );
   }
 }

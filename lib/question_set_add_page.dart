@@ -3,31 +3,31 @@ import 'package:flutter/material.dart';
 import 'package:repaso/app_colors.dart';
 import 'question_add_page.dart';
 
-class SubcategoryAddPage extends StatefulWidget {
-  final String categoryId;
+class QuestionSetsAddPage extends StatefulWidget {
+  final String folderId;
 
-  const SubcategoryAddPage({Key? key, required this.categoryId}) : super(key: key);
+  const QuestionSetsAddPage({Key? key, required this.folderId}) : super(key: key);
 
   @override
-  _SubcategoryAddPageState createState() => _SubcategoryAddPageState();
+  _QuestionSetsAddPageState createState() => _QuestionSetsAddPageState();
 }
 
-class _SubcategoryAddPageState extends State<SubcategoryAddPage> {
+class _QuestionSetsAddPageState extends State<QuestionSetsAddPage> {
   bool _isButtonEnabled = false;
   bool _isLoading = false; // ローディング状態の管理
-  final TextEditingController _subcategoryNameController = TextEditingController();
+  final TextEditingController _questionSetNameController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _subcategoryNameController.addListener(() {
-      updateButtonState(_subcategoryNameController.text.isNotEmpty);
+    _questionSetNameController.addListener(() {
+      updateButtonState(_questionSetNameController.text.isNotEmpty);
     });
   }
 
   @override
   void dispose() {
-    _subcategoryNameController.dispose();
+    _questionSetNameController.dispose();
     super.dispose();
   }
 
@@ -37,32 +37,42 @@ class _SubcategoryAddPageState extends State<SubcategoryAddPage> {
     });
   }
 
-  Future<void> _addSubcategory() async {
+  Future<void> _addQuestionSet() async {
     setState(() {
       _isLoading = true; // ローディング状態を開始
     });
 
     try {
-      final subcategoryName = _subcategoryNameController.text;
-      final newSubcategory = await FirebaseFirestore.instance
-          .collection('categories')
-          .doc(widget.categoryId)
-          .collection('subcategories')
-          .add({'name': subcategoryName});
+      final questionSetName = _questionSetNameController.text;
+
+      // Firestoreに問題集を追加
+      final questionSetRef = await FirebaseFirestore.instance
+          .collection('questionSets') // トップのコレクションに追加
+          .add({
+        'name': questionSetName, // 問題集名
+        'folder': FirebaseFirestore.instance.collection('folders').doc(widget.folderId), // 所属フォルダのリファレンス
+        'createdBy': FirebaseFirestore.instance.collection('users').doc('currentUserId'), // 作成者のリファレンス（仮でcurrentUserIdを使っている）
+        'createdAt': FieldValue.serverTimestamp(), // 作成日時
+        'updatedAt': FieldValue.serverTimestamp(), // 更新日時
+        'correctRate': 0, // 初期値
+        'totalQuestions': 0, // 初期値
+        'totalAttempts': 0, // 初期値
+        'flaggedCount': 0, // 初期値
+      });
 
       // Firestoreにデータが正常に追加された後、問題作成画面へ遷移
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (context) => QuestionCreationPage(
-            categoryId: widget.categoryId,
-            subcategoryId: newSubcategory.id,
+          builder: (context) => QuestionAddPage(
+            folderId: widget.folderId,
+            questionSetId: questionSetRef.id, // 新しく作成された問題集のID
           ),
         ),
       );
     } catch (e) {
       // エラー時の処理（例: SnackBarでエラーを通知）
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('サブカテゴリーの追加に失敗しました。再度お試しください。')),
+        SnackBar(content: Text('問題集の追加に失敗しました。再度お試しください。')),
       );
     } finally {
       setState(() {
@@ -71,11 +81,12 @@ class _SubcategoryAddPageState extends State<SubcategoryAddPage> {
     }
   }
 
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('新しいサブカテゴリー'),
+        title: const Text('新しい問題集'),
       ),
       body: Padding(
         padding: const EdgeInsets.all(24.0),
@@ -84,7 +95,7 @@ class _SubcategoryAddPageState extends State<SubcategoryAddPage> {
           children: [
             const SizedBox(height: 16),
             TextField(
-              controller: _subcategoryNameController,
+              controller: _questionSetNameController,
               autofocus: true,
               minLines: 1,
               maxLines: 1,
@@ -107,7 +118,7 @@ class _SubcategoryAddPageState extends State<SubcategoryAddPage> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                onPressed: _isButtonEnabled && !_isLoading ? _addSubcategory : null,
+                onPressed: _isButtonEnabled && !_isLoading ? _addQuestionSet : null,
                 child: _isLoading
                     ? const CircularProgressIndicator(color: Colors.white)
                     : const Text('保存', style: TextStyle(fontSize: 16, color: Colors.white)),

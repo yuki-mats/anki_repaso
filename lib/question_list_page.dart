@@ -8,15 +8,15 @@ import 'package:share_plus/share_plus.dart';
 import 'question_edit_page.dart';
 
 class QuestionListPage extends StatelessWidget {
-  final String categoryId;
-  final String subcategoryId;
-  final String subcategoryName;
+  final DocumentSnapshot folder;
+  final DocumentSnapshot questionSet;
+  final String questionSetName;
 
   const QuestionListPage({
     Key? key,
-    required this.categoryId,
-    required this.subcategoryId,
-    required this.subcategoryName,
+    required this.folder,
+    required this.questionSet,
+    required this.questionSetName,
   }) : super(key: key);
 
   void testDirectory() async {
@@ -94,7 +94,7 @@ class QuestionListPage extends StatelessWidget {
     }
   }
 
-  Future<void> importQuestionsFromCSV(BuildContext context, String categoryId, String subcategoryId) async {
+  Future<void> importQuestionsFromCSV(BuildContext context, String folderId, String questionSetId) async {
     try {
       // ファイル選択
       final result = await FilePicker.platform.pickFiles(
@@ -126,12 +126,10 @@ class QuestionListPage extends StatelessWidget {
           'choices': (row[3] as String).split(', '), // Choices
           'year': int.tryParse(row[4]?.toString() ?? ''), // Year
           'labels': (row[5] as String).split(', '), // Labels
-          'categoryRef': FirebaseFirestore.instance.collection('categories').doc(categoryId),
+          'categoryRef': FirebaseFirestore.instance
+              .collection('folders').doc(folderId),
           'subcategoryRef': FirebaseFirestore.instance
-              .collection('categories')
-              .doc(categoryId)
-              .collection('subcategories')
-              .doc(subcategoryId),
+              .collection('questionSets').doc(questionSetId),
         });
       }
 
@@ -149,7 +147,7 @@ class QuestionListPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(subcategoryName),
+        title: Text(questionSetName),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16.0),
@@ -208,7 +206,7 @@ class QuestionListPage extends StatelessWidget {
                                 ),
                                 onTap: () {
                                   Navigator.of(context).pop();
-                                  importQuestionsFromCSV(context, categoryId, subcategoryId);
+                                  importQuestionsFromCSV(context, folder.id, questionSet.id);
                                 },
                               ),
                             ),
@@ -231,7 +229,7 @@ class QuestionListPage extends StatelessWidget {
                                 ),
                                 onTap: () {
                                   Navigator.of(context).pop();
-                                  exportQuestionsToCSV(context, categoryId, subcategoryId);
+                                  exportQuestionsToCSV(context, folder.id, questionSet.id);
                                 },
                               ),
                             ),
@@ -249,20 +247,10 @@ class QuestionListPage extends StatelessWidget {
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection("questions")
-            .where(
-            'categoryRef',
-            isEqualTo: FirebaseFirestore.instance
-                .collection('categories')
-                .doc(categoryId))
-            .where(
-            'subcategoryRef',
-            isEqualTo: FirebaseFirestore.instance
-                .collection('categories')
-                .doc(categoryId)
-                .collection('subcategories')
-                .doc(subcategoryId))
+            .where('folder', isEqualTo: folder.reference)
+            .where('questionSet', isEqualTo: questionSet.reference)
             .snapshots(),
-        builder: (context, snapshot) {
+          builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -280,12 +268,12 @@ class QuestionListPage extends StatelessWidget {
             itemBuilder: (context, index) {
               final question = questions[index];
               final questionId = question.id; // FirestoreのドキュメントID
-              final questionText = question['question'] is String
-                  ? question['question']
+              final questionText = question['questionText'] is String
+                  ? question['questionText']
                   : '問題なし';
-              final answerText = question['correctAnswer'] is String
-                  ? question['correctAnswer']
-                  : '答えなし';
+
+              // correctChoiceTextを取得
+              final correctAnswer = question['correctChoiceText'] as String? ?? '正解なし';
 
               return GestureDetector(
                 onTap: () {
@@ -300,8 +288,7 @@ class QuestionListPage extends StatelessWidget {
                   );
                 },
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16.0, vertical: 8.0),
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                   child: Container(
                     decoration: BoxDecoration(
                       color: Colors.white,
@@ -353,7 +340,7 @@ class QuestionListPage extends StatelessWidget {
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  answerText,
+                                  correctAnswer, // 正しい答えを表示
                                   style: const TextStyle(fontSize: 16),
                                 ),
                               ),
@@ -363,12 +350,6 @@ class QuestionListPage extends StatelessWidget {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: [
-                              IconButton(
-                                icon: const Icon(Icons.volume_up),
-                                onPressed: () {
-                                  // 音声読み上げ処理
-                                },
-                              ),
                               IconButton(
                                 icon: const Icon(Icons.bookmark_border),
                                 onPressed: () {
@@ -385,7 +366,7 @@ class QuestionListPage extends StatelessWidget {
               );
             },
           );
-        },
+          },
       ),
     );
   }

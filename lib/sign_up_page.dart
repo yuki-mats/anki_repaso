@@ -2,7 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:repaso/category_list_page.dart';
+import 'package:repaso/folder_list_page.dart';
 import 'app_colors.dart';
 import 'login_page.dart';
 
@@ -24,7 +24,6 @@ class SignUpPageState extends State<SignUpPage> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn(scopes: []);
 
-  User? _user;
 
   Future<User?> signInWithGoogle() async {
     try {
@@ -54,14 +53,13 @@ class SignUpPageState extends State<SignUpPage> {
         }, SetOptions(merge: true)); // 既存データがある場合はマージ
 
         setState(() {
-          _user = user;
         });
 
         // カテゴリーリストページに遷移
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) => const CategoryListPage(title: "ホーム"),
+            builder: (context) => const FolderListPage(title: "ホーム"),
           ),
         );
       }
@@ -77,7 +75,6 @@ class SignUpPageState extends State<SignUpPage> {
     await _googleSignIn.signOut();
     await _auth.signOut();
     setState(() {
-      _user = null;
     });
   }
 
@@ -131,7 +128,7 @@ class SignUpPageState extends State<SignUpPage> {
         // ログインページに遷移
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => const CategoryListPage(title: "ホーム")),
+          MaterialPageRoute(builder: (context) => const FolderListPage(title: "ホーム")),
         );
       }
     } on FirebaseAuthException catch (e) {

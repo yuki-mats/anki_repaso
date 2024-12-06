@@ -1,29 +1,29 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:repaso/subcategory_add_page.dart';
-import 'package:repaso/subcategory_edit_page.dart';
+import 'package:repaso/question_set_add_page.dart';
+import 'package:repaso/question_set_edit_page.dart';
 import 'app_colors.dart';
 import 'lobby_page.dart';
 import 'question_add_page.dart';
 import 'answer_page.dart'; // AnswerPageのインポートを追加
 import 'question_list_page.dart'; // QuestionListPageのインポートを追加
 
-class SubCategoryListPage extends StatefulWidget {
-  final DocumentSnapshot category;
+class QuestionSetsListPage extends StatefulWidget {
+  final DocumentSnapshot folder;
 
-  SubCategoryListPage({Key? key, required this.category}) : super(key: key);
+  QuestionSetsListPage({Key? key, required this.folder}) : super(key: key);
 
   @override
-  _SubCategoryListPageState createState() => _SubCategoryListPageState();
+  _QuestionSetListPageState createState() => _QuestionSetListPageState();
 }
 
-class _SubCategoryListPageState extends State<SubCategoryListPage> {
-  void navigateToAddSubcategoryPage(BuildContext context, String categoryId) {
+class _QuestionSetListPageState extends State<QuestionSetsListPage> {
+  void navigateToQuestionSetsAddPage(BuildContext context, String folderId) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => SubcategoryAddPage(categoryId: categoryId),
+        builder: (context) => QuestionSetsAddPage(folderId: folderId),
       ),
     );
   }
@@ -76,8 +76,7 @@ class _SubCategoryListPageState extends State<SubCategoryListPage> {
                     leading: const Icon(Icons.error_outline, size: 36),
                     title: const Text('アカウントの削除', style: TextStyle(fontSize: 18)),
                     onTap: () {
-                      Navigator.of(context).pop();
-                      showDeleteAccountConfirmation(context);
+
                     },
                   ),
                 ),
@@ -89,155 +88,14 @@ class _SubCategoryListPageState extends State<SubCategoryListPage> {
     );
   }
 
-  // アカウント削除の確認ダイアログを表示するメソッドを追加
-  void showDeleteAccountConfirmation(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(24.0),
-          topRight: Radius.circular(24.0),
-        ),
-      ),
-      builder: (BuildContext context) {
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'アカウントを削除しますか？',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'これまで作った暗記帳は削除されます。',
-                style: TextStyle(color: Colors.redAccent, fontSize: 16),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'この動作は取り消せません。',
-                style: TextStyle(color: Colors.redAccent, fontSize: 16),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                  ),
-                  onPressed: () async {
-                    Navigator.of(context).pop(); // モーダルを閉じる
-
-                    try {
-                      // FirebaseAuthインスタンスを取得
-                      User? user = FirebaseAuth.instance.currentUser;
-
-                      // ユーザーの再認証（ユーザーにパスワード再入力を求める）
-                      final credential = EmailAuthProvider.credential(
-                        email: user!.email!,
-                        password: 'ユーザーのパスワードを入力してください', // パスワード入力フィールドを追加する必要があります
-                      );
-
-                      // 再認証を実行
-                      await user.reauthenticateWithCredential(credential);
-
-                      // 再認証後にアカウント削除を実行
-                      await user.delete();
-
-                      // 削除成功後、LobbyPageへ遷移
-                      Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(builder: (context) => const LobbyPage()),
-                            (route) => false,
-                      );
-                    } on FirebaseAuthException catch (e) {
-                      if (e.code == 'requires-recent-login') {
-                        // 再認証が必要な場合のエラーメッセージ
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('この操作には再認証が必要です。再度ログインしてください。'),
-                          ),
-                        );
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('エラー: ${e.message}')),
-                        );
-                      }
-                    }
-                  },
-                  child: const Text(
-                    '削除する',
-                    style: TextStyle(color: Colors.white, fontSize: 16),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                  },
-                  child: const Text(
-                    'キャンセル',
-                    style: TextStyle(color: Colors.grey, fontSize: 16),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-
-
-  // アカウントを削除するメソッドを追加
-  Future<void> deleteAccount() async {
-    try {
-      User? user = FirebaseAuth.instance.currentUser;
-
-      // Firestore上のユーザーデータを削除（必要に応じて追加）
-      // 例: カテゴリや問題集などのユーザーデータを削除
-      // 以下は例ですので、実際のデータ構造に合わせて調整してください
-      // await FirebaseFirestore.instance.collection('users').doc(user?.uid).delete();
-
-      // ユーザーアカウントを削除
-      await user?.delete();
-
-      // ロビー画面に遷移
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (context) => const LobbyPage()),
-            (route) => false,
-      );
-    } catch (e) {
-      // エラーハンドリング（再認証が必要な場合など）
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('アカウントの削除に失敗しました: $e')),
-      );
-    }
-  }
-
-  void navigateToEditSubcategoryPage(BuildContext context, DocumentSnapshot category, DocumentSnapshot subcategory) async {
+  void navigateToQuestionSetsEditPage(BuildContext context, DocumentSnapshot folder, DocumentSnapshot questionSet) async {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => SubcategoryEditPage(
-          initialSubcategoryName: subcategory['name'],
-          categoryId: category.id,
-          subcategoryId: subcategory.id,
+        builder: (context) => QuestionSetEditPage(
+          initialQuestionSetName: questionSet['name'],
+          folderId: folder.id,
+          questionSetId: questionSet.id,
         ),
       ),
     );
@@ -247,44 +105,44 @@ class _SubCategoryListPageState extends State<SubCategoryListPage> {
     }
   }
 
-  void navigateToQuestionCreationPage(BuildContext context, String categoryId, String subcategoryId) {
+  void navigateToQuestionAddPage(BuildContext context, String folderId, String questionSetId) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => QuestionCreationPage(
-          categoryId: categoryId,
-          subcategoryId: subcategoryId,
+        builder: (context) => QuestionAddPage(
+          folderId: folderId,
+          questionSetId: questionSetId,
         ),
       ),
     );
   }
 
-  void navigateToAnswerPage(BuildContext context, String categoryId, String subcategoryId) {
+  void navigateToAnswerPage(BuildContext context, DocumentSnapshot folder, DocumentSnapshot questionSet) {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => AnswerPage(
-          categoryId: categoryId,
-          subcategoryId: subcategoryId,
+          folderId: folder.id,
+          questionSetId: questionSet.id,
         ),
       ),
     );
   }
 
-  void navigateToQuestionListPage(BuildContext context, String categoryId, DocumentSnapshot subcategory) {
+  void navigateToQuestionListPage(BuildContext context, DocumentSnapshot folder, DocumentSnapshot questionSet) {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => QuestionListPage(
-          categoryId: categoryId,
-          subcategoryId: subcategory.id,
-          subcategoryName: subcategory['name'],
+          folder: folder,
+          questionSet: questionSet,
+          questionSetName: questionSet['name'],
         ),
       ),
     );
   }
 
-  void showSubcategoryOptionsModal(BuildContext context, DocumentSnapshot category, DocumentSnapshot subcategory) {
+  void showQuestionSetOptionsModal(BuildContext context, DocumentSnapshot folder, DocumentSnapshot questionSet) {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -303,7 +161,7 @@ class _SubCategoryListPageState extends State<SubCategoryListPage> {
                   const Icon(Icons.layers_rounded, size: 36, color: AppColors.blue500),
                   const SizedBox(width: 16),
                   Text(
-                    subcategory['name'],
+                    questionSet['name'],
                     style: const TextStyle(fontSize: 20),
                   ),
                 ],
@@ -322,7 +180,7 @@ class _SubCategoryListPageState extends State<SubCategoryListPage> {
                     title: const Text('問題の追加', style: TextStyle(fontSize: 18)),
                     onTap: () {
                       Navigator.of(context).pop();
-                      navigateToQuestionCreationPage(context, category.id, subcategory.id);
+                      navigateToQuestionAddPage(context, folder.id, questionSet.id);
                     },
                   ),
                 ),
@@ -340,7 +198,25 @@ class _SubCategoryListPageState extends State<SubCategoryListPage> {
                     title: const Text('問題集名の編集', style: TextStyle(fontSize: 18)),
                     onTap: () {
                       Navigator.of(context).pop();
-                      navigateToEditSubcategoryPage(context, category, subcategory);
+                      navigateToQuestionSetsEditPage(context, folder, questionSet);
+                    },
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0.0, 24, 24),
+              child: Container(
+                child: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: ListTile(
+                    leading: const Icon(Icons.show_chart_rounded,
+                        size: 36,
+                        color: AppColors.gray800),
+                    title: const Text('定着度を確認', style: TextStyle(fontSize: 18)),
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      navigateToQuestionSetsEditPage(context, folder, questionSet);
                     },
                   ),
                 ),
@@ -359,7 +235,7 @@ class _SubCategoryListPageState extends State<SubCategoryListPage> {
                     title: const Text('問題の一覧', style: TextStyle(fontSize: 18)),
                     onTap: () {
                       Navigator.of(context).pop();
-                      navigateToQuestionListPage(context, category.id, subcategory);
+                      navigateToQuestionListPage(context, folder, questionSet);
                     },
                   ),
                 ),
@@ -367,7 +243,6 @@ class _SubCategoryListPageState extends State<SubCategoryListPage> {
             ),
           ],
         );
-
       },
     );
   }
@@ -376,15 +251,14 @@ class _SubCategoryListPageState extends State<SubCategoryListPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.category['name']),
+        title: Text(widget.folder['name']),
       ),
       body: Padding(
         padding: const EdgeInsets.only(top: 16.0),
         child: StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance
-              .collection("categories")
-              .doc(widget.category.id)
-              .collection("subcategories")
+              .collection("questionSets")
+              .where("folder", isEqualTo: FirebaseFirestore.instance.collection("folders").doc(widget.folder.id)) // 現在のフォルダIDを使用してフィルタリング
               .snapshots(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
@@ -393,19 +267,19 @@ class _SubCategoryListPageState extends State<SubCategoryListPage> {
             if (snapshot.hasError) {
               return const Center(child: Text('エラーが発生しました'));
             }
-            final subcategories = snapshot.data?.docs ?? [];
+            final questionSets = snapshot.data?.docs ?? [];
             return ListView.builder(
-              itemCount: subcategories.length,
+              itemCount: questionSets.length,
               itemBuilder: (context, index) {
-                final subcategory = subcategories[index];
-                final questionCount = subcategory['questionCount'] ?? 0;
+                final questionSet = questionSets[index];
+                final totalQuestions = questionSet['totalQuestions'] ?? 0;
                 return Padding(
                   padding: const EdgeInsets.only(left: 16.0, right: 16.0),
                   child: Column(
                     children: [
                       GestureDetector(
                         onTap: () {
-                          navigateToAnswerPage(context, widget.category.id, subcategory.id);
+                          navigateToAnswerPage(context, widget.folder, questionSet);
                         },
                         child: Container(
                           decoration: const BoxDecoration(
@@ -437,22 +311,32 @@ class _SubCategoryListPageState extends State<SubCategoryListPage> {
                                         child: Align(
                                           alignment: Alignment.centerLeft,
                                           child: Text(
-                                            subcategory['name'],
+                                            questionSet['name'],
                                             style: const TextStyle(fontSize: 18),
                                           ),
                                         ),
                                       ),
                                       const SizedBox(height: 8),
-                                      Text(
-                                        '問題数: ${questionCount.toString()}', // 動的に問題数を表示
-                                        style: const TextStyle(fontSize: 14),
+                                      Row(
+                                        children: [
+                                          const Icon(
+                                            Icons.insert_drive_file_rounded,
+                                            size: 16,
+                                            color: AppColors.blue400,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            '${totalQuestions.toString()}', // 動的に問題数を表示
+                                            style: const TextStyle(fontSize: 14),
+                                          ),
+                                        ],
                                       ),
                                     ],
                                   ),
                                 ),
                                 IconButton(
                                   onPressed: () {
-                                    showSubcategoryOptionsModal(context, widget.category, subcategory);
+                                    showQuestionSetOptionsModal(context, widget.folder, questionSet);
                                   },
                                   icon: const Icon(Icons.more_horiz_outlined, color: Colors.grey),
                                 ),
@@ -474,7 +358,7 @@ class _SubCategoryListPageState extends State<SubCategoryListPage> {
         type: BottomNavigationBarType.fixed,
         onTap: (index) {
           if (index == 1) {
-            navigateToAddSubcategoryPage(context, widget.category.id);
+            navigateToQuestionSetsAddPage(context, widget.folder.id);
           } else if (index == 3) {
             showSettingsModal(context);
           }
