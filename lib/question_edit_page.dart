@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:repaso/app_colors.dart';
 
 class QuestionEditPage extends StatefulWidget {
-  final String questionId; // 編集する問題のID
+  final DocumentSnapshot question; // 編集する問題のID
 
   const QuestionEditPage({
     Key? key,
-    required this.questionId,
+    required this.question,
   }) : super(key: key);
 
   @override
@@ -31,40 +31,26 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
     _loadQuestionData();
   }
 
-  Future<void> _loadQuestionData() async {
-    try {
-      final questionDoc = await FirebaseFirestore.instance
-          .collection('questions')
-          .doc(widget.questionId)
-          .get();
+  void _loadQuestionData() {
+    final data = widget.question.data() as Map<String, dynamic>;
 
-      if (questionDoc.exists) {
-        final data = questionDoc.data() as Map<String, dynamic>;
+    setState(() {
+      _questionTextController.text = data['questionText'] ?? '';
+      _selectedQuestionType = data['questionType'] ?? 'true_false';
 
-        setState(() {
-          _questionTextController.text = data['questionText'] ?? '';
-          _selectedQuestionType = data['questionType'] ?? 'true_false';
-
-          if (_selectedQuestionType == 'true_false') {
-            // 正誤問題の場合
-            _trueFalseAnswer = data['correctChoiceText'] == '正しい';
-          } else if (_selectedQuestionType == 'single_choice') {
-            // 四択問題の場合
-            _correctChoiceTextController.text = data['correctChoiceText'] ?? '';
-            _incorrectChoice1TextController.text = data['incorrectChoice1Text'] ?? '';
-            _incorrectChoice2TextController.text = data['incorrectChoice2Text'] ?? '';
-            _incorrectChoice3TextController.text = data['incorrectChoice3Text'] ?? '';
-          }
-
-          _isLoading = false;
-        });
+      if (_selectedQuestionType == 'true_false') {
+        // 正誤問題の場合
+        _trueFalseAnswer = data['correctChoiceText'] == '正しい';
+      } else if (_selectedQuestionType == 'single_choice') {
+        // 四択問題の場合
+        _correctChoiceTextController.text = data['correctChoiceText'] ?? '';
+        _incorrectChoice1TextController.text = data['incorrectChoice1Text'] ?? '';
+        _incorrectChoice2TextController.text = data['incorrectChoice2Text'] ?? '';
+        _incorrectChoice3TextController.text = data['incorrectChoice3Text'] ?? '';
       }
-    } catch (e) {
-      print('Error loading question data: $e');
-      setState(() {
-        _isLoading = false;
-      });
-    }
+
+      _isLoading = false;
+    });
   }
 
   Future<void> _updateQuestion() async {
@@ -83,14 +69,12 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
       'incorrectChoice3Text': _selectedQuestionType == 'single_choice'
           ? _incorrectChoice3TextController.text.trim()
           : null,
+      'updatedByRef': FirebaseFirestore.instance.collection('users').doc('currentUserId'),
       'updatedAt': FieldValue.serverTimestamp(),
     };
 
     try {
-      await FirebaseFirestore.instance
-          .collection('questions')
-          .doc(widget.questionId)
-          .update(questionData);
+      await widget.question.reference.update(questionData);
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('問題が更新されました')),

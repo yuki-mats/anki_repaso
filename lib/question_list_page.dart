@@ -1,10 +1,7 @@
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:csv/csv.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 import 'question_edit_page.dart';
 
 class QuestionListPage extends StatelessWidget {
@@ -33,113 +30,6 @@ class QuestionListPage extends StatelessWidget {
     final directory = file.parent;
     if (!await directory.exists()) {
       await directory.create(recursive: true); // 必要に応じて親ディレクトリも作成
-    }
-  }
-
-
-  Future<void> exportQuestionsToCSV(BuildContext context, String categoryId, String subcategoryId) async {
-    try {
-      // Firestoreからデータを取得
-      final querySnapshot = await FirebaseFirestore.instance
-          .collection('questions')
-          .where('categoryRef', isEqualTo: FirebaseFirestore.instance.doc('categories/$categoryId'))
-          .where('subcategoryRef', isEqualTo: FirebaseFirestore.instance
-          .doc('categories/$categoryId')
-          .collection('subcategories')
-          .doc(subcategoryId))
-          .get();
-
-      // データをCSVフォーマットに変換
-      List<List<String>> csvData = [
-        ['Question Text', 'Correct Answer', 'Type', 'Choices', 'Year', 'Labels']
-      ];
-
-      for (var doc in querySnapshot.docs) {
-        final data = doc.data();
-        csvData.add([
-          data['question'] ?? '',
-          data['correctAnswer']?.toString() ?? '',
-          data['type'] ?? '',
-          (data['choices'] as List?)?.join(', ') ?? '',
-          data['year']?.toString() ?? '',
-          (data['labels'] as List?)?.join(', ') ?? '',
-        ]);
-      }
-
-      String csv = const ListToCsvConverter().convert(csvData);
-
-      // ファイルパスを取得
-      final directory = await getApplicationDocumentsDirectory();
-      final filePath = '${directory.path}/questions_export.csv';
-
-      // ディレクトリが存在しない場合に備えて作成
-      await ensureDirectoryExists(filePath);
-
-      // ファイル保存処理
-      final file = File(filePath);
-      await file.writeAsString(csv);
-
-      // ファイルを共有
-      await Share.shareXFiles(
-        [XFile(file.path)],
-      );
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('CSVファイルを共有しました: $filePath')),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('エクスポート中にエラーが発生しました: $e')),
-      );
-    }
-  }
-
-  Future<void> importQuestionsFromCSV(BuildContext context, String folderId, String questionSetId) async {
-    try {
-      // ファイル選択
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['csv'],
-      );
-
-      if (result == null || result.files.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('ファイルが選択されませんでした')),
-        );
-        return;
-      }
-
-      // ファイルの読み取り
-      final file = File(result.files.single.path!);
-      final csvString = await file.readAsString();
-
-      // CSVデータを解析
-      final csvData = const CsvToListConverter().convert(csvString, eol: '\n');
-
-      // 1行目はヘッダーなのでスキップ
-      for (int i = 1; i < csvData.length; i++) {
-        final row = csvData[i];
-        await FirebaseFirestore.instance.collection('questions').add({
-          'question': row[0], // Question Text
-          'correctAnswer': row[1], // Correct Answer
-          'type': row[2], // Type
-          'choices': (row[3] as String).split(', '), // Choices
-          'year': int.tryParse(row[4]?.toString() ?? ''), // Year
-          'labels': (row[5] as String).split(', '), // Labels
-          'categoryRef': FirebaseFirestore.instance
-              .collection('folders').doc(folderId),
-          'subcategoryRef': FirebaseFirestore.instance
-              .collection('questionSets').doc(questionSetId),
-        });
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('CSVファイルから問題をインポートしました')),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('インポート中にエラーが発生しました: $e')),
-      );
     }
   }
 
@@ -205,8 +95,7 @@ class QuestionListPage extends StatelessWidget {
                                   style: TextStyle(fontSize: 18),
                                 ),
                                 onTap: () {
-                                  Navigator.of(context).pop();
-                                  importQuestionsFromCSV(context, folder.id, questionSet.id);
+
                                 },
                               ),
                             ),
@@ -228,8 +117,7 @@ class QuestionListPage extends StatelessWidget {
                                   style: TextStyle(fontSize: 18),
                                 ),
                                 onTap: () {
-                                  Navigator.of(context).pop();
-                                  exportQuestionsToCSV(context, folder.id, questionSet.id);
+
                                 },
                               ),
                             ),
@@ -247,8 +135,8 @@ class QuestionListPage extends StatelessWidget {
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection("questions")
-            .where('folder', isEqualTo: folder.reference)
-            .where('questionSet', isEqualTo: questionSet.reference)
+            .where('folderRef', isEqualTo: folder.reference)
+            .where('questionSetRef', isEqualTo: questionSet.reference)
             .snapshots(),
           builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -267,7 +155,6 @@ class QuestionListPage extends StatelessWidget {
             itemCount: questions.length,
             itemBuilder: (context, index) {
               final question = questions[index];
-              final questionId = question.id; // FirestoreのドキュメントID
               final questionText = question['questionText'] is String
                   ? question['questionText']
                   : '問題なし';
@@ -282,7 +169,7 @@ class QuestionListPage extends StatelessWidget {
                     context,
                     MaterialPageRoute(
                       builder: (context) => QuestionEditPage(
-                        questionId: questionId,
+                        question: question,
                       ),
                     ),
                   );

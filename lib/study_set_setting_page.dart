@@ -2,32 +2,190 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:repaso/app_colors.dart';
+import 'package:repaso/set_number_of_questions_page.dart';
+import 'package:repaso/set_question_order_page.dart';
+import 'package:repaso/set_question_set_page.dart';
+import 'package:repaso/set_study_set_name_page.dart';
 
-class StudySetAddPage extends StatefulWidget {
-  const StudySetAddPage({Key? key}) : super(key: key);
+class StudySet {
+  final String name;
+  final List<String> questionSetIds;
+  final int numberOfQuestions;
+  final String selectedQuestionOrder;
+  final RangeValues correctRateRange;
+  final bool isFlagged;
+
+  StudySet({
+    required this.name,
+    required this.questionSetIds,
+    required this.numberOfQuestions,
+    required this.selectedQuestionOrder,
+    required this.correctRateRange,
+    required this.isFlagged,
+  });
+
+  // Firestoreデータから生成するファクトリコンストラクタ
+  factory StudySet.fromFirestore(Map<String, dynamic> data) {
+    return StudySet(
+      name: data['name'] as String,
+      questionSetIds: List<String>.from(data['questionSetIds'] ?? []),
+      numberOfQuestions: data['numberOfQuestions'] as int,
+      selectedQuestionOrder: data['selectedQuestionOrder'] as String,
+      correctRateRange: RangeValues(
+        (data['correctRateRange']?['start'] ?? 0.0) as double,
+        (data['correctRateRange']?['end'] ?? 100.0) as double,
+      ),
+      isFlagged: data['isFlagged'] as bool? ?? false,
+    );
+  }
+
+  // Firestoreに保存するためのMap形式に変換
+  Map<String, dynamic> toFirestore() {
+    return {
+      'name': name,
+      'questionSetIds': questionSetIds,
+      'numberOfQuestions': numberOfQuestions,
+      'selectedQuestionOrder': selectedQuestionOrder,
+      'correctRateRange': {
+        'start': correctRateRange.start,
+        'end': correctRateRange.end,
+      },
+      'isFlagged': isFlagged,
+    };
+  }
+}
+
+class StudySetSettingPage extends StatefulWidget {
+  final StudySet? studySet;
+
+  const StudySetSettingPage({
+    Key? key,
+    this.studySet,
+  }) : super(key: key);
 
   @override
   _StudySetAddPageState createState() => _StudySetAddPageState();
 }
 
-class _StudySetAddPageState extends State<StudySetAddPage> {
-  RangeValues _correctRateRange = const RangeValues(0, 100);
-  bool _isFlagged = false;
-  String? selectedQuestionSetName;
-  String? studySetName;
-  List<String> selectedQuestionSetNames = [];
-  List<String> questionSetIds = []; // 問題集IDのリスト
+class _StudySetAddPageState extends State<StudySetSettingPage> {
+  late RangeValues _correctRateRange;
+  late bool _isFlagged;
+  late String? studySetName;
+  late List<String> questionSetIds;
+  late int? numberOfQuestions;
+  late String? selectedQuestionOrder;
+
+  final Map<String, String> orderOptions = {
+    "random": "ランダム",
+    "attemptsDescending": "試行回数が多い順",
+    "attemptsAscending": "試行回数が少ない順",
+    "accuracyDescending": "正答率が高い順",
+    "accuracyAscending": "正答率が低い順",
+    "studyTimeDescending": "学習時間が長い順",
+    "studyTimeAscending": "学習時間が短い順",
+    "responseTimeDescending": "平均回答時間が長い順",
+    "responseTimeAscending": "平均回答時間が短い順",
+    "lastStudiedDescending": "最終学習日の降順",
+    "lastStudiedAscending": "最終学習日の昇順",
+  };
 
   @override
   void initState() {
     super.initState();
+    if (widget.studySet != null) {
+      final studySet = widget.studySet!;
+      studySetName = studySet.name;
+      questionSetIds = studySet.questionSetIds;
+      numberOfQuestions = studySet.numberOfQuestions;
+      selectedQuestionOrder = studySet.selectedQuestionOrder;
+      _correctRateRange = studySet.correctRateRange;
+      _isFlagged = studySet.isFlagged;
+    } else {
+      studySetName = null;
+      questionSetIds = [];
+      numberOfQuestions = null;
+      selectedQuestionOrder = null;
+      _correctRateRange = const RangeValues(0, 100);
+      _isFlagged = false;
+    }
+  }
+
+  Future<List<String>> _fetchQuestionSetNames(List<String> ids) async {
+    try {
+      final List<String> names = [];
+      for (final id in ids) {
+        final doc = await FirebaseFirestore.instance
+            .collection('questionSets') // 問題集のコレクション名
+            .doc(id)
+            .get();
+        if (doc.exists) {
+          final name = doc.data()?['name'] as String?;
+          if (name != null) {
+            names.add(name);
+          }
+        }
+      }
+      return names;
+    } catch (e) {
+      print('Error fetching question set names: $e');
+      return [];
+    }
+  }
+
+
+  Future<void> _saveStudySet() async {
+    if (studySetName == null || studySetName!.isEmpty || questionSetIds.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('セット名と問題集を入力してください。')),
+      );
+      return;
+    }
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ログインしてください。')),
+      );
+      return;
+    }
+
+    final newStudySet = StudySet(
+      name: studySetName!,
+      questionSetIds: questionSetIds,
+      numberOfQuestions: numberOfQuestions!,
+      selectedQuestionOrder: selectedQuestionOrder!,
+      correctRateRange: _correctRateRange,
+      isFlagged: _isFlagged,
+    );
+
+    try {
+      final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+      await userRef.collection('studySets').add(newStudySet.toFirestore());
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('学習セットが保存されました。')),
+      );
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('保存中にエラーが発生しました: $e')),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('新しい学習セット'),
+        title: const Text('学習セットの追加'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.check),
+            onPressed: (questionSetIds.isNotEmpty && studySetName != null && studySetName!.isNotEmpty)
+                ? _saveStudySet
+                : null,
+          ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16.0),
@@ -50,17 +208,17 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
                 ),
                 Expanded(
                   child: Text(
-                    '$studySetName',
+                    (studySetName?.trim().isEmpty ?? true) ? "入力してください。" : studySetName!,
                     style: const TextStyle(fontSize: 18),
                   ),
                 ),
               ],
             ),
-            trailing: const Icon(Icons.arrow_forward_ios),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 20),
             onTap: () async {
               final name = await Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (context) => StudySetNameEditPage(
+                  builder: (context) => SetStudySetNamePage(
                     initialName: studySetName ?? "",
                   ),
                 ),
@@ -72,82 +230,103 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
               }
             },
           ),
-          const Divider(),
+          const SizedBox(height: 16),
           ListTile(
             title: Row(
               children: [
-                Icon(
+                const Icon(
                   Icons.layers_rounded,
                   size: 30,
                   color: AppColors.gray600,
                 ),
-                SizedBox(width: 6),
-                SizedBox(
+                const SizedBox(width: 6),
+                const SizedBox(
                   width: 100,
                   child: Text(
                     "問題集",
                     style: TextStyle(fontSize: 18),
                   ),
                 ),
-                if (selectedQuestionSetNames.isNotEmpty) // 選択された名前がある場合のみ表示
+                if (questionSetIds.isNotEmpty) // 選択された問題集がある場合のみ表示
                   Expanded(
-                    child: Text(
-                      selectedQuestionSetNames.join(', '),
-                      style: const TextStyle(fontSize: 18),
+                    child: FutureBuilder<List<String>>(
+                      future: _fetchQuestionSetNames(questionSetIds), // Firestoreから名前を取得
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const Text(
+                            '読み込み中...',
+                            style: TextStyle(fontSize: 18, color: Colors.grey),
+                          );
+                        }
+                        if (snapshot.hasError) {
+                          return const Text(
+                            'エラーが発生しました',
+                            style: TextStyle(fontSize: 18, color: Colors.red),
+                          );
+                        }
+                        final names = snapshot.data ?? [];
+                        return Text(
+                          names.join(', '), // 名前を「,」でつなげる
+                          style: const TextStyle(fontSize: 18),
+                        );
+                      },
                     ),
                   ),
               ],
             ),
-            trailing: const Icon(Icons.arrow_forward_ios),
-              onTap: () async {
-                final result = await Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => FolderTreeView(
-                      userId: FirebaseAuth.instance.currentUser!.uid,
-                      selectedQuestionSetIds: questionSetIds,
-                    ),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 20),
+            onTap: () async {
+              final result = await Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => SetQuestionSetPage(
+                    userId: FirebaseAuth.instance.currentUser!.uid,
+                    selectedQuestionSetIds: questionSetIds,
                   ),
-                );
-                if (result != null && result is Map<String, List<String>>) {
-                  setState(() {
-                    questionSetIds = result['questionSetIds'] ?? [];
-                    selectedQuestionSetNames = result['selectedQuestionSetNames'] ?? [];
-                  });
-                }
+                ),
+              );
+              if (result != null && result is List<String>) {
+                setState(() {
+                  questionSetIds = result; // 選択されたIDを更新
+                });
               }
+            },
           ),
-          const Divider(),
+
+          const SizedBox(height: 16),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               ListTile(
-                title: const Row(
+                title: Row(
                   children: [
-                    Icon(
+                    const Icon(
                       Icons.percent,
                       size: 30,
                       color: AppColors.gray600,
                     ),
-                    SizedBox(width: 6),
+                    const SizedBox(width: 6),
+                    const SizedBox(
+                      width: 100,
+                      child: Text(
+                        "正答率",
+                        style: TextStyle(fontSize: 18),
+                      ),
+                    ),
                     Text(
-                      "正答率",
-                      style: TextStyle(fontSize: 18),
+                      "${_correctRateRange.start.toInt()} 〜 ${_correctRateRange.end.toInt()}%",
+                      style: const TextStyle(fontSize: 20),
                     ),
                   ],
-                ),
-                trailing: Text(
-                  "${_correctRateRange.start.toInt()} 〜 ${_correctRateRange.end.toInt()}%",
-                  style: const TextStyle(fontSize: 20),
                 ),
               ),
               SliderTheme(
                 data: SliderTheme.of(context).copyWith(
                   trackHeight: 8,
                   thumbColor: Colors.white,
-                  inactiveTrackColor: Colors.grey[300], // AppColors.gray300 を代用
-                  inactiveTickMarkColor: Colors.grey[300], // AppColors.gray300 を代用
-                  activeTrackColor: AppColors.blue500, // AppColors.blue500 を代用
-                  activeTickMarkColor: AppColors.blue500, // AppColors.blue500 を代用
+                  inactiveTrackColor: Colors.grey[300],
+                  inactiveTickMarkColor: Colors.grey[300],
+                  activeTrackColor: AppColors.blue500,
+                  activeTickMarkColor: AppColors.blue500,
                 ),
                 child: RangeSlider(
                   values: _correctRateRange,
@@ -169,7 +348,7 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
               ),
             ],
           ),
-          const Divider(),
+          const SizedBox(height: 16),
           SwitchListTile(
             title: const Row(
               children: [
@@ -183,7 +362,7 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
                 ),
                 SizedBox(width: 6),
                 Text(
-                  "フラグ",
+                  "フラグあり",
                   style: TextStyle(fontSize: 18),
                 ),
               ],
@@ -192,17 +371,18 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
             activeColor: Colors.white,
             activeTrackColor: AppColors.blue500,
             inactiveThumbColor: Colors.black,
+            inactiveTrackColor: Colors.white,
             onChanged: (value) {
               setState(() {
                 _isFlagged = value;
               });
             },
           ),
-          const Divider(),
+          const SizedBox(height: 16),
           ListTile(
-            title: const Row(
+            title: Row(
               children: [
-                Padding(
+                const Padding(
                   padding: EdgeInsets.only(top: 4.0),
                   child: Icon(
                     Icons.sort,
@@ -210,314 +390,82 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
                     color: AppColors.gray600,
                   ),
                 ),
-                SizedBox(width: 6),
-                Text(
-                  "出題順",
-                  style: TextStyle(fontSize: 18),
+                const SizedBox(width: 6),
+                const SizedBox(
+                  width: 100,
+                  child: Text(
+                    "出題順",
+                    style: TextStyle(fontSize: 18),
+                  ),
                 ),
+                if (selectedQuestionOrder != null) // 出題順が選択されている場合のみ表示
+                  Expanded(
+                    child: Text(
+                      orderOptions[selectedQuestionOrder] ?? '', // 日本語名を取得して表示
+                      style: const TextStyle(fontSize: 20),
+                    ),
+                  ),
               ],
             ),
-            trailing: const Icon(Icons.arrow_forward_ios),
-            onTap: () {
-              // 画面遷移の処理
+            trailing: const Icon(Icons.arrow_forward_ios, size: 20),
+            onTap: () async {
+              final selectedOrder = await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => SetQuestionOrderPage(
+                    initialSelection: selectedQuestionOrder,
+                  ),
+                ),
+              );
+              if (selectedOrder != null && selectedOrder is String) {
+                setState(() {
+                  selectedQuestionOrder = selectedOrder; // 選択した出題順を状態に保存
+                });
+              }
             },
           ),
-          const Divider(),
+          const SizedBox(height: 16),
           ListTile(
-            title: const Row(
+            title: Row(
               children: [
-                Icon(
+                const Icon(
                   Icons.format_list_numbered,
                   size: 30,
                   color: AppColors.gray600,
                 ),
-                SizedBox(width: 6),
-                Text(
-                  "出題数",
-                  style: TextStyle(fontSize: 18),
+                const SizedBox(width: 6),
+                const SizedBox(
+                  width: 100,
+                  child: Text(
+                    "出題数",
+                    style: TextStyle(fontSize: 18),
+                  ),
                 ),
+                if (numberOfQuestions != null) // 出題数が選択されている場合のみ表示
+                  Text(
+                    "$numberOfQuestions 問",
+                    style: const TextStyle(fontSize: 20),
+                  ),
               ],
             ),
-            trailing: const Icon(Icons.arrow_forward_ios),
-            onTap: () {
-              // 画面遷移の処理
+            trailing: const Icon(Icons.arrow_forward_ios, size: 20),
+            onTap: () async {
+              final selectedCount = await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => SetNumberOfQuestionsPage(
+                    initialSelection: numberOfQuestions,
+                  ),
+                ),
+              );
+              if (selectedCount != null && selectedCount is int) {
+                setState(() {
+                  numberOfQuestions = selectedCount; // 選択した出題数を状態に保存
+                });
+              }
             },
           ),
         ],
-      ),
-    );
-  }
-}
-
-class FolderTreeView extends StatefulWidget {
-  final String userId; // ログイン中のユーザーID
-  final List<String> selectedQuestionSetIds; // 初期選択済みの問題集ID
-
-  const FolderTreeView({
-    Key? key,
-    required this.userId,
-    required this.selectedQuestionSetIds,
-  }) : super(key: key);
-
-  @override
-  _FolderTreeViewState createState() => _FolderTreeViewState();
-}
-
-class _FolderTreeViewState extends State<FolderTreeView> {
-  Map<String, dynamic> folderData = {};
-  Map<String, bool?> folderSelection = {};
-  Map<String, bool> questionSetSelection = {};
-  Map<String, bool> expandedState = {};
-  List<String> selectedQuestionSetNames = [];
-  bool isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    initializeSelectedQuestionSets();
-    fetchFoldersAndQuestionSets();
-  }
-
-  void initializeSelectedQuestionSets() {
-    for (var questionSetId in widget.selectedQuestionSetIds) {
-      questionSetSelection[questionSetId] = true;
-    }
-  }
-
-  Future<void> fetchFoldersAndQuestionSets() async {
-    try {
-      final folderSnapshot = await FirebaseFirestore.instance
-          .collection('folders')
-          .where('userRoles.${widget.userId}', whereIn: ['owner', 'editor', 'viewer'])
-          .get();
-
-      final Map<String, dynamic> fetchedData = {};
-      final Map<String, bool?> folderState = {};
-      final Map<String, bool> expandedStateInit = {};
-
-      for (var folder in folderSnapshot.docs) {
-        final folderId = folder.id;
-        final folderName = folder['name'];
-        folderState[folderId] = false;
-        expandedStateInit[folderId] = false;
-
-        final questionSetsSnapshot = await FirebaseFirestore.instance
-            .collection('questionSets')
-            .where('folderRef', isEqualTo: folder.reference)
-            .get();
-
-        final questionSets = questionSetsSnapshot.docs.map((doc) {
-          final questionSetId = doc.id;
-          final isSelected = widget.selectedQuestionSetIds.contains(questionSetId);
-
-          if (!questionSetSelection.containsKey(questionSetId)) {
-            questionSetSelection[questionSetId] = isSelected;
-          }
-          if (isSelected) {
-            selectedQuestionSetNames.add(doc['name']);
-            expandedStateInit[folderId] = true;
-          }
-          return {'id': questionSetId, 'name': doc['name']};
-        }).toList();
-
-        fetchedData[folderId] = {
-          'name': folderName,
-          'questionSets': questionSets,
-        };
-
-        folderState[folderId] = _calculateFolderSelection(
-          questionSets.map((qs) => qs['id'] as String).toList(),
-        );
-      }
-
-      setState(() {
-        folderData = fetchedData;
-        folderSelection = folderState;
-        expandedState = expandedStateInit;
-        isLoading = false;
-      });
-
-    } catch (e) {
-      print("Error fetching data: $e");
-    }
-  }
-
-  bool? _calculateFolderSelection(List<String> questionSetIds) {
-    final allSelected = questionSetIds.every((id) => questionSetSelection[id] == true);
-    final noneSelected = questionSetIds.every((id) => questionSetSelection[id] == false);
-
-    if (allSelected) return true;
-    if (noneSelected) return false;
-    return null;
-  }
-
-  void updateParentSelection(String folderId) {
-    final questionSets = folderData[folderId]['questionSets'] as List<Map<String, dynamic>>;
-    setState(() {
-      folderSelection[folderId] = _calculateFolderSelection(
-        questionSets.map((qs) => qs['id'] as String).toList(),
-      );
-      updateSelectedQuestionSetNames();
-    });
-  }
-
-  void updateChildSelection(String folderId, bool isSelected) {
-    final questionSets = folderData[folderId]['questionSets'] as List<Map<String, dynamic>>;
-    setState(() {
-      for (var questionSet in questionSets) {
-        questionSetSelection[questionSet['id']] = isSelected;
-      }
-      folderSelection[folderId] = isSelected ? true : false;
-      expandedState[folderId] = true; // 必ず展開状態に設定
-      updateSelectedQuestionSetNames();
-    });
-    print("Updated Child Selection for $folderId: $questionSetSelection");
-    print("Updated Expanded State: $expandedState");
-  }
-
-  void updateSelectedQuestionSetNames() {
-    selectedQuestionSetNames = questionSetSelection.entries
-        .where((entry) => entry.value)
-        .map((entry) => folderData.values
-        .expand((folder) => folder['questionSets'])
-        .firstWhere((qs) => qs['id'] == entry.key)['name'] as String)
-        .toList();
-  }
-
-  void _onBackPressed() {
-    updateSelectedQuestionSetNames();
-    Navigator.pop(
-      context,
-      {
-        'questionSetIds': questionSetSelection.keys.where((id) => questionSetSelection[id] == true).toList(),
-        'selectedQuestionSetNames': selectedQuestionSetNames,
-      },
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('問題集の選択'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: _onBackPressed,
-        ),
-      ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-        children: [
-          const SizedBox(height: 16),
-          Expanded(
-            child: Theme(
-              data: Theme.of(context).copyWith(
-                dividerColor: Colors.transparent,
-              ),
-              child: ListView.builder(
-                itemCount: folderData.length,
-                itemBuilder: (context, index) {
-                  final folderId = folderData.keys.elementAt(index);
-                  final folderInfo = folderData[folderId];
-                  return ExpansionTile(
-                    key: Key(folderId),
-                    title: Row(
-                      children: [
-                        Checkbox(
-                          tristate: true,
-                          value: folderSelection[folderId],
-                          onChanged: (value) {
-                            setState(() {
-                              updateChildSelection(folderId, value == true);
-                            });
-                          },
-                        ),
-                        const Icon(Icons.folder, color: AppColors.gray600),
-                        const SizedBox(width: 8),
-                        Text(folderInfo['name']),
-                      ],
-                    ),
-                    initiallyExpanded: expandedState[folderId] ?? false,
-                    onExpansionChanged: (isExpanded) {
-                      setState(() {
-                        expandedState[folderId] = isExpanded;
-                      });
-                      print("Folder $folderId expansion changed to: $isExpanded");
-                    },
-                    children: folderInfo['questionSets'].map<Widget>((questionSet) {
-                      return Padding(
-                        padding: const EdgeInsets.only(left: 24.0),
-                        child: Material(
-                          color: Colors.transparent,
-                          child: ListTile(
-                            leading: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Checkbox(
-                                  value: questionSetSelection[questionSet['id']],
-                                  onChanged: (value) {
-                                    setState(() {
-                                      questionSetSelection[questionSet['id']] = value!;
-                                      updateParentSelection(folderId);
-                                      updateSelectedQuestionSetNames();
-                                    });
-                                  },
-                                ),
-                                const Icon(Icons.layers_rounded, color: AppColors.gray600),
-                              ],
-                            ),
-                            title: Text(questionSet['name']),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  );
-                },
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-
-class StudySetNameEditPage extends StatelessWidget {
-  final String initialName;
-
-  const StudySetNameEditPage({Key? key, required this.initialName}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    final TextEditingController controller = TextEditingController(text: initialName);
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('セット名の編集'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            Navigator.pop(context, controller.text);
-          },
-        ),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            labelText: 'セット名',
-            border: OutlineInputBorder(),
-          ),
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.pop(context, controller.text);
-        },
-        child: const Icon(Icons.check),
       ),
     );
   }

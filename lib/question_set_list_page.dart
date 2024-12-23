@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:repaso/question_set_add_page.dart';
 import 'package:repaso/question_set_edit_page.dart';
 import 'app_colors.dart';
+import 'learning_analytics_page.dart';
 import 'lobby_page.dart';
 import 'question_add_page.dart';
 import 'answer_page.dart'; // AnswerPageのインポートを追加
@@ -19,15 +20,51 @@ class QuestionSetsListPage extends StatefulWidget {
 }
 
 class _QuestionSetListPageState extends State<QuestionSetsListPage> {
-  void navigateToQuestionSetsAddPage(BuildContext context, String folderId) {
+  void navigateToQuestionSetAddPage(BuildContext context, DocumentSnapshot folder) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => QuestionSetsAddPage(folderId: folderId),
+        builder: (context) => QuestionSetsAddPage(folderRef: folder.reference),
       ),
     );
   }
 
+  void navigateToLearningAnalyticsPage(BuildContext context, DocumentSnapshot questionSet) async {
+    try {
+      // デバッグ用: QuestionSet ID を確認
+      print("QuestionSet ID: ${questionSet.id}");
+
+      // questions コレクションから指定の questionSetRef に関連する質問を取得
+      QuerySnapshot questionSnapshot = await FirebaseFirestore.instance
+          .collection("questions")
+          .where("questionSetRef", isEqualTo: questionSet.reference)
+          .get();
+
+      // リファレンスをリスト化
+      List<DocumentReference> questionRefs = questionSnapshot.docs.map((doc) => doc.reference).toList();
+
+      // デバッグ用
+      print("QuestionRefs: ${questionRefs.map((ref) => ref.id).toList()}");
+
+      // 質問がない場合はエラーメッセージを表示
+      if (questionRefs.isEmpty) {
+        print("No questions found for the selected question set.");
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("この問題セットには質問がありません。")),
+        );
+        return;
+      }
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => LearningAnalyticsPage(questionRefs: questionRefs),
+        ),
+      );
+    } catch (e) {
+      print("Error fetching questions: $e");
+    }
+  }
 
   // 設定モーダルを表示するメソッドを追加
   void showSettingsModal(BuildContext context) {
@@ -74,7 +111,7 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                   padding: const EdgeInsets.all(8.0),
                   child: ListTile(
                     leading: const Icon(Icons.error_outline, size: 36),
-                    title: const Text('アカウントの削除', style: TextStyle(fontSize: 18)),
+                    title: const Text('開発中', style: TextStyle(fontSize: 18)),
                     onTap: () {
 
                     },
@@ -105,25 +142,25 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
     }
   }
 
-  void navigateToQuestionAddPage(BuildContext context, String folderId, String questionSetId) {
+  void navigateToQuestionAddPage(BuildContext context, DocumentReference folderRef ,DocumentReference questionSetRef) {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => QuestionAddPage(
-          folderId: folderId,
-          questionSetId: questionSetId,
+          folderRef: folderRef,
+          questionSetRef: questionSetRef,
         ),
       ),
     );
   }
 
-  void navigateToAnswerPage(BuildContext context, DocumentSnapshot folder, DocumentSnapshot questionSet) {
+  void navigateToAnswerPage(BuildContext context, DocumentReference folderRef, DocumentReference questionSetRef) {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => AnswerPage(
-          folderId: folder.id,
-          questionSetId: questionSet.id,
+          folderRef: folderRef,
+          questionSetRef: questionSetRef,
         ),
       ),
     );
@@ -180,7 +217,7 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                     title: const Text('問題の追加', style: TextStyle(fontSize: 18)),
                     onTap: () {
                       Navigator.of(context).pop();
-                      navigateToQuestionAddPage(context, folder.id, questionSet.id);
+                      navigateToQuestionAddPage(context, folder.reference, questionSet.reference);
                     },
                   ),
                 ),
@@ -216,7 +253,7 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                     title: const Text('定着度を確認', style: TextStyle(fontSize: 18)),
                     onTap: () {
                       Navigator.of(context).pop();
-                      navigateToQuestionSetsEditPage(context, folder, questionSet);
+                      navigateToLearningAnalyticsPage(context, questionSet);
                     },
                   ),
                 ),
@@ -258,7 +295,7 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
         child: StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance
               .collection("questionSets")
-              .where("folder", isEqualTo: FirebaseFirestore.instance.collection("folders").doc(widget.folder.id)) // 現在のフォルダIDを使用してフィルタリング
+              .where("folderRef", isEqualTo: FirebaseFirestore.instance.collection("folders").doc(widget.folder.id)) // 現在のフォルダIDを使用してフィルタリング
               .snapshots(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
@@ -272,14 +309,14 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
               itemCount: questionSets.length,
               itemBuilder: (context, index) {
                 final questionSet = questionSets[index];
-                final totalQuestions = questionSet['totalQuestions'] ?? 0;
+                final questionCount = questionSet['questionCount'] ?? 0;
                 return Padding(
                   padding: const EdgeInsets.only(left: 16.0, right: 16.0),
                   child: Column(
                     children: [
                       GestureDetector(
                         onTap: () {
-                          navigateToAnswerPage(context, widget.folder, questionSet);
+                          navigateToAnswerPage(context, widget.folder.reference, questionSet.reference);
                         },
                         child: Container(
                           decoration: const BoxDecoration(
@@ -326,7 +363,7 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                                           ),
                                           const SizedBox(width: 4),
                                           Text(
-                                            '${totalQuestions.toString()}', // 動的に問題数を表示
+                                            '${questionCount.toString()}', // 動的に問題数を表示
                                             style: const TextStyle(fontSize: 14),
                                           ),
                                         ],
@@ -358,7 +395,7 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
         type: BottomNavigationBarType.fixed,
         onTap: (index) {
           if (index == 1) {
-            navigateToQuestionSetsAddPage(context, widget.folder.id);
+            navigateToQuestionSetAddPage(context, widget.folder);
           } else if (index == 3) {
             showSettingsModal(context);
           }

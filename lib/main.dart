@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:repaso/folder_list_page.dart';
 import 'package:repaso/lobby_page.dart';
 import 'app_colors.dart';
@@ -11,6 +12,10 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  // 日本語ロケールデータを初期化
+  await initializeDateFormatting('ja_JP', null);
+
   runApp(const MyApp());
 }
 
@@ -24,34 +29,17 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Themed App',
       theme: ThemeData(
-        colorScheme: const ColorScheme(
-          primary: AppColors.blue900,
-          secondary: AppColors.blue700,
-          surface: Colors.white,
-          error: Colors.red,
-          onPrimary: Colors.white,
-          onSecondary: Colors.white,
-          onSurface: Colors.black,
-          onError: Colors.white,
-          brightness: Brightness.light,
-        ),
-        scaffoldBackgroundColor: AppColors.gray50,
-
         // AppBarのテーマ設定
         appBarTheme: const AppBarTheme(
-          backgroundColor: AppColors.blue700,
-          foregroundColor: Colors.white,
-          elevation: 0,
-        ),
-
-        // NavigationBarのテーマ設定
-        navigationBarTheme: NavigationBarThemeData(
-          backgroundColor: AppColors.blue700, // 青系のセカンダリーカラー
-          indicatorColor: AppColors.blue900,  // 選択された項目の色（プライマリー）
-          labelTextStyle: WidgetStateProperty.all(
-            const TextStyle(color: Colors.white),  // ナビゲーション項目のテキスト色
+          backgroundColor: Colors.white, // AppBar背景色を白に設定
+          foregroundColor: AppColors.gray900, // AppBarテキスト色
+          titleTextStyle: TextStyle(
+            color: AppColors.gray900, // テキスト色
+            fontSize: 20, // フォントサイズを指定
+            fontWeight: FontWeight.bold, // 太字を指定
           ),
         ),
+        scaffoldBackgroundColor: Colors.white, // 背景色を白に設定
       ),
       home: islogin ? const FolderListPage(title: 'ホーム') : const LobbyPage(),
     );

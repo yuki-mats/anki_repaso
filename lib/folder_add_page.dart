@@ -32,7 +32,7 @@ class _FolderAddPageState extends State<FolderAddPage> {
     });
   }
 
-  Future<void> _saveFolder() async {
+  Future<void> _addFolder() async {
     final folderName = _folderNameController.text.trim();
     final user = FirebaseAuth.instance.currentUser;
 
@@ -45,15 +45,13 @@ class _FolderAddPageState extends State<FolderAddPage> {
         await FirebaseFirestore.instance.collection('folders').add({
           'name': folderName,
           'tags': [], // 初期状態でタグは空
-          'creatorRef': FirebaseFirestore.instance.collection('users').doc(userId), // 作成者の参照
+          'createdByRef': FirebaseFirestore.instance.collection('users').doc(userId), // 作成者の参照
+          'updatedByRef': FirebaseFirestore.instance.collection('users').doc(userId), // 更新者の参照
           'userRoles': {
             userId: 'owner', // 作成者をオーナーとして設定
           },
           'isPublic': false,          // 初期状態で非公開
-          'totalQuestions':0,         // 初期問題数
-          'totalAttempts': 0,         // 初期試行回数
-          'flaggedCount': 0,          // 初期フラグ数
-          'correctRate': 0.0,         // 初期正答率
+          'questionCount':0,         // 初期問題数
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         });
@@ -84,7 +82,7 @@ class _FolderAddPageState extends State<FolderAddPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('新しいフォルダ'),
+        title: const Text('フォルダの追加'),
       ),
       body: Padding(
         padding: const EdgeInsets.all(24.0),
@@ -119,7 +117,7 @@ class _FolderAddPageState extends State<FolderAddPage> {
                 ),
                 onPressed: _isButtonEnabled
                     ? () async {
-                  await _saveFolder();
+                  await _addFolder();
                 }
                     : null,
                 child: Text(

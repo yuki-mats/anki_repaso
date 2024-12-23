@@ -1,13 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-
 import 'app_colors.dart';
 
 class FolderEditPage extends StatefulWidget {
+  final DocumentReference folderRef;
   final String initialFolderName;
-  final String folderId;
 
-  const FolderEditPage({Key? key, required this.initialFolderName, required this.folderId}) : super(key: key);
+  const FolderEditPage({Key? key, required this.folderRef, required this.initialFolderName}) : super(key: key);
 
   @override
   _FolderEditPageState createState() => _FolderEditPageState();
@@ -43,12 +42,10 @@ class _FolderEditPageState extends State<FolderEditPage> {
     if (folderName.isEmpty) return;
 
     try {
-      await FirebaseFirestore.instance
-          .collection('folders')
-          .doc(widget.folderId) // ドキュメントIDを使って更新
-          .update({
+      await widget.folderRef.update({
         'name': folderName,
-        'updatedAt': FieldValue.serverTimestamp(), // 更新日時を設定
+        'updatedAt': FieldValue.serverTimestamp(),
+        'updatedByRef': FirebaseFirestore.instance.collection('users').doc('currentUserId'),
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -113,13 +110,4 @@ class _FolderEditPageState extends State<FolderEditPage> {
       ),
     );
   }
-}
-
-void navigateToFolderEditPage(BuildContext context, String initialFolderName, String folderId) {
-  Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (context) => FolderEditPage(initialFolderName: initialFolderName, folderId: folderId),
-    ),
-  );
 }

@@ -2,19 +2,20 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:repaso/question_add_page.dart';
 import 'package:repaso/review_answers_page.dart';
 import 'app_colors.dart';
 import 'completion_summary_page.dart';
 
 class AnswerPage extends StatefulWidget {
-  final String folderId;
-  final String questionSetId;
+  final DocumentReference folderRef;
+  final DocumentReference questionSetRef;
 
   const AnswerPage({
     Key? key,
-    required this.folderId,
-    required this.questionSetId,
+    required this.folderRef,
+    required this.questionSetRef,
   }) : super(key: key);
 
   @override
@@ -40,14 +41,7 @@ class _AnswerPageState extends State<AnswerPage> {
     try {
       final snapshot = await FirebaseFirestore.instance
           .collection('questions')
-          .where(
-        'folder',
-        isEqualTo: FirebaseFirestore.instance.collection('folders').doc(widget.folderId),
-      )
-          .where(
-        'questionSet',
-        isEqualTo: FirebaseFirestore.instance.collection('questionSets').doc(widget.questionSetId),
-      )
+          .where('questionSetRef', isEqualTo: widget.questionSetRef)
           .limit(10)
           .get();
 
@@ -67,6 +61,11 @@ class _AnswerPageState extends State<AnswerPage> {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('User not logged in');
 
+      final userId = user.uid;
+      final questionRef = FirebaseFirestore.instance.collection('questions').doc(questionId);
+      final questionUserStatsRef = questionRef.collection('questionUserStats').doc(userId);
+
+      // Calculate answer and post-answer times
       final answerTime = _startedAt != null
           ? answeredAt.difference(_startedAt!).inMilliseconds
           : 0;
@@ -75,25 +74,228 @@ class _AnswerPageState extends State<AnswerPage> {
           ? nextStartedAt.difference(answeredAt).inMilliseconds
           : 0;
 
+      // Save answer history
       await FirebaseFirestore.instance.collection('answerHistories').add({
-        'userRef': FirebaseFirestore.instance.collection('users').doc(user.uid),
-        'questionRef': FirebaseFirestore.instance.collection('questions').doc(questionId),
+        'userRef': FirebaseFirestore.instance.collection('users').doc(userId),
+        'questionRef': questionRef,
         'startedAt': _startedAt,
         'answeredAt': answeredAt,
         'nextStartedAt': nextStartedAt,
         'answerTime': answerTime,
         'postAnswerTime': postAnswerTime,
         'isCorrect': isAnswerCorrect,
-        'selectedChoices': _selectedAnswer,
-        'correctChoices': _questions[_currentQuestionIndex]['correctChoiceText'],
+        'selectedChoice': _selectedAnswer,
+        'correctChoice': _questions[_currentQuestionIndex]['correctChoiceText'],
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      print('Answer saved successfully');
+      print('Answer saved successfully.');
+
+      // Fetch current stats
+      final questionUserStatsSnapshot = await questionUserStatsRef.get();
+      final currentStats = questionUserStatsSnapshot.exists ? questionUserStatsSnapshot.data() : {};
+
+      // Extract or initialize stats
+      final attemptCount = (currentStats?['attemptCount'] ?? 0) + 1;
+      final correctCount = (currentStats?['correctCount'] ?? 0) + (isAnswerCorrect ? 1 : 0);
+      final incorrectCount = attemptCount - correctCount;
+      final correctRate = correctCount / attemptCount;
+
+      print('Updated attemptCount: $attemptCount');
+      print('Updated correctCount: $correctCount');
+      print('Calculated correctRate: $correctRate');
+
+      // Update user stats
+      await questionUserStatsRef.set({
+        'userRef': FirebaseFirestore.instance.collection('users').doc(userId),
+        'attemptCount': attemptCount,
+        'correctCount': correctCount,
+        'incorrectCount': incorrectCount,
+        'correctRate': correctRate,
+        'totalAnswerTime': (currentStats?['totalAnswerTime'] ?? 0) + answerTime,
+        'totalPostAnswerTime': (currentStats?['totalPostAnswerTime'] ?? 0) + postAnswerTime,
+        'lastStudiedAt': answeredAt,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      print('User stats updated successfully.');
+
+      await _updateStatsUsingAggregation(questionId);
+
     } catch (e) {
       print('Error saving answer: $e');
     }
   }
+
+  Future<void> _updateStatsUsingAggregation(String questionId) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception('User not logged in');
+
+      final now = DateTime.now();
+
+      final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+      final questionRef = FirebaseFirestore.instance.collection('questions').doc(questionId);
+      final historiesRef = FirebaseFirestore.instance.collection('answerHistories');
+
+      // ISO week calculation
+      int _calculateIsoWeekNumber(DateTime date) {
+        final firstDayOfYear = DateTime(date.year, 1, 1);
+        final firstThursday = firstDayOfYear.add(Duration(days: (4 - firstDayOfYear.weekday + 7) % 7));
+        final weekNumber = ((date.difference(firstThursday).inDays) / 7).ceil() + 1;
+        return weekNumber;
+      }
+
+      final dateKey = DateFormat('yyyy-MM-dd').format(now);
+      final isoWeekNumber = _calculateIsoWeekNumber(now);
+      final weekKey = '${now.year}-W${isoWeekNumber.toString().padLeft(2, '0')}';
+      final monthKey = DateFormat('yyyy-MM').format(now);
+
+      // Step 1: Aggregate attemptCount and correctCount
+      final attemptQuery = historiesRef
+          .where('userRef', isEqualTo: userRef)
+          .where('questionRef', isEqualTo: questionRef);
+
+      final attemptCountSnapshot = await attemptQuery.count().get();
+      final attemptCount = attemptCountSnapshot.count ?? 0;
+
+      print('Attempt Count: $attemptCount');
+
+      final correctCountSnapshot = await attemptQuery
+          .where('isCorrect', isEqualTo: true)
+          .count()
+          .get();
+      final correctCount = correctCountSnapshot.count ?? 0;
+
+      print('Correct Count: $correctCount');
+
+      // Step 2: Calculate correct rate
+      final correctRate = attemptCount > 0 ? (correctCount / attemptCount) : 0;
+      print('Correct Rate: $correctRate');
+
+      // Step 3: Update /questionUserStats/{userId}
+      final questionUserStatsRef = questionRef.collection('questionUserStats').doc(user.uid);
+
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final questionUserStatsDoc = await transaction.get(questionUserStatsRef);
+
+        if (!questionUserStatsDoc.exists) {
+          // Create document if it does not exist
+          transaction.set(questionUserStatsRef, {
+            'userRef': userRef,
+            'attemptCount': attemptCount,
+            'correctCount': correctCount,
+            'correctRate': correctRate,
+            'createdAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+          print('questionUserStats document created');
+        } else {
+          // Update existing document
+          transaction.update(questionUserStatsRef, {
+            'attemptCount': attemptCount,
+            'correctCount': correctCount,
+            'correctRate': correctRate,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+          print('questionUserStats document updated');
+        }
+      });
+
+      // Step 4: Existing aggregation logic
+      Future<Map<String, dynamic>> _aggregateStats(DateTime start, DateTime end) async {
+        final query = historiesRef
+            .where('userRef', isEqualTo: userRef)
+            .where('questionRef', isEqualTo: questionRef)
+            .where('answeredAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+            .where('answeredAt', isLessThanOrEqualTo: Timestamp.fromDate(end));
+
+        final aggregateQuerySnapshot = await query.aggregate(
+          count(),
+          sum('answerTime'),
+          sum('postAnswerTime'),
+        ).get();
+
+        final attemptCount = aggregateQuerySnapshot.count ?? 0;
+        final totalAnswerTime = aggregateQuerySnapshot.getSum('answerTime') ?? 0;
+        final totalPostAnswerTime = aggregateQuerySnapshot.getSum('postAnswerTime') ?? 0;
+        final totalStudyTime = totalAnswerTime + totalPostAnswerTime;
+
+        final correctCountSnapshot = await query.where('isCorrect', isEqualTo: true).count().get();
+        final correctCount = correctCountSnapshot.count ?? 0;
+        final incorrectCount = attemptCount - correctCount;
+
+        return {
+          'attemptCount': attemptCount,
+          'correctCount': correctCount,
+          'incorrectCount': incorrectCount,
+          'totalAnswerTime': totalAnswerTime,
+          'totalPostAnswerTime': totalPostAnswerTime,
+          'totalStudyTime': totalStudyTime,
+        };
+      }
+
+      final dateStart = DateTime(now.year, now.month, now.day);
+      final weekStart = dateStart.subtract(Duration(days: now.weekday - 1));
+      final weekEnd = weekStart.add(Duration(days: 6));
+      final monthStart = DateTime(now.year, now.month, 1);
+      final monthEnd = DateTime(now.year, now.month + 1).subtract(Duration(seconds: 1));
+
+      final dailyStats = await _aggregateStats(dateStart, dateStart.add(Duration(hours: 23, minutes: 59, seconds: 59)));
+      final weeklyStats = await _aggregateStats(weekStart, weekEnd);
+      final monthlyStats = await _aggregateStats(monthStart, monthEnd);
+
+      Future<void> _updateStat(String collectionName, String key, Map<String, dynamic> stats, Map<String, dynamic> additionalFields) async {
+        final questionUserStatsRef = questionRef.collection('questionUserStats').doc(user.uid);
+        final statDocRef = questionUserStatsRef.collection(collectionName).doc(key);
+
+        await FirebaseFirestore.instance.runTransaction((transaction) async {
+          final questionUserStatsDoc = await transaction.get(questionUserStatsRef);
+          if (!questionUserStatsDoc.exists) {
+            transaction.set(questionUserStatsRef, {
+              'userRef': userRef,
+              'createdAt': FieldValue.serverTimestamp(),
+              'updatedAt': FieldValue.serverTimestamp(),
+            });
+          }
+
+          transaction.set(statDocRef, {
+            ...stats,
+            ...additionalFields,
+            'attemptCount': stats['attemptCount'],
+            'correctCount': stats['correctCount'],
+            'incorrectCount': stats['incorrectCount'],
+            'totalStudyTime': stats['totalStudyTime'],
+            'totalAnswerTime': stats['totalAnswerTime'],
+            'totalPostAnswerTime': stats['totalPostAnswerTime'],
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        });
+      }
+
+      await _updateStat('dailyStats', dateKey, dailyStats, {
+        'date': dateKey,
+        'dateTimestamp': Timestamp.fromDate(dateStart),
+      });
+
+      await _updateStat('weeklyStats', weekKey, weeklyStats, {
+        'week': weekKey,
+        'weekStartTimestamp': Timestamp.fromDate(weekStart),
+        'weekEndTimestamp': Timestamp.fromDate(weekEnd),
+      });
+
+      await _updateStat('monthlyStats', monthKey, monthlyStats, {
+        'month': monthKey,
+        'monthStartTimestamp': Timestamp.fromDate(monthStart),
+        'monthEndTimestamp': Timestamp.fromDate(monthEnd),
+      });
+
+      print('Stats updated successfully using aggregation queries');
+    } catch (e) {
+      print('Error updating stats using aggregation queries: $e');
+    }
+  }
+
 
   void _handleAnswerSelection(
       BuildContext context, String selectedChoice) {
@@ -325,8 +527,8 @@ class _AnswerPageState extends State<AnswerPage> {
                     onPressed: () => Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (context) => QuestionAddPage(
-                          folderId: widget.folderId,
-                          questionSetId: widget.questionSetId,
+                          folderRef: widget.folderRef,
+                          questionSetRef: widget.questionSetRef,
                         ),
                       ),
                     ),

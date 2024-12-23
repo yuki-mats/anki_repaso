@@ -1,12 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:repaso/app_colors.dart';
 import 'question_add_page.dart';
 
 class QuestionSetsAddPage extends StatefulWidget {
-  final String folderId;
+  final DocumentReference folderRef;
 
-  const QuestionSetsAddPage({Key? key, required this.folderId}) : super(key: key);
+  const QuestionSetsAddPage({Key? key, required this.folderRef}) : super(key: key);
 
   @override
   _QuestionSetsAddPageState createState() => _QuestionSetsAddPageState();
@@ -38,34 +39,46 @@ class _QuestionSetsAddPageState extends State<QuestionSetsAddPage> {
   }
 
   Future<void> _addQuestionSet() async {
+    final user = FirebaseAuth.instance.currentUser;
+
     setState(() {
       _isLoading = true; // ローディング状態を開始
     });
 
+    if (user == null) {
+      // ユーザーがログインしていない場合の処理
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ログインしていません。')),
+      );
+      setState(() {
+        _isLoading = false; // ローディング状態を終了
+      });
+      return; // 処理を終了
+    }
+
     try {
       final questionSetName = _questionSetNameController.text;
+      final userId = user.uid;
 
       // Firestoreに問題集を追加
-      final questionSetRef = await FirebaseFirestore.instance
+      final questionSet = await FirebaseFirestore.instance
           .collection('questionSets') // トップのコレクションに追加
           .add({
         'name': questionSetName, // 問題集名
-        'folder': FirebaseFirestore.instance.collection('folders').doc(widget.folderId), // 所属フォルダのリファレンス
-        'createdBy': FirebaseFirestore.instance.collection('users').doc('currentUserId'), // 作成者のリファレンス（仮でcurrentUserIdを使っている）
+        'folderRef': widget.folderRef, // 所属フォルダのリファレンス
+        'questionCount': 0, // 初期値
+        'createdByRef': FirebaseFirestore.instance.collection('users').doc(userId),
+        'updatedByRef': FirebaseFirestore.instance.collection('users').doc(userId),
         'createdAt': FieldValue.serverTimestamp(), // 作成日時
         'updatedAt': FieldValue.serverTimestamp(), // 更新日時
-        'correctRate': 0, // 初期値
-        'totalQuestions': 0, // 初期値
-        'totalAttempts': 0, // 初期値
-        'flaggedCount': 0, // 初期値
       });
 
       // Firestoreにデータが正常に追加された後、問題作成画面へ遷移
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           builder: (context) => QuestionAddPage(
-            folderId: widget.folderId,
-            questionSetId: questionSetRef.id, // 新しく作成された問題集のID
+            folderRef: widget.folderRef,
+            questionSetRef: questionSet, // 新しく作成された問題集のID
           ),
         ),
       );
@@ -104,7 +117,7 @@ class _QuestionSetsAddPageState extends State<QuestionSetsAddPage> {
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.all(Radius.circular(8)),
                 ),
-                labelText: 'サブカテゴリー名',
+                labelText: '問題集名',
               ),
             ),
             const SizedBox(height: 24),

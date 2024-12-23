@@ -1,16 +1,16 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:repaso/app_colors.dart';
 
 class QuestionAddPage extends StatefulWidget {
-  final String folderId;
-  final String questionSetId;
+  final DocumentReference folderRef;
+  final DocumentReference questionSetRef;
 
   const QuestionAddPage({
     Key? key,
-    required this.folderId,
-    required this.questionSetId,
+    required this.folderRef,
+    required this.questionSetRef,
   }) : super(key: key);
 
   @override
@@ -72,16 +72,24 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
     FocusScope.of(context).requestFocus(_questionTextFocusNode);
   }
 
-  Future<void> _saveQuestion() async {
+  Future<void> _addQuestion() async {
     if (!_isSaveEnabled) return;
 
-    final folderRef = FirebaseFirestore.instance.collection('folders').doc(widget.folderId);
-    final questionSetRef = FirebaseFirestore.instance.collection('questionSets').doc(widget.questionSetId);
+    // ユーザーのログイン状態をチェック
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ログインしていません。問題を保存するにはログインしてください。')),
+      );
+      return;
+    }
+
+    final folderRef = widget.folderRef;
+    final questionSetRef = widget.questionSetRef;
 
     // データモデルに合わせて選択肢を設定
     final questionData = {
-      'folder': folderRef,
-      'questionSet': questionSetRef,
+      'questionSetRef': questionSetRef,
       'questionText': _questionTextController.text.trim(),
       'questionType': 'true_false',
       'correctChoiceText': _trueFalseAnswer ? '正しい' : '間違い', // 正しい選択肢
@@ -90,7 +98,8 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
       'isFlagged': false,
       'notes': null,
       'examYear': null,
-      'createdBy': FirebaseFirestore.instance.collection('users').doc(FirebaseAuth.instance.currentUser!.uid),
+      'createdBy': FirebaseFirestore.instance.collection('users').doc(user.uid),
+      'updatedBy': FirebaseFirestore.instance.collection('users').doc(user.uid),
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     };
@@ -114,57 +123,65 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
     }
   }
 
-
-
   Future<void> _updateQuestionCounts(
       DocumentReference folderRef, DocumentReference questionSetRef) async {
     try {
-      // フォルダに関連する質問数をカウント
-      final folderQuestionCountSnapshot = await FirebaseFirestore.instance
-          .collection('questions')
-          .where('folder', isEqualTo: folderRef)
-          .count()
-          .get();
-
-      final folderTotalQuestions = folderQuestionCountSnapshot.count;
-
-      // 問題集に関連する質問数をカウント
+      // 問題集の質問数をカウント
       final questionSetCountSnapshot = await FirebaseFirestore.instance
           .collection('questions')
-          .where('questionSet', isEqualTo: questionSetRef)
+          .where('questionSetRef', isEqualTo: questionSetRef)
           .count()
           .get();
 
       final questionSetTotalQuestions = questionSetCountSnapshot.count;
 
-      // フォルダと問題集の`totalQuestions`フィールドを更新
-      final batch = FirebaseFirestore.instance.batch();
-
       // 問題集の質問数を更新
-      batch.update(questionSetRef, {
-        'totalQuestions': questionSetTotalQuestions,
-        'updatedAt': FieldValue.serverTimestamp(),
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        transaction.update(questionSetRef, {
+          'questionCount': questionSetTotalQuestions,
+          'updatedByRef': FirebaseFirestore.instance
+              .collection('users')
+              .doc(FirebaseAuth.instance.currentUser!.uid),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
       });
+
+      // フォルダの質問数を再計算
+      final folderQuestionSetsSnapshot = await FirebaseFirestore.instance
+          .collection('questionSets')
+          .where('folderRef', isEqualTo: folderRef)
+          .get();
+
+      int folderTotalQuestions = 0;
+
+      for (var doc in folderQuestionSetsSnapshot.docs) {
+        final latestQuestionSetData = await FirebaseFirestore.instance
+            .collection('questionSets')
+            .doc(doc.id)
+            .get();
+
+        final latestQuestionCount = latestQuestionSetData.data()?['questionCount'] ?? 0;
+        folderTotalQuestions += (latestQuestionCount as int);
+      }
 
       // フォルダの質問数を更新
-      batch.update(folderRef, {
-        'totalQuestions': folderTotalQuestions,
-        'updatedAt': FieldValue.serverTimestamp(),
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        transaction.update(folderRef, {
+          'questionCount': folderTotalQuestions,
+          'updatedByRef': FirebaseFirestore.instance
+              .collection('users')
+              .doc(FirebaseAuth.instance.currentUser!.uid),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
       });
-
-      // バッチ操作を実行
-      await batch.commit();
-
-      print('Counts updated successfully:');
-      print('Folder totalQuestions: $folderTotalQuestions');
-      print('QuestionSet totalQuestions: $questionSetTotalQuestions');
     } catch (e) {
-      print('Error updating question counts: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('質問数の更新に失敗しました')),
       );
     }
   }
+
+
 
 
   @override
@@ -174,7 +191,7 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
         title: const Text('問題作成'),
         actions: [
           TextButton(
-            onPressed: _isSaveEnabled ? _saveQuestion : null,
+            onPressed: _isSaveEnabled ? _addQuestion : null,
             child: Padding(
               padding: const EdgeInsets.only(right: 16),
               child: Text(
@@ -270,7 +287,7 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                onPressed: _isSaveEnabled ? _saveQuestion : null,
+                onPressed: _isSaveEnabled ? _addQuestion : null,
                 child: Text(
                   '保存',
                   style: TextStyle(
