@@ -140,15 +140,14 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
   }
 
   void _onBackPressed() {
+    // 選択された問題集IDとその名前を更新して戻り値として渡す
     updateSelectedQuestionSetNames();
     Navigator.pop(
       context,
-      {
-        'questionSetIds': questionSetSelection.keys.where((id) => questionSetSelection[id] == true).toList(),
-        'selectedQuestionSetNames': selectedQuestionSetNames,
-      },
+      questionSetSelection.keys.where((id) => questionSetSelection[id] == true).toList(), // questionSetIdsのみ返却
     );
   }
+
 
   @override
   Widget build(BuildContext context) {

@@ -55,10 +55,10 @@ class StudySet {
   }
 }
 
-class StudySetSettingPage extends StatefulWidget {
+class StudySetAddPage extends StatefulWidget {
   final StudySet? studySet;
 
-  const StudySetSettingPage({
+  const StudySetAddPage({
     Key? key,
     this.studySet,
   }) : super(key: key);
@@ -67,7 +67,7 @@ class StudySetSettingPage extends StatefulWidget {
   _StudySetAddPageState createState() => _StudySetAddPageState();
 }
 
-class _StudySetAddPageState extends State<StudySetSettingPage> {
+class _StudySetAddPageState extends State<StudySetAddPage> {
   late RangeValues _correctRateRange;
   late bool _isFlagged;
   late String? studySetName;

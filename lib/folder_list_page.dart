@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:repaso/folder_edit_page.dart';
 import 'package:repaso/question_set_add_page.dart';
 import 'package:repaso/question_set_list_page.dart';
-import 'package:repaso/study_set_setting_page.dart';
+import 'package:repaso/study_set_add_page.dart' as AddPage; // 新しい学習セット用
+import 'package:repaso/study_set_edit_page.dart' as EditPage; // 既存学習セット編集用
 import 'app_colors.dart';
 import 'folder_add_page.dart';
 import 'lobby_page.dart';
@@ -96,10 +97,11 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
       fetchFirebaseData();
     }
   }
+
   void navigateToAddStudySetPage(BuildContext context) async {
-    final studySet = StudySet(
+    final studySet = AddPage.StudySet(
       name: '',
-      questionSetIds: [], // 初期値として空のリスト
+      questionSetIds: [], // 初期値
       numberOfQuestions: 10, // 初期値
       selectedQuestionOrder: 'random', // 初期値
       correctRateRange: const RangeValues(0, 100), // 初期値
@@ -109,11 +111,23 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => StudySetSettingPage(studySet: studySet),
+        builder: (context) => AddPage.StudySetAddPage(studySet: studySet),
       ),
     );
   }
 
+  void navigateToEditStudySetPage(BuildContext context, String userId, String studySetId, EditPage.StudySet initialStudySet) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EditPage.StudySetEditPage(
+          userId: userId,
+          studySetId: studySetId,
+          initialStudySet: initialStudySet,
+        ),
+      ),
+    );
+  }
 
   void navigateToFolderEditPage(BuildContext context, DocumentSnapshot folder) async {
     final result = await Navigator.push(
@@ -482,8 +496,17 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                         IconButton(
                           icon: const Icon(Icons.more_horiz_outlined, color: Colors.grey),
                           onPressed: () {
-                            // Firestoreのドキュメントを基にStudySetオブジェクトを作成
-                            final studySetData = StudySet(
+                            final userId = FirebaseAuth.instance.currentUser?.uid;
+                            if (userId == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('ログインしてください。')),
+                              );
+                              return;
+                            }
+
+                            final studySetId = studySet.id; // Firestore ドキュメント ID
+                            final initialStudySet = EditPage.StudySet(
+                              id: studySet.id,
                               name: studySet['name'] ?? '未設定',
                               questionSetIds: List<String>.from(studySet['questionSetIds'] ?? []),
                               numberOfQuestions: studySet['numberOfQuestions'] ?? 0,
@@ -495,15 +518,10 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                               isFlagged: studySet['isFlagged'] ?? false,
                             );
 
-                            // StudySetSettingPageへ遷移
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => StudySetSettingPage(studySet: studySetData),
-                              ),
-                            );
+                            navigateToEditStudySetPage(context, userId, studySetId, initialStudySet);
                           },
                         ),
+
                       ],
                     ),
                   ),
