@@ -1,8 +1,11 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:repaso/folder_list_page.dart';
+import 'package:repaso/privacy_policy_page.dart';
+import 'package:repaso/terms_of_service_page.dart';
 import 'app_colors.dart';
 import 'login_page.dart';
 
@@ -104,7 +107,6 @@ class SignUpPageState extends State<SignUpPage> {
 
   Future<void> _signUpUser() async {
     try {
-      // Firebase Authenticationでユーザーを作成
       UserCredential userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: _emailController.text,
         password: _passwordController.text,
@@ -121,14 +123,17 @@ class SignUpPageState extends State<SignUpPage> {
           'createdAt': FieldValue.serverTimestamp(),
         });
 
+        // 確認メールを送信
+        await user.sendEmailVerification();
+
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('アカウントが作成されました！')),
+          const SnackBar(content: Text('確認メールを送信しました。メールを確認してください。')),
         );
 
         // ログインページに遷移
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => const FolderListPage(title: "ホーム")),
+          MaterialPageRoute(builder: (context) => const LoginPage()),
         );
       }
     } on FirebaseAuthException catch (e) {
@@ -151,6 +156,7 @@ class SignUpPageState extends State<SignUpPage> {
       );
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -246,24 +252,60 @@ class SignUpPageState extends State<SignUpPage> {
                         : null,
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 32),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    TextButton(
-                      onPressed: () {
-                        // 利用規約ページへのナビゲーション
-                      },
-                      child: const Text(
-                        '利用規約',
-                        style: TextStyle(
-                          color: AppColors.blue600,
-                          decoration: TextDecoration.underline,
-                          decorationColor: AppColors.blue600,
+                    Flexible(
+                      child: RichText(
+                        text: TextSpan(
+                          text: '「',
+                          style: const TextStyle(color: Colors.black),
+                          children: [
+                            TextSpan(
+                              text: '利用規約',
+                              style: const TextStyle(
+                                color: AppColors.blue600,
+                                decoration: TextDecoration.underline,
+                              ),
+                              recognizer: TapGestureRecognizer()
+                                ..onTap = () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => const TermsOfServicePage(),
+                                    ),
+                                  );
+                                },
+                            ),
+                            const TextSpan(
+                              text: '」および「',
+                              style: TextStyle(color: Colors.black),
+                            ),
+                            TextSpan(
+                              text: 'プライバシーポリシー',
+                              style: const TextStyle(
+                                color: AppColors.blue600,
+                                decoration: TextDecoration.underline,
+                              ),
+                              recognizer: TapGestureRecognizer()
+                                ..onTap = () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => const PrivacyPolicyPage(),
+                                    ),
+                                  );
+                                },
+                            ),
+                            const TextSpan(
+                              text: '」に同意して',
+                              style: TextStyle(color: Colors.black),
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                    const Text('に同意して'),
                   ],
                 ),
                 const SizedBox(height: 16),

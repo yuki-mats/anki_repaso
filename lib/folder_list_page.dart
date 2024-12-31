@@ -5,6 +5,7 @@ import 'package:repaso/folder_edit_page.dart';
 import 'package:repaso/question_set_add_page.dart';
 import 'package:repaso/question_set_list_page.dart';
 import 'package:repaso/study_set_add_page.dart' as AddPage; // 新しい学習セット用
+import 'package:repaso/study_set_answer_page.dart';
 import 'package:repaso/study_set_edit_page.dart' as EditPage; // 既存学習セット編集用
 import 'app_colors.dart';
 import 'folder_add_page.dart';
@@ -233,7 +234,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                 child: Padding(
                   padding: const EdgeInsets.all(8.0),
                   child: ListTile(
-                    leading: const Icon(Icons.layers_rounded,
+                    leading: const Icon(Icons.quiz_sharp,
                         size: 36,
                         color: AppColors.gray800),
                     title: const Text('問題集の追加', style: TextStyle(fontSize: 18)),
@@ -345,7 +346,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
         final questionCount = folder['questionCount'] ?? 0;
 
         return Padding(
-          padding: const EdgeInsets.only(left: 16.0, right: 16.0),
+          padding: const EdgeInsets.only(left: 16.0, right: 24.0),
           child: Column(
             children: [
               GestureDetector(
@@ -366,7 +367,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                           child: SizedBox(
                             width: 40,
                             child: Icon(
-                              Icons.folder_outlined,
+                              Icons.folder,
                               size: 32,
                               color: AppColors.blue500,
                             ),
@@ -390,7 +391,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                               Row(
                                 children: [
                                   const Icon(
-                                    Icons.insert_drive_file_rounded,
+                                    Icons.filter_none,
                                     size: 16,
                                     color: AppColors.blue400,
                                   ),
@@ -433,13 +434,28 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
         final numberOfQuestions = studySet['numberOfQuestions'] ?? 0;
 
         return Padding(
-          padding: const EdgeInsets.only(left: 16.0, right: 16.0),
+          padding: const EdgeInsets.only(left: 16.0, right: 24.0),
           child: Column(
             children: [
               GestureDetector(
                 onTap: () {
-                  // 学習セットの編集画面への遷移
+                  final userId = FirebaseAuth.instance.currentUser?.uid;
+                  if (userId == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('ログインしてください。')),
+                    );
+                    return;
+                  }
 
+                  final studySetId = studySet.id; // Firestore ドキュメント ID
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => StudySetAnswerPage(
+                        studySetId: studySetId,
+                      ),
+                    ),
+                  );
                 },
                 child: Padding(
                   padding: const EdgeInsets.only(top: 4.0, bottom: 4.0),
@@ -450,14 +466,23 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        const Padding(
-                          padding: EdgeInsets.only(left: 16.0, right: 16.0),
-                          child: SizedBox(
+                        Padding(
+                          padding: const EdgeInsets.only(left: 16.0, right: 16.0),
+                          child: Container(
                             width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: AppColors.blue500, // 背景色
+                              borderRadius: BorderRadius.circular(8), // 角を丸くする
+                              border: Border.all(
+                                color: AppColors.blue200, // 枠線の色
+                                width: 1.0, // 枠線の太さ
+                              ),
+                            ),
                             child: Icon(
-                              Icons.tune_outlined,
-                              size: 32,
-                              color: AppColors.blue500,
+                              Icons.star,
+                              size: 24, // アイコンのサイズを調整
+                              color: Colors.white,
                             ),
                           ),
                         ),
@@ -479,7 +504,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                               Row(
                                 children: [
                                   const Icon(
-                                    Icons.insert_drive_file_rounded,
+                                    Icons.filter_none_sharp,
                                     size: 16,
                                     color: AppColors.blue400,
                                   ),
@@ -555,7 +580,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('ライブラリ'),
+                Text('ホーム'),
                 Icon(Icons.notifications_none_outlined,
                   color: AppColors.gray700,
                   size: 30,
@@ -599,7 +624,6 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
             ),
           ),
           child: BottomNavigationBar(
-            backgroundColor: Colors.white,
             type: BottomNavigationBarType.fixed,
             onTap: (index) {
               if (index == 1)  {
@@ -610,15 +634,19 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
             },
             items: const [
               BottomNavigationBarItem(
-                icon: Icon(Icons.folder_outlined, size: 40),
-                label: 'ライブラリ',
+                icon: Icon(Icons.home),
+                label: 'ホーム',
               ),
               BottomNavigationBarItem(
-                icon: Icon(Icons.not_started_outlined, size: 40),
+                icon: Icon(Icons.not_started_outlined),
                 label: '開始',
               ),
               BottomNavigationBarItem(
-                icon: Icon(Icons.account_circle, size: 40),
+                icon: Icon(Icons.search_rounded),
+                label: '公式問題',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.account_circle),
                 label: 'アカウント',
               ),
             ],

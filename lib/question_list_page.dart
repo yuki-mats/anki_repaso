@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
+import 'app_colors.dart';
 import 'question_edit_page.dart';
 
 class QuestionListPage extends StatelessWidget {
@@ -38,6 +39,13 @@ class QuestionListPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(questionSetName),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1.0),
+          child: Container(
+            color: AppColors.gray300,
+            height: 1.0,
+          ),
+        ),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16.0),
@@ -133,11 +141,10 @@ class QuestionListPage extends StatelessWidget {
         ],
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection("questions")
-            .where('folderRef', isEqualTo: folder.reference)
-            .where('questionSetRef', isEqualTo: questionSet.reference)
-            .snapshots(),
+          stream: FirebaseFirestore.instance
+              .collection("questions")
+              .where('questionSetRef', isEqualTo: questionSet.reference)
+              .snapshots(),
           builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());

@@ -195,7 +195,7 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
               padding: const EdgeInsets.fromLTRB(46, 36, 24, 12),
               child: Row(
                 children: [
-                  const Icon(Icons.layers_rounded, size: 36, color: AppColors.blue500),
+                  const Icon(Icons.quiz_sharp, size: 36, color: AppColors.blue500),
                   const SizedBox(width: 16),
                   Text(
                     questionSet['name'],
@@ -289,6 +289,13 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.folder['name']),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1.0),
+          child: Container(
+            color: AppColors.gray300,
+            height: 1.0,
+          ),
+        ),
       ),
       body: Padding(
         padding: const EdgeInsets.only(top: 16.0),
@@ -311,31 +318,40 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                 final questionSet = questionSets[index];
                 final questionCount = questionSet['questionCount'] ?? 0;
                 return Padding(
-                  padding: const EdgeInsets.only(left: 16.0, right: 16.0),
+                  padding: const EdgeInsets.only(left: 16.0, right: 24.0),
                   child: Column(
                     children: [
                       GestureDetector(
                         onTap: () {
                           navigateToAnswerPage(context, widget.folder.reference, questionSet.reference);
                         },
-                        child: Container(
-                          decoration: const BoxDecoration(
-                            borderRadius: BorderRadius.all(Radius.circular(24)),
-                            color: Colors.white,
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.only(top: 16.0, bottom: 16.0),
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 4.0, bottom: 4.0),
+                          child: Container(
+                            decoration: const BoxDecoration(
+                              borderRadius: BorderRadius.all(Radius.circular(24)),
+                              color: Colors.white,
+                            ),
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
-                                const Padding(
-                                  padding: EdgeInsets.only(left: 16.0, right: 16.0),
-                                  child: SizedBox(
+                                Padding(
+                                  padding: const EdgeInsets.only(left: 16.0, right: 16.0),
+                                  child: Container(
                                     width: 40,
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.blue500, // 背景色
+                                      borderRadius: BorderRadius.circular(8), // 角を丸くする
+                                      border: Border.all(
+                                        color: AppColors.blue200, // 枠線の色
+                                        width: 1.0, // 枠線の太さ
+                                      ),
+                                    ),
                                     child: Icon(
-                                      Icons.layers_rounded,
-                                      size: 40,
-                                      color: AppColors.blue500,
+                                      Icons.quiz_rounded,
+                                      size: 24, // アイコンのサイズを調整
+                                      color: Colors.white,
                                     ),
                                   ),
                                 ),
@@ -357,7 +373,7 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                                       Row(
                                         children: [
                                           const Icon(
-                                            Icons.insert_drive_file_rounded,
+                                            Icons.filter_none,
                                             size: 16,
                                             color: AppColors.blue400,
                                           ),
@@ -382,7 +398,6 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 16.0), // タイル間のスペース
                     ],
                   ),
                 );
@@ -391,34 +406,59 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
           },
         ),
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        onTap: (index) {
-          if (index == 1) {
-            navigateToQuestionSetAddPage(context, widget.folder);
-          } else if (index == 3) {
-            showSettingsModal(context);
-          }
-        },
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.folder_open, size: 42),
-            label: 'ライブラリ',
+
+      bottomNavigationBar: Container(
+        decoration: const BoxDecoration(
+          border: Border(
+            top: BorderSide(
+              color: AppColors.gray300, // 線の色
+              width: 1.0, // 線の太さ
+            ),
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.add_circle_outline, size: 42),
-            label: '追加',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.not_started_outlined, size: 42),
-            label: '開始',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.account_circle, size: 42),
-            label: 'アカウント',
-          ),
-        ],
+        ),
+        child: BottomNavigationBar(
+          type: BottomNavigationBarType.fixed,
+          onTap: (index) {
+            if (index == 1) {
+              navigateToQuestionSetAddPage(context, widget.folder);
+            } else if (index == 3) {
+              showSettingsModal(context);
+            }
+          },
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.home),
+              label: 'ホーム',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.not_started_outlined),
+              label: '開始',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.search_rounded),
+              label: '公式問題',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.account_circle),
+              label: 'アカウント',
+            ),
+          ],
+        ),
       ),
+        floatingActionButton:Padding(
+          padding: const EdgeInsets.only(bottom: 8.0, right: 16.0), // Positioned above the BottomNavigationBar
+          child: FloatingActionButton(
+            onPressed: () {
+              navigateToQuestionSetAddPage(context, widget.folder);
+            },
+            backgroundColor: AppColors.blue500,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(30), // Ensure it is a circle
+            ),
+            child: const Icon(Icons.add, color: Colors.white),
+          ),
+        ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
 }

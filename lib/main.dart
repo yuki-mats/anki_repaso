@@ -31,15 +31,26 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         // AppBarのテーマ設定
         appBarTheme: const AppBarTheme(
-          backgroundColor: Colors.white, // AppBar背景色を白に設定
+          backgroundColor: Colors.white, // AppBar背景色
           foregroundColor: AppColors.gray900, // AppBarテキスト色
           titleTextStyle: TextStyle(
             color: AppColors.gray900, // テキスト色
-            fontSize: 20, // フォントサイズを指定
-            fontWeight: FontWeight.bold, // 太字を指定
+            fontSize: 20, // フォントサイズ
+            fontWeight: FontWeight.bold, // 太字
           ),
         ),
         scaffoldBackgroundColor: Colors.white, // 背景色を白に設定
+
+        // BottomNavigationBarのテーマ設定
+        bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+          backgroundColor: Colors.white, // 背景色
+          selectedItemColor: AppColors.blue500, // 選択されたアイコンと文字の色
+          unselectedItemColor: AppColors.gray600, // 非選択時のアイコンと文字の色
+          selectedIconTheme: IconThemeData(size: 40), // 選択されたアイコンのサイズ
+          unselectedIconTheme: IconThemeData(size: 40), // 非選択時のアイコンのサイズ
+          showSelectedLabels: true, // 選択時のラベルを表示
+          showUnselectedLabels: true, // 非選択時のラベルを表示
+        ),
       ),
       home: islogin ? const FolderListPage(title: 'ホーム') : const LobbyPage(),
     );

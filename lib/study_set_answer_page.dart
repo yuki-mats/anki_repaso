@@ -3,26 +3,23 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:repaso/question_add_page.dart';
 import 'package:repaso/review_answers_page.dart';
 import 'app_colors.dart';
 import 'completion_summary_page.dart';
 
-class AnswerPage extends StatefulWidget {
-  final DocumentReference folderRef;
-  final DocumentReference questionSetRef;
+class StudySetAnswerPage extends StatefulWidget {
+  final String studySetId; // StudySetのID
 
-  const AnswerPage({
+  const StudySetAnswerPage({
     Key? key,
-    required this.folderRef,
-    required this.questionSetRef,
+    required this.studySetId,
   }) : super(key: key);
 
   @override
-  _AnswerPageState createState() => _AnswerPageState();
+  _StudySetAnswerPageState createState() => _StudySetAnswerPageState();
 }
 
-class _AnswerPageState extends State<AnswerPage> {
+class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
   List<DocumentSnapshot> _questions = [];
   List<bool> _answerResults = [];
   int _currentQuestionIndex = 0;
@@ -39,14 +36,72 @@ class _AnswerPageState extends State<AnswerPage> {
 
   Future<void> _fetchQuestions() async {
     try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('questions')
-          .where('questionSetRef', isEqualTo: widget.questionSetRef)
-          .limit(10)
+      final studySetSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(FirebaseAuth.instance.currentUser?.uid)
+          .collection('studySets')
+          .doc(widget.studySetId) // StudySetのIDを使用
           .get();
 
+      if (!studySetSnapshot.exists) {
+        throw Exception('StudySet not found');
+      }
+
+      final studySetData = studySetSnapshot.data();
+      if (studySetData == null) {
+        throw Exception('StudySet data is null');
+      }
+
+      final List<String> questionSetIds = List<String>.from(studySetData['questionSetIds'] ?? []);
+      final double correctRateStart = (studySetData['correctRateRange']?['start'] ?? 0).toDouble();
+      final double correctRateEnd = (studySetData['correctRateRange']?['end'] ?? 100).toDouble();
+      final String selectedOrder = studySetData['selectedQuestionOrder'] ?? 'random';
+      final int numberOfQuestions = studySetData['numberOfQuestions'] ?? 10;
+
+      final questionSnapshots = await FirebaseFirestore.instance
+          .collection('questions')
+          .where('questionSetRef', whereIn: questionSetIds.map((id) =>
+          FirebaseFirestore.instance.collection('questionSets').doc(id)))
+          .get();
+
+      // フィルタリング：正答率範囲
+      final filteredQuestions = await Future.wait(questionSnapshots.docs.map((doc) async {
+        final statsSnapshot = await doc.reference.collection('questionUserStats')
+            .doc(FirebaseAuth.instance.currentUser?.uid)
+            .get();
+        final correctRate = statsSnapshot.exists ? statsSnapshot['correctRate'] as double : null;
+
+        if (correctRate == null || correctRate < correctRateStart || correctRate > correctRateEnd) {
+          return null;
+        }
+        return doc;
+      }));
+
+      // フィルタリング結果をクリーンアップ
+      final validQuestions = filteredQuestions.whereType<DocumentSnapshot>().toList();
+
+      // 出題順のソート
+      if (selectedOrder == 'random') {
+        validQuestions.shuffle();
+      } else if (selectedOrder == 'accuracyAscending') {
+        validQuestions.sort((a, b) {
+          final aStats = a['questionUserStats'];
+          final bStats = b['questionUserStats'];
+          return (aStats?['correctRate'] ?? 0).compareTo(bStats?['correctRate'] ?? 0);
+        });
+      } else if (selectedOrder == 'accuracyDescending') {
+        validQuestions.sort((a, b) {
+          final aStats = a['questionUserStats'];
+          final bStats = b['questionUserStats'];
+          return (bStats?['correctRate'] ?? 0).compareTo(aStats?['correctRate'] ?? 0);
+        });
+      }
+
+      // 出題数に基づいて質問を絞り込む
+      final limitedQuestions = validQuestions.take(numberOfQuestions).toList();
+
       setState(() {
-        _questions = snapshot.docs;
+        _questions = limitedQuestions;
         if (_questions.isNotEmpty) {
           _startedAt = DateTime.now(); // 最初の問題表示時刻を記録
         }
@@ -56,8 +111,7 @@ class _AnswerPageState extends State<AnswerPage> {
     }
   }
 
-  Future<void> _saveAnswer(String questionId, bool isAnswerCorrect, DateTime answeredAt, DateTime? nextStartedAt,
-      {required String memoryLevel}) async {
+  Future<void> _saveAnswer(String questionId, bool isAnswerCorrect, DateTime answeredAt, DateTime? nextStartedAt) async {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('User not logged in');
@@ -87,7 +141,6 @@ class _AnswerPageState extends State<AnswerPage> {
         'isCorrect': isAnswerCorrect,
         'selectedChoice': _selectedAnswer,
         'correctChoice': _questions[_currentQuestionIndex]['correctChoiceText'],
-        'memoryLevel': memoryLevel,
         'createdAt': FieldValue.serverTimestamp(),
       });
 
@@ -103,17 +156,6 @@ class _AnswerPageState extends State<AnswerPage> {
       final incorrectCount = attemptCount - correctCount;
       final correctRate = correctCount / attemptCount;
 
-      // Update memoryLevelStats
-      final memoryLevelStats = currentStats?['memoryLevelStats'] ?? {};
-      memoryLevelStats[memoryLevel] = (memoryLevelStats[memoryLevel] ?? 0) + 1;
-
-      // Calculate memory level ratios
-      final memoryLevelRatios = memoryLevelStats.map((key, value) => MapEntry(key, (value / attemptCount) * 100));
-
-      // Print updated stats and ratios
-      print('Updated memory level stats: $memoryLevelStats');
-      print('Updated memory level ratios: $memoryLevelRatios');
-
       print('Updated attemptCount: $attemptCount');
       print('Updated correctCount: $correctCount');
       print('Calculated correctRate: $correctRate');
@@ -125,8 +167,6 @@ class _AnswerPageState extends State<AnswerPage> {
         'correctCount': correctCount,
         'incorrectCount': incorrectCount,
         'correctRate': correctRate,
-        'memoryLevelStats': memoryLevelStats,
-        'memoryLevelRatios': memoryLevelRatios,
         'totalAnswerTime': (currentStats?['totalAnswerTime'] ?? 0) + answerTime,
         'totalPostAnswerTime': (currentStats?['totalPostAnswerTime'] ?? 0) + postAnswerTime,
         'lastStudiedAt': answeredAt,
@@ -141,7 +181,6 @@ class _AnswerPageState extends State<AnswerPage> {
       print('Error saving answer: $e');
     }
   }
-
 
   Future<void> _updateStatsUsingAggregation(String questionId) async {
     try {
@@ -333,6 +372,7 @@ class _AnswerPageState extends State<AnswerPage> {
     );
   }
 
+
   void _showFeedbackAndNextQuestion(
       bool isAnswerCorrect, String questionText, String correctChoiceText, String selectedAnswer) {
     showDialog(
@@ -377,39 +417,7 @@ class _AnswerPageState extends State<AnswerPage> {
               ),
               Padding(
                 padding: const EdgeInsets.all(16.0),
-                child: isAnswerCorrect
-                    ? Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: ['Hard', 'Good', 'Easy'].map((level) {
-                    return Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                        child: ElevatedButton(
-                          onPressed: () {
-                            final nextStartedAt = DateTime.now(); // 次の問題表示時間を記録
-                            _saveAnswer(
-                              _questions[_currentQuestionIndex].id,
-                              isAnswerCorrect,
-                              _answeredAt!,
-                              nextStartedAt,
-                              memoryLevel: level,
-                            );
-                            Navigator.of(context).pop();
-                            _nextQuestion(nextStartedAt);
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.blue500,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                          child: Text(level, style: const TextStyle(fontSize: 16, color: Colors.white)),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                )
-                    : SizedBox(
+                child: SizedBox(
                   height: 52,
                   width: double.infinity,
                   child: ElevatedButton(
@@ -420,7 +428,6 @@ class _AnswerPageState extends State<AnswerPage> {
                         isAnswerCorrect,
                         _answeredAt!,
                         nextStartedAt,
-                        memoryLevel: 'Again',
                       );
                       Navigator.of(context).pop();
                       _nextQuestion(nextStartedAt);
@@ -564,28 +571,6 @@ class _AnswerPageState extends State<AnswerPage> {
                   style: TextStyle(fontSize: 14, color: Colors.grey),
                 ),
                 const SizedBox(height: 24),
-                SizedBox(
-                  width: 300,
-                  height: 48,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.blue500,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                    onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => QuestionAddPage(
-                          folderRef: widget.folderRef,
-                          questionSetRef: widget.questionSetRef,
-                        ),
-                      ),
-                    ),
-                    child: const Text(
-                      '作成する',
-                      style: TextStyle(fontSize: 16, color: Colors.white),
-                    ),
-                  ),
-                ),
               ],
             ),
           ),
@@ -596,8 +581,8 @@ class _AnswerPageState extends State<AnswerPage> {
           LinearProgressIndicator(
             value: (_currentQuestionIndex + 1) / _questions.length,
             minHeight: 10,
-            backgroundColor: AppColors.gray50,
-            valueColor: const AlwaysStoppedAnimation(AppColors.blue500),
+            backgroundColor: Colors.black.withOpacity(0.1),
+            valueColor: const AlwaysStoppedAnimation(Colors.purple),
           ),
           Padding(
             padding: const EdgeInsets.all(16.0),
@@ -629,16 +614,16 @@ class _AnswerPageState extends State<AnswerPage> {
               children: [
                 Expanded(
                   child: _buildTrueFalseOption(
-                    "間違い",
-                    "false",
+                    _questions[_currentQuestionIndex]['incorrectChoice1Text'],
+                    _questions[_currentQuestionIndex]['correctChoiceText'],
                     _questions[_currentQuestionIndex].id,
                   ),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
                   child: _buildTrueFalseOption(
-                    "正しい",
-                    "true",
+                    _questions[_currentQuestionIndex]['correctChoiceText'],
+                    _questions[_currentQuestionIndex]['correctChoiceText'],
                     _questions[_currentQuestionIndex].id,
                   ),
                 ),
@@ -688,7 +673,7 @@ class _AnswerPageState extends State<AnswerPage> {
             Padding(
               padding: const EdgeInsets.only(top: 8.0),
               child: Icon(
-                correctChoiceText == "true" ? Icons.check_circle : Icons.cancel,
+                isTrueOption ? Icons.check_circle : Icons.cancel,
                 color: isSelected ? Colors.white : AppColors.blue600,
                 size: 80,
               ),
