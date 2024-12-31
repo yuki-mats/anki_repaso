@@ -179,11 +179,22 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
       appBar: AppBar(
         title: const Text('学習セットの追加'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.check),
-            onPressed: (questionSetIds.isNotEmpty && studySetName != null && studySetName!.isNotEmpty)
-                ? _saveStudySet
-                : null,
+          Padding(
+            padding: const EdgeInsets.only(right: 16.0),
+            child: TextButton(
+              child: Text(
+                '保存',
+                style: TextStyle(
+                  color: (questionSetIds.isNotEmpty && studySetName != null && studySetName!.isNotEmpty)
+                      ? AppColors.blue500 // 有効時の色
+                      : Colors.grey,      // 無効時の色
+                  fontSize: 18,
+                ),
+              ),
+              onPressed: (questionSetIds.isNotEmpty && studySetName != null && studySetName!.isNotEmpty)
+                  ? _saveStudySet
+                  : null,
+            ),
           ),
         ],
       ),

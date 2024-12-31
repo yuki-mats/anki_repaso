@@ -31,14 +31,14 @@ class LobbyPage extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 24),
-                Image.asset(
-                  'assets/images/logo.png', // ロゴ画像のパスを指定してください
-                  width: 120,
-                  height: 120,
+                Icon(
+                  Icons.school,
+                  size: 100,
+                  color: AppColors.blue600,
                 ),
                 const SizedBox(height: 16),
                 const Text(
-                  'Repaso',
+                  'Anki Hub',
                   style: TextStyle(
                     fontSize: 32,
                     fontWeight: FontWeight.bold,

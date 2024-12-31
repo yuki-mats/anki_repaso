@@ -3,28 +3,23 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:repaso/question_add_page.dart';
 import 'package:repaso/review_answers_page.dart';
 import 'app_colors.dart';
 import 'completion_summary_page.dart';
 
-class AnswerPage extends StatefulWidget {
-  final DocumentReference folderRef;
-  final DocumentReference questionSetRef;
-  final String questionSetName;
+class StudySetAnswerPage extends StatefulWidget {
+  final String studySetId; // StudySetのID
 
-  const AnswerPage({
+  const StudySetAnswerPage({
     Key? key,
-    required this.folderRef,
-    required this.questionSetRef,
-    required this.questionSetName,
+    required this.studySetId,
   }) : super(key: key);
 
   @override
-  _AnswerPageState createState() => _AnswerPageState();
+  _StudySetAnswerPageState createState() => _StudySetAnswerPageState();
 }
 
-class _AnswerPageState extends State<AnswerPage> {
+class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
   List<DocumentSnapshot> _questions = [];
   List<bool> _answerResults = [];
   int _currentQuestionIndex = 0;
@@ -32,9 +27,6 @@ class _AnswerPageState extends State<AnswerPage> {
   bool? _isAnswerCorrect;
   DateTime? _startedAt;
   DateTime? _answeredAt;
-  bool? _isFlagged; // 現在のフラグ状態
-  String? _footerButtonType; // 現在のボタン状態 ('HardGoodEasy' or 'Next')
-
 
   @override
   void initState() {
@@ -44,49 +36,82 @@ class _AnswerPageState extends State<AnswerPage> {
 
   Future<void> _fetchQuestions() async {
     try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('questions')
-          .where('questionSetRef', isEqualTo: widget.questionSetRef)
-          .limit(10)
+      final studySetSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(FirebaseAuth.instance.currentUser?.uid)
+          .collection('studySets')
+          .doc(widget.studySetId) // StudySetのIDを使用
           .get();
 
+      if (!studySetSnapshot.exists) {
+        throw Exception('StudySet not found');
+      }
+
+      final studySetData = studySetSnapshot.data();
+      if (studySetData == null) {
+        throw Exception('StudySet data is null');
+      }
+
+      final List<String> questionSetIds = List<String>.from(studySetData['questionSetIds'] ?? []);
+      final double correctRateStart = (studySetData['correctRateRange']?['start'] ?? 0).toDouble();
+      final double correctRateEnd = (studySetData['correctRateRange']?['end'] ?? 100).toDouble();
+      final String selectedOrder = studySetData['selectedQuestionOrder'] ?? 'random';
+      final int numberOfQuestions = studySetData['numberOfQuestions'] ?? 10;
+
+      final questionSnapshots = await FirebaseFirestore.instance
+          .collection('questions')
+          .where('questionSetRef', whereIn: questionSetIds.map((id) =>
+          FirebaseFirestore.instance.collection('questionSets').doc(id)))
+          .get();
+
+      // フィルタリング：正答率範囲
+      final filteredQuestions = await Future.wait(questionSnapshots.docs.map((doc) async {
+        final statsSnapshot = await doc.reference.collection('questionUserStats')
+            .doc(FirebaseAuth.instance.currentUser?.uid)
+            .get();
+        final correctRate = statsSnapshot.exists ? statsSnapshot['correctRate'] as double : null;
+
+        if (correctRate == null || correctRate < correctRateStart || correctRate > correctRateEnd) {
+          return null;
+        }
+        return doc;
+      }));
+
+      // フィルタリング結果をクリーンアップ
+      final validQuestions = filteredQuestions.whereType<DocumentSnapshot>().toList();
+
+      // 出題順のソート
+      if (selectedOrder == 'random') {
+        validQuestions.shuffle();
+      } else if (selectedOrder == 'accuracyAscending') {
+        validQuestions.sort((a, b) {
+          final aStats = a['questionUserStats'];
+          final bStats = b['questionUserStats'];
+          return (aStats?['correctRate'] ?? 0).compareTo(bStats?['correctRate'] ?? 0);
+        });
+      } else if (selectedOrder == 'accuracyDescending') {
+        validQuestions.sort((a, b) {
+          final aStats = a['questionUserStats'];
+          final bStats = b['questionUserStats'];
+          return (bStats?['correctRate'] ?? 0).compareTo(aStats?['correctRate'] ?? 0);
+        });
+      }
+
+      // 出題数に基づいて質問を絞り込む
+      final limitedQuestions = validQuestions.take(numberOfQuestions).toList();
+
       setState(() {
-        _questions = snapshot.docs;
+        _questions = limitedQuestions;
         if (_questions.isNotEmpty) {
           _startedAt = DateTime.now(); // 最初の問題表示時刻を記録
         }
       });
-
-      // 最初の問題の isFlagged を取得
-      if (_questions.isNotEmpty) {
-        final firstQuestionId = _questions[0].id;
-        await _fetchFlagState(firstQuestionId);
-      }
     } catch (e) {
       print('Error fetching questions: $e');
     }
   }
 
-
-  Future<void> _fetchFlagState(String questionId) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    final questionUserStatsRef = FirebaseFirestore.instance
-        .collection('questions')
-        .doc(questionId)
-        .collection('questionUserStats')
-        .doc(user.uid);
-
-    final snapshot = await questionUserStatsRef.get();
-    setState(() {
-      _isFlagged = snapshot.exists ? snapshot['isFlagged'] ?? false : false;
-    });
-  }
-
-
-  Future<void> _saveAnswer(String questionId, bool isAnswerCorrect, DateTime answeredAt, DateTime? nextStartedAt,
-      {required String memoryLevel}) async {
+  Future<void> _saveAnswer(String questionId, bool isAnswerCorrect, DateTime answeredAt, DateTime? nextStartedAt) async {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('User not logged in');
@@ -116,7 +141,6 @@ class _AnswerPageState extends State<AnswerPage> {
         'isCorrect': isAnswerCorrect,
         'selectedChoice': _selectedAnswer,
         'correctChoice': _questions[_currentQuestionIndex]['correctChoiceText'],
-        'memoryLevel': memoryLevel,
         'createdAt': FieldValue.serverTimestamp(),
       });
 
@@ -132,17 +156,6 @@ class _AnswerPageState extends State<AnswerPage> {
       final incorrectCount = attemptCount - correctCount;
       final correctRate = correctCount / attemptCount;
 
-      // Update memoryLevelStats
-      final memoryLevelStats = currentStats?['memoryLevelStats'] ?? {};
-      memoryLevelStats[memoryLevel] = (memoryLevelStats[memoryLevel] ?? 0) + 1;
-
-      // Calculate memory level ratios
-      final memoryLevelRatios = memoryLevelStats.map((key, value) => MapEntry(key, (value / attemptCount) * 100));
-
-      // Print updated stats and ratios
-      print('Updated memory level stats: $memoryLevelStats');
-      print('Updated memory level ratios: $memoryLevelRatios');
-
       print('Updated attemptCount: $attemptCount');
       print('Updated correctCount: $correctCount');
       print('Calculated correctRate: $correctRate');
@@ -154,8 +167,6 @@ class _AnswerPageState extends State<AnswerPage> {
         'correctCount': correctCount,
         'incorrectCount': incorrectCount,
         'correctRate': correctRate,
-        'memoryLevelStats': memoryLevelStats,
-        'memoryLevelRatios': memoryLevelRatios,
         'totalAnswerTime': (currentStats?['totalAnswerTime'] ?? 0) + answerTime,
         'totalPostAnswerTime': (currentStats?['totalPostAnswerTime'] ?? 0) + postAnswerTime,
         'lastStudiedAt': answeredAt,
@@ -170,7 +181,6 @@ class _AnswerPageState extends State<AnswerPage> {
       print('Error saving answer: $e');
     }
   }
-
 
   Future<void> _updateStatsUsingAggregation(String questionId) async {
     try {
@@ -355,7 +365,6 @@ class _AnswerPageState extends State<AnswerPage> {
 
     // フィードバック表示
     _showFeedbackAndNextQuestion(
-
       _isAnswerCorrect!,
       _questions[_currentQuestionIndex]['questionText'],
       correctChoiceText,
@@ -363,27 +372,91 @@ class _AnswerPageState extends State<AnswerPage> {
     );
   }
 
+
   void _showFeedbackAndNextQuestion(
       bool isAnswerCorrect, String questionText, String correctChoiceText, String selectedAnswer) {
-    setState(() {
-      _isAnswerCorrect = isAnswerCorrect;
-      _footerButtonType = isAnswerCorrect ? 'HardGoodEasy' : 'Next'; // ボタン種類を設定
-    });
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          insetPadding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: isAnswerCorrect ? Colors.green : Colors.red,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                ),
+                child: Text(
+                  isAnswerCorrect ? '正解！' : '不正解',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('問題文：', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    Text(questionText, style: const TextStyle(fontSize: 16)),
+                    const SizedBox(height: 16),
+                    Text('正しい答え：', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green)),
+                    Text(correctChoiceText, style: const TextStyle(fontSize: 16)),
+                    const SizedBox(height: 16),
+                    Text('あなたの回答：', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red)),
+                    Text(selectedAnswer, style: const TextStyle(fontSize: 16)),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: SizedBox(
+                  height: 52,
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      final nextStartedAt = DateTime.now(); // 次の問題表示時間を記録
+                      _saveAnswer(
+                        _questions[_currentQuestionIndex].id,
+                        isAnswerCorrect,
+                        _answeredAt!,
+                        nextStartedAt,
+                      );
+                      Navigator.of(context).pop();
+                      _nextQuestion(nextStartedAt);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.blue500,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: const Text('次へ', style: TextStyle(fontSize: 16, color: Colors.white)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   void _nextQuestion(DateTime nextStartedAt) {
     if (_currentQuestionIndex < _questions.length - 1) {
-      // 次の問題に即時遷移
       setState(() {
         _currentQuestionIndex++;
         _selectedAnswer = null;
         _isAnswerCorrect = null;
         _startedAt = nextStartedAt; // 次の問題の開始時間を記録
       });
-
-      // Firestore処理をバックグラウンドで実行
-      final nextQuestionId = _questions[_currentQuestionIndex].id;
-      _fetchFlagState(nextQuestionId); // 非同期でフラグ状態を更新
     } else {
       _navigateToCompletionSummaryPage();
     }
@@ -462,40 +535,11 @@ class _AnswerPageState extends State<AnswerPage> {
     });
   }
 
-  Future<void> _toggleFlag() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    final questionId = _questions[_currentQuestionIndex].id;
-    final questionUserStatsRef = FirebaseFirestore.instance
-        .collection('questions')
-        .doc(questionId)
-        .collection('questionUserStats')
-        .doc(user.uid);
-
-    final newFlagState = !(_isFlagged ?? false);
-
-    await questionUserStatsRef.set({
-      'isFlagged': newFlagState,
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
-
-    setState(() {
-      _isFlagged = newFlagState; // UI を更新
-    });
-  }
-
-
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.gray50,
-      appBar: AppBar(
-          title: Text('あと${_questions.length - _currentQuestionIndex}問',
-            style: const TextStyle(color: AppColors.gray700),
-          ),
-      ),
+      appBar: AppBar(title: const Text('問題に回答する')),
       body: _questions.isEmpty
           ? Center(
         child: Padding(
@@ -505,44 +549,28 @@ class _AnswerPageState extends State<AnswerPage> {
             padding: const EdgeInsets.all(24.0),
             decoration: BoxDecoration(
               color: Colors.white,
-              border: Border.all(color: Colors.black26),
               borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 10,
+                  offset: const Offset(0, 5),
+                ),
+              ],
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 const Text(
                   '問題がありません',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
                 const Text(
                   '最初の問題を作成しよう',
-                  style: TextStyle(fontSize: 16, color: Colors.black87),
+                  style: TextStyle(fontSize: 14, color: Colors.grey),
                 ),
                 const SizedBox(height: 24),
-                SizedBox(
-                  width: 300,
-                  height: 48,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.blue500,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                    onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => QuestionAddPage(
-                          folderRef: widget.folderRef,
-                          questionSetRef: widget.questionSetRef,
-                        ),
-                      ),
-                    ),
-                    child: const Text(
-                      '作成する',
-                      style: TextStyle(fontSize: 18, color: Colors.white),
-                    ),
-                  ),
-                ),
               ],
             ),
           ),
@@ -553,80 +581,51 @@ class _AnswerPageState extends State<AnswerPage> {
           LinearProgressIndicator(
             value: (_currentQuestionIndex + 1) / _questions.length,
             minHeight: 10,
-            backgroundColor: AppColors.gray50,
-            valueColor: const AlwaysStoppedAnimation(AppColors.blue500),
+            backgroundColor: Colors.black.withOpacity(0.1),
+            valueColor: const AlwaysStoppedAnimation(Colors.purple),
           ),
           Padding(
             padding: const EdgeInsets.all(16.0),
-            child: Column(
-              children: [
-                Container(
-                  width: double.infinity,
-                  height: 400,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.black26),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: 16.0,top: 16.0),
-                    child: Column(
-                      children: [
-                        Align(
-                          alignment: Alignment.topLeft,
-                          child: Padding(
-                            padding: const EdgeInsets.only(right: 16.0),
-                            child: Text(widget.questionSetName,
-                              style: const TextStyle(fontSize: 16, color: Colors.grey),
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          child: Align(
-                            alignment: Alignment.center,
-                            child: Text(
-                              _questions[_currentQuestionIndex]['questionText'],
-                              style: const TextStyle(fontSize: 18),
-                              textAlign: TextAlign.start,
-                            ),
-                          ),
-                        ),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              '正答率',
-                              style: const TextStyle(fontSize: 16, color: Colors.grey),
-                            ),
-                            IconButton(
-                              icon: Icon(
-                                _isFlagged == true ? Icons.bookmark : Icons.bookmark_outline,
-                                size:28,
-                                color: Colors.grey,
-                              ),
-                              onPressed: _toggleFlag, // アイコンをタップして状態を切り替え
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
+            child: Container(
+              width: double.infinity,
+              height: 400,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.black12.withOpacity(0.5)),
+              ),
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Text(
+                    _questions[_currentQuestionIndex]['questionText'],
+                    style: const TextStyle(fontSize: 18),
+                    textAlign: TextAlign.start,
                   ),
                 ),
-              ],
+              ),
             ),
           ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: _questions[_currentQuestionIndex]['questionType'] == 'true_false'
-                ? Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+                ? Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                buildTrueFalseWidget(
-                  context: context,
-                  correctChoiceText: _questions[_currentQuestionIndex]['correctChoiceText'],
-                  selectedChoiceText: _selectedAnswer ?? '',
-                  questionId: _questions[_currentQuestionIndex].id,
-                  handleAnswerSelection: _handleAnswerSelection,
+                Expanded(
+                  child: _buildTrueFalseOption(
+                    _questions[_currentQuestionIndex]['incorrectChoice1Text'],
+                    _questions[_currentQuestionIndex]['correctChoiceText'],
+                    _questions[_currentQuestionIndex].id,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _buildTrueFalseOption(
+                    _questions[_currentQuestionIndex]['correctChoiceText'],
+                    _questions[_currentQuestionIndex]['correctChoiceText'],
+                    _questions[_currentQuestionIndex].id,
+                  ),
                 ),
               ],
             )
@@ -644,244 +643,112 @@ class _AnswerPageState extends State<AnswerPage> {
           ),
         ],
       ),
-      bottomNavigationBar: _buildFooterButtons(),
     );
   }
 
-  Widget _buildFooterButtons() {
-    if (_footerButtonType == 'HardGoodEasy') {
-      return Container(
-        color: Colors.white,
-        padding: const EdgeInsets.only(bottom: 48.0, left: 16.0, right: 16.0, top: 16.0),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: ['Hard', 'Good', 'Easy'].map((level) {
-            return Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4.0),
-                child: ElevatedButton(
-                  onPressed: () {
-                    final nextStartedAt = DateTime.now();
-                    _saveAnswer(
-                      _questions[_currentQuestionIndex].id,
-                      _isAnswerCorrect!,
-                      _answeredAt!,
-                      nextStartedAt,
-                      memoryLevel: level,
-                    );
-                    _nextQuestion(nextStartedAt); // 即時遷移
-                    setState(() {
-                      _footerButtonType = null; // ボタンを非表示に
-                    });
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.blue500,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: Text(
-                    level,
-                    style: const TextStyle(fontSize: 18, color: Colors.white),
-                  ),
-                ),
-              ),
-            );
-          }).toList(),
-        ),
-      );
-    } else if (_footerButtonType == 'Next') {
-      return Container(
-        color: Colors.white,
-        padding: const EdgeInsets.only(bottom: 48.0, left: 16.0, right: 16.0, top: 16.0),
-        child: ElevatedButton(
-          onPressed: () {
-            final nextStartedAt = DateTime.now();
-            _saveAnswer(
-              _questions[_currentQuestionIndex].id,
-              _isAnswerCorrect!,
-              _answeredAt!,
-              nextStartedAt,
-              memoryLevel: 'Again',
-            );
-            _nextQuestion(nextStartedAt); // 即時遷移
-            setState(() {
-              _footerButtonType = null; // ボタンを非表示に
-            });
-          },
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.blue500,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
+
+  Widget _buildTrueFalseOption(String label, String correctChoiceText, String questionId) {
+    final isSelected = _selectedAnswer == label;
+    final isTrueOption = label == correctChoiceText;
+
+    return GestureDetector(
+      onTap: () {
+        if (_selectedAnswer == null) {
+          _handleAnswerSelection(context, label);
+        }
+      },
+      child: Container(
+        width: 120,
+        height: 180,
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: isSelected ? Colors.blueAccent.withOpacity(0.8) : Colors.grey,
           ),
-          child: const Text('次へ', style: TextStyle(fontSize: 18, color: Colors.white)),
+          borderRadius: BorderRadius.circular(8),
+          color: isSelected ? AppColors.blue600 : Colors.white,
         ),
-      );
-    }
-    return const SizedBox.shrink(); // ボタンがない場合は空
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 8.0),
+              child: Icon(
+                isTrueOption ? Icons.check_circle : Icons.cancel,
+                color: isSelected ? Colors.white : AppColors.blue600,
+                size: 80,
+              ),
+            ),
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? Colors.white : AppColors.blue600,
+                fontSize: 16,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+Widget buildSingleChoiceWidget({
+  required BuildContext context,
+  required String questionText,
+  required String correctChoiceText,
+  String? incorrectChoice1Text,
+  String? incorrectChoice2Text,
+  String? incorrectChoice3Text,
+  required String questionId,
+  required void Function(BuildContext context, String selectedChoice) handleAnswerSelection,
+}) {
+  List<String> getShuffledChoices() {
+    final choices = [
+      correctChoiceText,
+      if (incorrectChoice1Text != null) incorrectChoice1Text,
+      if (incorrectChoice2Text != null) incorrectChoice2Text,
+      if (incorrectChoice3Text != null) incorrectChoice3Text,
+    ];
+    choices.shuffle(Random());
+    return choices;
   }
 
+  final shuffledChoices = getShuffledChoices();
 
-
-  Widget buildTrueFalseWidget({
-    required BuildContext context,
-    required String correctChoiceText,
-    required String selectedChoiceText,
-    required String questionId,
-    required void Function(BuildContext context, String selectedChoice) handleAnswerSelection,
-  }) {
-    final trueLabel = "正しい";
-    final falseLabel = "間違い";
-
-    final choices = [trueLabel, falseLabel];
-    final isAnswerSelected = selectedChoiceText.isNotEmpty;
-
-    List<Widget> choiceWidgets = [];
-
-    for (String choice in choices) {
-      final isSelected = selectedChoiceText == choice;
-      final isCorrect = correctChoiceText == choice;
-      final isIncorrect = isSelected && !isCorrect;
-
-      choiceWidgets.add(
-        GestureDetector(
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      ...shuffledChoices.map((choice) {
+        return GestureDetector(
           onTap: () {
-            if (!isAnswerSelected) {
-              handleAnswerSelection(context, choice);
-            }
+            handleAnswerSelection(context, choice);
           },
           child: Container(
-            height: 56,
             margin: const EdgeInsets.symmetric(vertical: 8),
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: isAnswerSelected
-                  ? (isCorrect && isSelected
-                  ? Colors.white
-                  : isIncorrect
-                  ? Colors.white
-                  : Colors.white)
-                  : Colors.white,
-              border: Border.all(
-                color: isAnswerSelected
-                    ? (isCorrect && isSelected
-                    ? Colors.green.shade300
-                    : isIncorrect
-                    ? Colors.orange.shade300
-                    : isCorrect
-                    ? Colors.green.shade300
-                    : Colors.black26)
-                    : Colors.black26,
-                width: isSelected ? 2.0 : 1.0, // 修正: 選択された場合、枠線を太線に設定
-                style: isAnswerSelected && isCorrect && !isSelected
-                    ? BorderStyle.solid
-                    : BorderStyle.solid,
-              ),
+              // 背景を白にする。
+              color: Colors.white,
+              border: Border.all(color: Colors.grey),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Row(
               children: [
-                Icon(
-                  isAnswerSelected
-                      ? (isCorrect
-                      ? Icons.check
-                      : isIncorrect
-                      ? Icons.close
-                      : null)
-                      : null,
-                  color: isAnswerSelected
-                      ? (isCorrect
-                      ? Colors.green
-                      : isIncorrect
-                      ? Colors.orange
-                      : Colors.transparent)
-                      : Colors.transparent,
-                ),
+                Icon(Icons.circle_outlined, color: Colors.grey),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     choice,
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: isAnswerSelected && (isCorrect || isIncorrect)
-                          ? Colors.black
-                          : Colors.black,
-                    ),
+                    style: const TextStyle(fontSize: 16),
                   ),
                 ),
               ],
             ),
           ),
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 16),
-        ...choiceWidgets,
-      ],
-    );
-  }
-
-  Widget buildSingleChoiceWidget({
-    required BuildContext context,
-    required String questionText,
-    required String correctChoiceText,
-    String? incorrectChoice1Text,
-    String? incorrectChoice2Text,
-    String? incorrectChoice3Text,
-    required String questionId,
-    required void Function(BuildContext context, String selectedChoice) handleAnswerSelection,
-  }) {
-    List<String> getShuffledChoices() {
-      final choices = [
-        correctChoiceText,
-        if (incorrectChoice1Text != null) incorrectChoice1Text,
-        if (incorrectChoice2Text != null) incorrectChoice2Text,
-        if (incorrectChoice3Text != null) incorrectChoice3Text,
-      ];
-      choices.shuffle(Random());
-      return choices;
-    }
-
-    final shuffledChoices = getShuffledChoices();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        ...shuffledChoices.map((choice) {
-          return GestureDetector(
-            onTap: () {
-              handleAnswerSelection(context, choice);
-            },
-            child: Container(
-              margin: const EdgeInsets.symmetric(vertical: 8),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                // 背景を白にする。
-                color: Colors.white,
-                border: Border.all(color: Colors.grey),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.circle_outlined, color: Colors.grey),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      choice,
-                      style: const TextStyle(fontSize: 16),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }).toList(),
-      ],
-    );
-  }
+        );
+      }).toList(),
+    ],
+  );
 }

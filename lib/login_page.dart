@@ -17,6 +17,7 @@ class _LoginPageState extends State<LoginPage> {
   final TextEditingController _passwordController = TextEditingController();
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
+  bool _isPasswordVisible = false; // パスワード表示状態を管理
 
   String email = "";
   String password = "";
@@ -27,6 +28,125 @@ class _LoginPageState extends State<LoginPage> {
     _passwordController.dispose();
     super.dispose();
   }
+
+  void _showPasswordResetDialog() {
+    final TextEditingController resetEmailController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8.0), // 角を丸く
+          ),
+          backgroundColor: Colors.white,
+          child: SizedBox(
+            width: MediaQuery.of(context).size.width * 0.85, // 横幅を80%に設定
+            child: Padding(
+              padding: const EdgeInsets.all(16.0), // 内側の余白
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    '以下のメールアドレスに\nパスワードリセットメールを送信します',
+                    textAlign: TextAlign.center, // 中央揃え
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: resetEmailController,
+                    decoration: InputDecoration(
+                      labelText: 'メールアドレス',
+                      labelStyle: const TextStyle(fontSize: 14),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8.0), // 角を丸く
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        vertical: 12.0,
+                        horizontal: 16.0,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 32), // フィールドとボタン間の余白
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.blue500, // ボタンの背景色
+                          foregroundColor: Colors.white, // ボタンのテキスト色
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8.0),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 12.0),
+                        ),
+                        onPressed: () async {
+                          final email = resetEmailController.text.trim();
+                          if (email.isNotEmpty) {
+                            await _sendPasswordResetEmail(email);
+                            Navigator.of(context).pop(); // ダイアログを閉じる
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('メールアドレスを入力してください。')),
+                            );
+                          }
+                        },
+                        child: const Text(
+                          '送信する',
+                          style: TextStyle(fontSize: 16),
+                        ),
+                      ),
+                      const SizedBox(height: 12), // ボタン間の余白
+                      OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8.0),
+                          ),
+                          side: const BorderSide(color: Colors.grey),
+                          padding: const EdgeInsets.symmetric(vertical: 12.0),
+                        ),
+                        onPressed: () {
+                          Navigator.of(context).pop(); // ダイアログを閉じる
+                        },
+                        child: const Text(
+                          'キャンセル',
+                          style: TextStyle(fontSize: 14, color: Colors.grey),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+
+  Future<void> _sendPasswordResetEmail(String email) async {
+    try {
+      await _auth.sendPasswordResetEmail(email: email);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('パスワードリセットメールを送信しました。')),
+      );
+    } on FirebaseAuthException catch (e) {
+      String errorMessage;
+      if (e.code == 'user-not-found') {
+        errorMessage = 'このメールアドレスは登録されていません。';
+      } else {
+        errorMessage = 'エラーが発生しました: ${e.message}';
+      }
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMessage)));
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('予期しないエラーが発生しました: $e')),
+      );
+    }
+  }
+
+
 
   Future<void> _signInWithGoogle() async {
     try {
@@ -93,7 +213,7 @@ class _LoginPageState extends State<LoginPage> {
                 const SizedBox(height: 16),
                 TextField(
                   controller: _passwordController,
-                  obscureText: true,
+                  obscureText: !_isPasswordVisible, // フラグに基づいて表示・非表示を切り替える
                   onChanged: (value) {
                     setState(() {
                       password = value;
@@ -107,15 +227,28 @@ class _LoginPageState extends State<LoginPage> {
                       borderRadius: BorderRadius.circular(8),
                       borderSide: BorderSide.none,
                     ),
-                    suffixIcon: Icon(Icons.visibility_off),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _isPasswordVisible
+                            ? Icons.visibility // 表示中
+                            : Icons.visibility_off, // 非表示中
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _isPasswordVisible = !_isPasswordVisible; // 表示状態を切り替える
+                        });
+                      },
+                    ),
                   ),
                 ),
+
                 const SizedBox(height: 8),
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
-                    onPressed: () {
+                    onPressed: () async{
                       // Handle forgotten password
+                      _showPasswordResetDialog();
                     },
                     child: const Text(
                       'パスワードを忘れた',
@@ -129,25 +262,45 @@ class _LoginPageState extends State<LoginPage> {
                   child: ElevatedButton(
                     onPressed: () async {
                       try {
-                        await FirebaseAuth.instance.signInWithEmailAndPassword(
+                        UserCredential userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
                           email: email,
                           password: password,
                         );
-                        Navigator.pushAndRemoveUntil(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const FolderListPage(
-                              title: 'ホーム',
+
+                        User? user = userCredential.user;
+                        if (user != null) {
+                          // メールアドレスが未確認の場合
+                          if (!user.emailVerified) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('メールアドレスが確認されていません。確認してください。')),
+                            );
+                            await FirebaseAuth.instance.signOut(); // サインアウト
+                            return; // 処理を終了
+                          }
+
+                          // 確認済みの場合はホーム画面に遷移
+                          Navigator.pushAndRemoveUntil(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const FolderListPage(title: 'ホーム'),
                             ),
-                          ),
-                              (Route<dynamic> route) => false,
-                        );
+                                (Route<dynamic> route) => false,
+                          );
+                        }
                       } on FirebaseAuthException catch (e) {
                         if (e.code == 'user-not-found') {
-                          print('No user found for that email.');
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('メールアドレスが登録されていません。')),
+                          );
                         } else if (e.code == 'wrong-password') {
-                          print('Wrong password provided for that user.');
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('パスワードが間違っています。')),
+                          );
                         }
+                      } catch (e) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('エラーが発生しました: $e')),
+                        );
                       }
                     },
                     style: ElevatedButton.styleFrom(
