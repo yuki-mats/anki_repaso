@@ -491,11 +491,7 @@ class _AnswerPageState extends State<AnswerPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.gray50,
-      appBar: AppBar(
-          title: Text('あと${_questions.length - _currentQuestionIndex}問',
-            style: const TextStyle(color: AppColors.gray700),
-          ),
-      ),
+      appBar: AppBar(title: Text(widget.questionSetName)),
       body: _questions.isEmpty
           ? Center(
         child: Padding(

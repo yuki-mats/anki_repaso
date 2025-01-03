@@ -431,12 +431,12 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
               label: 'ホーム',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.not_started_outlined),
-              label: '開始',
-            ),
-            BottomNavigationBarItem(
               icon: Icon(Icons.search_rounded),
               label: '公式問題',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.chat),
+              label: '相談',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.account_circle),
