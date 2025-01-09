@@ -71,11 +71,9 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
 
     FocusScope.of(context).requestFocus(_questionTextFocusNode);
   }
-
   Future<void> _addQuestion() async {
     if (!_isSaveEnabled) return;
 
-    // ユーザーのログイン状態をチェック
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -87,27 +85,37 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
     final folderRef = widget.folderRef;
     final questionSetRef = widget.questionSetRef;
 
-    // データモデルに合わせて選択肢を設定
+    // questionTypeに応じてデータを作成
     final questionData = {
       'questionSetRef': questionSetRef,
       'questionText': _questionTextController.text.trim(),
-      'questionType': 'true_false',
-      'correctChoiceText': _trueFalseAnswer ? '正しい' : '間違い', // 正しい選択肢
-      'incorrectChoice1Text': !_trueFalseAnswer ? '正しい' : '間違い', // 誤答選択肢
+      'questionType': _selectedQuestionType, // 選択された問題タイプを保存
       'tags': [],
       'isFlagged': false,
-      'notes': null,
+      'isOfficialQuestion': false, // デフォルトで公式問題ではない
       'examYear': null,
-      'createdBy': FirebaseFirestore.instance.collection('users').doc(user.uid),
-      'updatedBy': FirebaseFirestore.instance.collection('users').doc(user.uid),
+      'createdByRef': FirebaseFirestore.instance.collection('users').doc(user.uid),
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     };
 
+    if (_selectedQuestionType == 'true_false') {
+      questionData.addAll({
+        'correctChoiceText': _trueFalseAnswer ? '正しい' : '間違い',
+        'incorrectChoice1Text': !_trueFalseAnswer ? '正しい' : '間違い',
+      });
+    } else if (_selectedQuestionType == 'single_choice') {
+      questionData.addAll({
+        'correctChoiceText': _correctChoiceTextController.text.trim(),
+        'incorrectChoice1Text': _incorrectChoice1TextController.text.trim(),
+        'incorrectChoice2Text': _incorrectChoice2TextController.text.trim(),
+        'incorrectChoice3Text': _incorrectChoice3TextController.text.trim(),
+      });
+    }
+
     try {
       await FirebaseFirestore.instance.collection('questions').add(questionData);
 
-      // 質問数を更新
       await _updateQuestionCounts(folderRef, questionSetRef);
 
       _clearFields();
@@ -197,7 +205,7 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
               child: Text(
                 '保存',
                 style: TextStyle(
-                  color: _isSaveEnabled ? Colors.white : Colors.white.withOpacity(0.5),
+                  color: _isSaveEnabled ? AppColors.blue500 : Colors.white,
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                 ),

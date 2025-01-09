@@ -1,11 +1,14 @@
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:repaso/question_add_page.dart';
+import 'package:repaso/question_set_add_page.dart';
 import 'app_colors.dart';
 import 'question_edit_page.dart';
 
-class QuestionListPage extends StatelessWidget {
+class QuestionListPage extends StatefulWidget {
   final DocumentSnapshot folder;
   final DocumentSnapshot questionSet;
   final String questionSetName;
@@ -17,12 +20,18 @@ class QuestionListPage extends StatelessWidget {
     required this.questionSetName,
   }) : super(key: key);
 
+  @override
+  _QuestionListPageState createState() => _QuestionListPageState();
+}
+
+class _QuestionListPageState extends State<QuestionListPage> {
+
   void testDirectory() async {
     try {
       final directory = await getApplicationDocumentsDirectory();
-      print('Documents Directory: ${directory.path}');
+      debugPrint('Documents Directory: ${directory.path}');
     } catch (e) {
-      print('Error retrieving documents directory: $e');
+      debugPrint('Error retrieving documents directory: $e');
     }
   }
 
@@ -30,19 +39,137 @@ class QuestionListPage extends StatelessWidget {
     final file = File(filePath);
     final directory = file.parent;
     if (!await directory.exists()) {
-      await directory.create(recursive: true); // 必要に応じて親ディレクトリも作成
+      await directory.create(recursive: true);
     }
+  }
+
+  Future<void> _toggleFlag(DocumentSnapshot question) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      final questionUserStatsRef = FirebaseFirestore.instance
+          .collection('questions')
+          .doc(question.id)
+          .collection('questionUserStats')
+          .doc(user.uid);
+
+      final currentStats = await questionUserStatsRef.get();
+      final currentFlagState = currentStats.data()?['isFlagged'] ?? false;
+      final newFlagState = !currentFlagState;
+
+      await questionUserStatsRef.set({
+        'isFlagged': newFlagState,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      setState(() {
+        question.reference.update({'isFlagged': newFlagState});
+      });
+
+      debugPrint('Flag state updated for question: ${question.id}, isFlagged: $newFlagState');
+    } catch (e) {
+      debugPrint('Error toggling flag: $e');
+    }
+  }
+
+  void showBottomSheet(BuildContext context) {
+    showModalBottomSheet(
+      isScrollControlled: true,
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(12.0),
+          topRight: Radius.circular(12.0),
+        ),
+      ),
+      builder: (BuildContext context) {
+        return Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Container(
+            height: 250,
+            child: Column(
+              children: [
+                const SizedBox(height: 8),
+                _buildListTile(
+                  icon: Icons.check_box_outlined,
+                  color: AppColors.gray100,
+                  text: '問題の選択',
+                  onTap: () {},
+                ),
+                const SizedBox(height: 8),
+                _buildListTile(
+                  icon: Icons.add,
+                  color: AppColors.gray100,
+                  text: 'アプリから追加',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => QuestionAddPage(
+                          folderRef: widget.folder.reference,
+                          questionSetRef: widget.questionSet.reference,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 8),
+                _buildListTile(
+                  icon: Icons.upload,
+                  color: AppColors.gray100,
+                  text: 'ファイルから追加',
+                  onTap: () {},
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildListTile({
+    required IconData icon,
+    required Color color,
+    required String text,
+    required VoidCallback onTap,
+  }) {
+    return ListTile(
+      leading: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(100),
+        ),
+        child: Icon(icon, size: 22, color: AppColors.gray600),
+      ),
+      title: Text(text, style: const TextStyle(fontSize: 18)),
+      onTap: onTap,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(questionSetName),
+        title: Text(widget.questionSetName),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1.0),
           child: Container(
-            color: AppColors.gray300,
+            decoration: BoxDecoration(
+              color: AppColors.gray300,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  spreadRadius: 1,
+                  blurRadius: 3,
+                  offset: const Offset(0, 1),
+                ),
+              ],
+            ),
             height: 1.0,
           ),
         ),
@@ -51,101 +178,18 @@ class QuestionListPage extends StatelessWidget {
             padding: const EdgeInsets.only(right: 16.0),
             child: IconButton(
               icon: const Icon(Icons.more_horiz),
-              onPressed: () {
-                // モーダルを表示
-                showModalBottomSheet(
-                  context: context,
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(24.0),
-                      topRight: Radius.circular(24.0),
-                    ),
-                  ),
-                  builder: (BuildContext context) {
-                    return Wrap(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(24, 48, 24, 24),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: Colors.grey[200], // 背景色
-                              borderRadius: BorderRadius.circular(16.0), // カードの角丸
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(8.0),
-                              child: ListTile(
-                                leading: const Icon(Icons.check_box_outlined, size: 36, color: Colors.blue),
-                                title: const Text(
-                                  '一括選択',
-                                  style: TextStyle(fontSize: 18),
-                                ),
-                                onTap: () {
-                                  Navigator.of(context).pop();
-                                  // 問題の追加処理
-                                },
-                              ),
-                            ),
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(24, 0.0, 24, 24),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: Colors.grey[200], // 背景色
-                              borderRadius: BorderRadius.circular(16.0), // カードの角丸
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(8.0),
-                              child: ListTile(
-                                leading: const Icon(Icons.upload, size: 36, color: Colors.green),
-                                title: const Text(
-                                  '問題をインポート',
-                                  style: TextStyle(fontSize: 18),
-                                ),
-                                onTap: () {
-
-                                },
-                              ),
-                            ),
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(24, 0.0, 24, 48),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: Colors.grey[200], // 背景色
-                              borderRadius: BorderRadius.circular(16.0), // カードの角丸
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(8.0),
-                              child: ListTile(
-                                leading: const Icon(Icons.download, size: 36, color: Colors.orange),
-                                title: const Text(
-                                  '問題をエクスポート',
-                                  style: TextStyle(fontSize: 18),
-                                ),
-                                onTap: () {
-
-                                },
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                );
-              },
+              onPressed: () => showBottomSheet(context),
             ),
           ),
         ],
       ),
+      backgroundColor: AppColors.gray50,
       body: StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection("questions")
-              .where('questionSetRef', isEqualTo: questionSet.reference)
-              .snapshots(),
-          builder: (context, snapshot) {
+        stream: FirebaseFirestore.instance
+            .collection("questions")
+            .where('questionSetRef', isEqualTo: widget.questionSet.reference)
+            .snapshots(),
+        builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -165,103 +209,115 @@ class QuestionListPage extends StatelessWidget {
               final questionText = question['questionText'] is String
                   ? question['questionText']
                   : '問題なし';
-
-              // correctChoiceTextを取得
               final correctAnswer = question['correctChoiceText'] as String? ?? '正解なし';
 
-              return GestureDetector(
-                onTap: () {
-                  // QuestionEditPageへ遷移
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => QuestionEditPage(
-                        question: question,
-                      ),
-                    ),
-                  );
-                },
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.grey.withOpacity(0.3),
-                          spreadRadius: 2,
-                          blurRadius: 5,
-                          offset: const Offset(0, 3), // Shadow position
-                        ),
-                      ],
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                "問",
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.blue,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  questionText,
-                                  style: const TextStyle(fontSize: 16),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                "答",
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.green,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  correctAnswer, // 正しい答えを表示
-                                  style: const TextStyle(fontSize: 16),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.bookmark_border),
-                                onPressed: () {
-                                  // お気に入り登録処理
-                                },
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
+              return _buildQuestionItem(
+                context: context,
+                question: question,
+                questionText: questionText,
+                correctAnswer: correctAnswer,
               );
             },
           );
-          },
+        },
       ),
+    );
+  }
+
+  Widget _buildQuestionItem({
+    required BuildContext context,
+    required DocumentSnapshot question,
+    required String questionText,
+    required String correctAnswer,
+  }) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => QuestionEditPage(
+              question: question,
+            ),
+          ),
+        );
+      },
+      child: Padding(
+        padding: const EdgeInsets.only(left: 16.0, right: 16.0, top: 16.0),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                spreadRadius: 1,
+                blurRadius: 3,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.only(left: 16.0, right: 16.0, top: 16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildQuestionAnswerRow(label: "問", text: questionText, labelColor: Colors.blue),
+                const SizedBox(height: 16),
+                _buildQuestionAnswerRow(label: "答", text: correctAnswer, labelColor: Colors.green),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    IconButton(
+                      icon: Icon(
+                        question['isFlagged'] == true ? Icons.bookmark : Icons.bookmark_outline,
+                        color: AppColors.gray400,
+                      ),
+                      onPressed: () async {
+                        await _toggleFlag(question);
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuestionAnswerRow({
+    required String label,
+    required String text,
+    required Color labelColor,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Container(
+          alignment: Alignment.center,
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: labelColor.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(100),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: labelColor,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(fontSize: 16),
+          ),
+        ),
+      ],
     );
   }
 }

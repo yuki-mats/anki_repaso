@@ -120,8 +120,8 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
                 '保存',
                 style: TextStyle(
                   color: _questionTextController.text.trim().isNotEmpty
-                      ? Colors.white
-                      : Colors.white.withOpacity(0.5),
+                      ? AppColors.blue500
+                      : Colors.white,
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                 ),

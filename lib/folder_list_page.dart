@@ -199,44 +199,52 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
       },
     );
   }
-
   void showFolderOptionsModal(BuildContext context, DocumentSnapshot folder) {
     showModalBottomSheet(
-      context: context,
       isScrollControlled: true,
+      context: context,
+      backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(24.0),
-          topRight: Radius.circular(24.0),
+          topLeft: Radius.circular(12.0),
+          topRight: Radius.circular(12.0),
         ),
       ),
       builder: (BuildContext context) {
-        return Wrap(
-          children: [
-            // モーダルの上部にフォルダ情報を表示
-            Padding(
-              padding: const EdgeInsets.fromLTRB(46, 36, 24, 12),
-              child: Row(
-                children: [
-                  const Icon(Icons.folder, size: 36, color: AppColors.blue500),
-                  const SizedBox(width: 16),
-                  Text(
+        return Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Container(
+            height: 220,
+            child: Column(
+              children: [
+                ListTile(
+                  leading:
+                  Icon(
+                      Icons.folder,
+                      size: 32,
+                      color: AppColors.blue500,
+                    ),
+                  title: Text(
                     folder['name'],
-                    style: const TextStyle(fontSize: 20),
+                    style: const TextStyle(fontSize: 18),
                   ),
-                ],
-              ),
-            ),
-            const Divider(height: 1, color: AppColors.gray100), // 区切り線
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
-              child: Container(
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
+                ),
+                SizedBox(height: 8),
+                const Divider(height: 1, color: AppColors.gray100),
+                SizedBox(height: 8),
+                Container(
                   child: ListTile(
-                    leading: const Icon(Icons.quiz_sharp,
-                        size: 36,
-                        color: AppColors.gray800),
+                    leading: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: AppColors.gray100,
+                        borderRadius: BorderRadius.circular(100),
+                      ),
+                      child: const Icon(Icons.quiz_sharp,
+                          size: 22,
+                          color: AppColors.gray600),
+                    ),
                     title: const Text('問題集の追加', style: TextStyle(fontSize: 18)),
                     onTap: () {
                       Navigator.of(context).pop();
@@ -244,18 +252,20 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                     },
                   ),
                 ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 48),
-              child: Container(
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
+                SizedBox(height: 8),
+                Container(
                   child: ListTile(
-                    leading: const Icon(
-                        Icons.edit_outlined,
-                        size: 36,
-                        color: AppColors.gray800),
+                    leading:  Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: AppColors.gray100,
+                        borderRadius: BorderRadius.circular(100),
+                      ),
+                      child: const Icon(Icons.edit_outlined,
+                          size: 22,
+                          color: AppColors.gray600),
+                    ),
                     title: const Text('フォルダ名の編集', style: TextStyle(fontSize: 18)),
                     onTap: () {
                       Navigator.of(context).pop();
@@ -263,9 +273,9 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                     },
                   ),
                 ),
-              ),
+              ],
             ),
-          ],
+          ),
         );
       },
     );
@@ -472,17 +482,13 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                             width: 40,
                             height: 40,
                             decoration: BoxDecoration(
-                              color: AppColors.blue500, // 背景色
-                              borderRadius: BorderRadius.circular(8), // 角を丸くする
-                              border: Border.all(
-                                color: AppColors.blue200, // 枠線の色
-                                width: 1.0, // 枠線の太さ
-                              ),
+                              color: AppColors.blue200, // 背景色
+                              borderRadius: BorderRadius.circular(100), // 角を丸くする
                             ),
                             child: Icon(
                               Icons.star,
-                              size: 24, // アイコンのサイズを調整
-                              color: Colors.white,
+                              size: 22, // アイコンのサイズを調整
+                              color: AppColors.blue500,
                             ),
                           ),
                         ),
@@ -614,44 +620,6 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
             ],
           ),
         ),
-        bottomNavigationBar: Container(
-          decoration: const BoxDecoration(
-            border: Border(
-              top: BorderSide(
-                color: AppColors.gray300, // 線の色
-                width: 1.0, // 線の太さ
-              ),
-            ),
-          ),
-          child: BottomNavigationBar(
-            type: BottomNavigationBarType.fixed,
-            onTap: (index) {
-              if (index == 1)  {
-                // 学習を開始する
-              } else if (index == 3) {
-                showSettingsModal(context);
-              }
-            },
-            items: const [
-              BottomNavigationBarItem(
-                icon: Icon(Icons.home),
-                label: 'ホーム',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.search_rounded),
-                label: '公式問題',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.chat),
-                label: '相談',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.account_circle),
-                label: 'アカウント',
-              ),
-            ],
-          ),
-        ),
         floatingActionButton: Padding(
           padding: const EdgeInsets.only(bottom: 8.0, right: 16.0), // Positioned above the BottomNavigationBar
           child: FloatingActionButton(
@@ -661,6 +629,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
               } else if (_tabController.index == 1) {
                 navigateToAddStudySetPage(context);
               }
+
             },
             backgroundColor: AppColors.blue500,
             shape: RoundedRectangleBorder(

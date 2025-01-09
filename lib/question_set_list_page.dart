@@ -1,11 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:repaso/folder_list_page.dart';
 import 'package:repaso/question_set_add_page.dart';
 import 'package:repaso/question_set_edit_page.dart';
 import 'app_colors.dart';
 import 'learning_analytics_page.dart';
 import 'lobby_page.dart';
+import 'my_page.dart';
 import 'question_add_page.dart';
 import 'answer_page.dart'; // AnswerPageのインポートを追加
 import 'question_list_page.dart'; // QuestionListPageのインポートを追加
@@ -196,7 +198,7 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
         return Padding(
           padding: const EdgeInsets.all(16.0),
           child: Container(
-            height: 310,
+            height: 360,
             child: Column(
               children: [
                 ListTile(
@@ -204,17 +206,13 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: AppColors.blue500, // 背景色
-                      borderRadius: BorderRadius.circular(8), // 角を丸くする
-                      border: Border.all(
-                        color: AppColors.blue200, // 枠線の色
-                        width: 1.0, // 枠線の太さ
-                      ),
+                      color: AppColors.blue200, // 背景色
+                      borderRadius: BorderRadius.circular(100), // 角を丸くする
                     ),
                     child: Icon(
                       Icons.quiz_rounded,
-                      size: 24, // アイコンのサイズを調整
-                      color: Colors.white,
+                      size: 22, // アイコンのサイズを調整
+                      color: AppColors.blue500,
                     ),
                   ),
                   title: Text(
@@ -224,36 +222,21 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                 ),
                 SizedBox(height: 8),
                 const Divider(height: 1, color: AppColors.gray100), // 区切り線
+                SizedBox(height: 16),
                 Container(
                   child: ListTile(
-                    leading: const Icon(Icons.add,
-                        size: 40,
-                        color: AppColors.gray600),
-                    title: const Text('問題の追加', style: TextStyle(fontSize: 18)),
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      navigateToQuestionAddPage(context, folder.reference, questionSet.reference);
-                    },
-                  ),
-                ),
-                Container(
-                  child: ListTile(
-                    leading: const Icon(Icons.edit_outlined,
-                        size: 40,
-                        color: AppColors.gray600),
-                    title: const Text('名前を変更', style: TextStyle(fontSize: 18)),
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      navigateToQuestionSetsEditPage(context, folder, questionSet);
-                    },
-                  ),
-                ),
-                Container(
-                  child: ListTile(
-                    leading: const Icon(
-                        Icons.list,
-                        size: 40,
-                        color: AppColors.gray600),
+                    leading: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: AppColors.gray100, // 背景色
+                        borderRadius: BorderRadius.circular(100), // 角を丸くする
+                      ),
+                      child: const Icon(
+                          Icons.list,
+                          size: 22,
+                          color: AppColors.gray600),
+                    ),
                     title: const Text('問題の一覧', style: TextStyle(fontSize: 18)),
                     onTap: () {
                       Navigator.of(context).pop();
@@ -261,15 +244,67 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                     },
                   ),
                 ),
+                SizedBox(height: 8),
                 Container(
                   child: ListTile(
-                    leading: const Icon(Icons.show_chart_rounded,
-                        size: 40,
-                        color: AppColors.gray600),
+                    leading: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: AppColors.gray100, // 背景色
+                        borderRadius: BorderRadius.circular(100), // 角を丸くする
+                      ),
+                      child: const Icon(
+                          Icons.add,
+                          size: 22,
+                          color: AppColors.gray600),
+                    ),
+                    title: const Text('問題の追加', style: TextStyle(fontSize: 18)),
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      navigateToQuestionAddPage(context, folder.reference, questionSet.reference);
+                    },
+                  ),
+                ),
+                SizedBox(height: 8),
+                Container(
+                  child: ListTile(
+                    leading: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: AppColors.gray100, // 背景色
+                        borderRadius: BorderRadius.circular(100), // 角を丸くする
+                      ),
+                      child: const Icon(Icons.show_chart_rounded,
+                          size: 22,
+                          color: AppColors.gray600),
+                    ),
                     title: const Text('グラフの確認', style: TextStyle(fontSize: 18)),
                     onTap: () {
                       Navigator.of(context).pop();
                       navigateToLearningAnalyticsPage(context, questionSet);
+                    },
+                  ),
+                ),
+                SizedBox(height: 8),
+                Container(
+                  child: ListTile(
+                    leading: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: AppColors.gray100, // 背景色
+                        borderRadius: BorderRadius.circular(100), // 角を丸くする
+                      ),
+                      child: const Icon(Icons.edit_outlined,
+                          size: 22,
+                          color: AppColors.gray600),
+                    ),
+                    title: const Text('名前を変更', style: TextStyle(fontSize: 18)),
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      navigateToQuestionSetsEditPage(context, folder, questionSet);
                     },
                   ),
                 ),
@@ -292,7 +327,7 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1.0),
           child: Container(
-            color: AppColors.gray300,
+            color: AppColors.gray100,
             height: 1.0,
           ),
         ),
@@ -341,8 +376,8 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                                     width: 40,
                                     height: 40,
                                     decoration: BoxDecoration(
-                                      color: AppColors.blue500, // 背景色
-                                      borderRadius: BorderRadius.circular(8), // 角を丸くする
+                                      color: AppColors.blue200, // 背景色
+                                      borderRadius: BorderRadius.circular(100), // 角を丸くする
                                       border: Border.all(
                                         color: AppColors.blue200, // 枠線の色
                                         width: 1.0, // 枠線の太さ
@@ -350,8 +385,8 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                                     ),
                                     child: Icon(
                                       Icons.quiz_rounded,
-                                      size: 24, // アイコンのサイズを調整
-                                      color: Colors.white,
+                                      size: 22, // アイコンのサイズを調整
+                                      color: AppColors.blue500,
                                     ),
                                   ),
                                 ),
@@ -404,45 +439,6 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
               },
             );
           },
-        ),
-      ),
-
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          border: Border(
-            top: BorderSide(
-              color: AppColors.gray300, // 線の色
-              width: 1.0, // 線の太さ
-            ),
-          ),
-        ),
-        child: BottomNavigationBar(
-          type: BottomNavigationBarType.fixed,
-          onTap: (index) {
-            if (index == 1) {
-              navigateToQuestionSetAddPage(context, widget.folder);
-            } else if (index == 3) {
-              showSettingsModal(context);
-            }
-          },
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home),
-              label: 'ホーム',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.search_rounded),
-              label: '公式問題',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.chat),
-              label: '相談',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.account_circle),
-              label: 'アカウント',
-            ),
-          ],
         ),
       ),
         floatingActionButton:Padding(

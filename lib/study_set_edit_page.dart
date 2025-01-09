@@ -195,7 +195,7 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
               children: [
                 const Icon(
                   Icons.create,
-                  size: 30,
+                  size: 22,
                   color: AppColors.gray600,
                 ),
                 const SizedBox(width: 6),
@@ -214,7 +214,7 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
                 ),
               ],
             ),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 20),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 18),
             onTap: () async {
               final name = await Navigator.of(context).push(
                 MaterialPageRoute(
@@ -236,7 +236,7 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
               children: [
                 const Icon(
                   Icons.layers_rounded,
-                  size: 30,
+                  size: 22,
                   color: AppColors.gray600,
                 ),
                 const SizedBox(width: 6),
@@ -274,7 +274,7 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
                   ),
               ],
             ),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 20),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 18),
             onTap: () async {
               final result = await Navigator.of(context).push(
                 MaterialPageRoute(
@@ -300,7 +300,7 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
                   children: [
                     const Icon(
                       Icons.percent,
-                      size: 30,
+                      size: 22,
                       color: AppColors.gray600,
                     ),
                     const SizedBox(width: 6),
@@ -355,7 +355,7 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
                   padding: EdgeInsets.only(top: 4),
                   child: Icon(
                     Icons.bookmark,
-                    size: 30,
+                    size: 22,
                     color: AppColors.gray600,
                   ),
                 ),
@@ -385,7 +385,7 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
                   padding: EdgeInsets.only(top: 4.0),
                   child: Icon(
                     Icons.sort,
-                    size: 30,
+                    size: 22,
                     color: AppColors.gray600,
                   ),
                 ),
@@ -406,7 +406,7 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
                   ),
               ],
             ),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 20),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 18),
             onTap: () async {
               final selectedOrder = await Navigator.push(
                 context,
@@ -429,7 +429,7 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
               children: [
                 const Icon(
                   Icons.format_list_numbered,
-                  size: 30,
+                  size: 22,
                   color: AppColors.gray600,
                 ),
                 const SizedBox(width: 6),
@@ -447,7 +447,7 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
                   ),
               ],
             ),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 20),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 18),
             onTap: () async {
               final selectedCount = await Navigator.push(
                 context,

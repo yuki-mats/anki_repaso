@@ -9,7 +9,7 @@ import 'app_colors.dart';
 import 'completion_summary_page.dart';
 
 class AnswerPage extends StatefulWidget {
-  final DocumentReference folderRef;
+  final DocumentReference folderRef;  //問題が無い場合は新規作成画面に遷移するために必要。
   final DocumentReference questionSetRef;
   final String questionSetName;
 
@@ -25,65 +25,129 @@ class AnswerPage extends StatefulWidget {
 }
 
 class _AnswerPageState extends State<AnswerPage> {
-  List<DocumentSnapshot> _questions = [];
-  List<bool> _answerResults = [];
+  List<Map<String, dynamic>> questionsWithStats = []; // 型を修正
+  List<Map<String, dynamic>> _answerResults = [];
+  List<List<String>> _shuffledChoices = []; // ランダム順序を保持
   int _currentQuestionIndex = 0;
   String? _selectedAnswer;
   bool? _isAnswerCorrect;
   DateTime? _startedAt;
   DateTime? _answeredAt;
-  bool? _isFlagged; // 現在のフラグ状態
   String? _footerButtonType; // 現在のボタン状態 ('HardGoodEasy' or 'Next')
+  bool _isLoading = true;
 
 
   @override
   void initState() {
     super.initState();
-    _fetchQuestions();
-  }
-
-  Future<void> _fetchQuestions() async {
-    try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('questions')
-          .where('questionSetRef', isEqualTo: widget.questionSetRef)
-          .limit(10)
-          .get();
-
-      setState(() {
-        _questions = snapshot.docs;
-        if (_questions.isNotEmpty) {
-          _startedAt = DateTime.now(); // 最初の問題表示時刻を記録
-        }
-      });
-
-      // 最初の問題の isFlagged を取得
-      if (_questions.isNotEmpty) {
-        final firstQuestionId = _questions[0].id;
-        await _fetchFlagState(firstQuestionId);
-      }
-    } catch (e) {
-      print('Error fetching questions: $e');
-    }
+    _loadQuestionsWithStats(); // 新たに非同期処理を呼び出す
   }
 
 
-  Future<void> _fetchFlagState(String questionId) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+  Future<void> _loadQuestionsWithStats() async {
+    final result = await fetchQuestionsWithStats(
+      widget.questionSetRef,
+      FirebaseAuth.instance.currentUser!.uid,
+    );
 
-    final questionUserStatsRef = FirebaseFirestore.instance
-        .collection('questions')
-        .doc(questionId)
-        .collection('questionUserStats')
-        .doc(user.uid);
+    // 各問題の選択肢をシャッフル
+    List<List<String>> shuffledChoices = result.map((question) {
+      List<String> choices = [
+        question['correctChoiceText'],
+        question['incorrectChoice1Text'],
+        question['incorrectChoice2Text'],
+        question['incorrectChoice3Text']
+      ].where((choice) => choice != null).cast<String>().toList();
 
-    final snapshot = await questionUserStatsRef.get();
+      choices.shuffle(Random()); // ランダムに並び替え
+      return choices;
+    }).toList();
+
     setState(() {
-      _isFlagged = snapshot.exists ? snapshot['isFlagged'] ?? false : false;
+      questionsWithStats = result; // 問題データを保存
+      _shuffledChoices = shuffledChoices; // シャッフルされた選択肢を保存
+      _isLoading = false; // ローディングを非表示に
     });
   }
 
+
+  Future<List<Map<String, dynamic>>> fetchQuestionsWithStats(
+      DocumentReference questionSetRef, String userId) async {
+    try {
+      // 問題を10問取得
+      QuerySnapshot questionSnapshot = await FirebaseFirestore.instance
+          .collection('questions')
+          .where('questionSetRef', isEqualTo: questionSetRef)
+          .limit(10)
+          .get();
+
+      print("Fetched Questions:");
+      for (var doc in questionSnapshot.docs) {
+        print("Question ID: ${doc.id}, Data: ${doc.data()}");
+      }
+
+      // 取得した質問のリファレンス一覧を取得
+      List<DocumentReference> questionRefs =
+      questionSnapshot.docs.map((doc) => doc.reference).toList();
+      print("Question References: ${questionRefs.map((ref) => ref.path).toList()}");
+
+      // 並列でquestionUserStatsを取得
+      List<Future<DocumentSnapshot?>> statFutures = questionRefs.map((ref) {
+        return ref
+            .collection('questionUserStats')
+            .doc(userId)
+            .get()
+            .then((doc) => doc.exists ? doc : null);
+      }).toList();
+
+      List<DocumentSnapshot?> statSnapshots = await Future.wait(statFutures);
+
+      print("Fetched Question User Stats:");
+      for (int i = 0; i < statSnapshots.length; i++) {
+        if (statSnapshots[i] != null) {
+          print("Stats for Question ID: ${questionRefs[i].id}, Data: ${statSnapshots[i]!.data()}");
+        } else {
+          print("Stats for Question ID: ${questionRefs[i].id} not found.");
+        }
+      }
+
+      // データを結合して返却
+      List<Map<String, dynamic>> questionsWithStats = [];
+      for (int i = 0; i < questionRefs.length; i++) {
+        final questionData =
+        questionSnapshot.docs[i].data() as Map<String, dynamic>; // 質問データ
+        final statData =
+            statSnapshots[i]?.data() as Map<String, dynamic>? ?? {}; // 統計データ
+
+        // すべてのフィールドを結合
+        questionsWithStats.add({
+          'questionId': questionSnapshot.docs[i].id,
+          ...questionData, // /questionsのすべてのフィールドを追加
+          'isFlagged': statData['isFlagged'] ?? false,
+          'attemptCount': statData['attemptCount'] ?? 0,
+          'correctCount': statData['correctCount'] ?? 0,
+          'accuracy': (statData['attemptCount'] != null &&
+              statData['correctCount'] != null &&
+              statData['attemptCount'] != 0)
+              ? (statData['correctCount'] / statData['attemptCount']) * 100
+              : null,
+          'totalStudyTime': statData['totalStudyTime'] ?? 0,
+          'memoryLevelStats': statData['memoryLevelStats'] ?? {},
+          'memoryLevelRatios': statData['memoryLevelRatios'] ?? {},
+        });
+      }
+
+      print("Combined Data (Questions with Stats):");
+      for (var item in questionsWithStats) {
+        print(item); // 各質問の詳細を表示
+      }
+
+      return questionsWithStats;
+    } catch (e) {
+      print('Error fetching questions and stats: $e');
+      return [];
+    }
+  }
 
   Future<void> _saveAnswer(String questionId, bool isAnswerCorrect, DateTime answeredAt, DateTime? nextStartedAt,
       {required String memoryLevel}) async {
@@ -115,7 +179,7 @@ class _AnswerPageState extends State<AnswerPage> {
         'postAnswerTime': postAnswerTime,
         'isCorrect': isAnswerCorrect,
         'selectedChoice': _selectedAnswer,
-        'correctChoice': _questions[_currentQuestionIndex]['correctChoiceText'],
+        'correctChoice': questionsWithStats[_currentQuestionIndex]['correctChoiceText'],
         'memoryLevel': memoryLevel,
         'createdAt': FieldValue.serverTimestamp(),
       });
@@ -344,20 +408,23 @@ class _AnswerPageState extends State<AnswerPage> {
 
   void _handleAnswerSelection(
       BuildContext context, String selectedChoice) {
-    final correctChoiceText = _questions[_currentQuestionIndex]['correctChoiceText'];
+    final correctChoiceText = questionsWithStats[_currentQuestionIndex]['correctChoiceText'];
+    final questionId = questionsWithStats[_currentQuestionIndex]['questionId'];
 
     setState(() {
       _selectedAnswer = selectedChoice;
       _isAnswerCorrect = (correctChoiceText == selectedChoice);
       _answeredAt = DateTime.now(); // 解答時間を記録
-      _answerResults.add(_isAnswerCorrect!); // 正誤を記録
+      _answerResults.add({
+        'questionId': questionId,
+        'isCorrect': _isAnswerCorrect!,
+      }); // questionIdと正誤を記録
     });
 
     // フィードバック表示
     _showFeedbackAndNextQuestion(
-
       _isAnswerCorrect!,
-      _questions[_currentQuestionIndex]['questionText'],
+      questionsWithStats[_currentQuestionIndex]['questionText'],
       correctChoiceText,
       selectedChoice,
     );
@@ -372,7 +439,7 @@ class _AnswerPageState extends State<AnswerPage> {
   }
 
   void _nextQuestion(DateTime nextStartedAt) {
-    if (_currentQuestionIndex < _questions.length - 1) {
+    if (_currentQuestionIndex < questionsWithStats.length - 1) {
       // 次の問題に即時遷移
       setState(() {
         _currentQuestionIndex++;
@@ -382,16 +449,18 @@ class _AnswerPageState extends State<AnswerPage> {
       });
 
       // Firestore処理をバックグラウンドで実行
-      final nextQuestionId = _questions[_currentQuestionIndex].id;
-      _fetchFlagState(nextQuestionId); // 非同期でフラグ状態を更新
+      final nextQuestionId = questionsWithStats[_currentQuestionIndex]['questionId'];
     } else {
       _navigateToCompletionSummaryPage();
     }
   }
-
   void _navigateToCompletionSummaryPage() {
-    final totalQuestions = _questions.length;
-    final correctAnswers = _answerResults.where((result) => result).length;
+    final totalQuestions = questionsWithStats.length;
+    final correctAnswers = _answerResults.where((result) => result['isCorrect'] == true).length;
+
+    // _answerResultsの内容を出力
+    print('Navigating to CompletionSummaryPage...');
+    print('Answer Results: $_answerResults'); // ここで内容を確認
 
     Navigator.pushReplacement(
       context,
@@ -400,24 +469,17 @@ class _AnswerPageState extends State<AnswerPage> {
           totalQuestions: totalQuestions,
           correctAnswers: correctAnswers,
           incorrectAnswers: totalQuestions - correctAnswers,
-          onRetryAll: () {
-            _retryAll(); // 全て再試行
-          },
-          onRetryIncorrect: () {
-            _retryIncorrect(); // 間違いのみ再試行
-          },
           onViewResults: () {
-            // ReviewAnswersPageへの遷移を追加
             Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (context) => ReviewAnswersPage(
-                  results: _questions.asMap().entries.map((entry) {
+                  results: questionsWithStats.asMap().entries.map((entry) {
                     final index = entry.key;
                     final question = entry.value;
 
                     return {
-                      'isCorrect': _answerResults[index],
+                      'isCorrect': _answerResults[index]['isCorrect'],
                       'questionText': question['questionText'],
                       'userAnswer': _selectedAnswer,
                       'correctAnswer': question['correctChoiceText'],
@@ -436,63 +498,48 @@ class _AnswerPageState extends State<AnswerPage> {
   }
 
 
-  void _retryAll() {
-    setState(() {
-      _currentQuestionIndex = 0;
-      _selectedAnswer = null;
-      _isAnswerCorrect = null;
-      _answerResults.clear(); // 回答履歴をクリア
-    });
-  }
-
-  void _retryIncorrect() {
-    final incorrectQuestions = _questions
-        .asMap()
-        .entries
-        .where((entry) => !_answerResults[entry.key]) // Use entry.key for the index
-        .map((entry) => entry.value) // Use entry.value for the actual question
-        .toList();
-
-    setState(() {
-      _questions = incorrectQuestions;
-      _currentQuestionIndex = 0;
-      _selectedAnswer = null;
-      _isAnswerCorrect = null;
-      _answerResults.clear(); // 再試行用に履歴をクリア
-    });
-  }
-
   Future<void> _toggleFlag() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    final questionId = _questions[_currentQuestionIndex].id;
+    final questionId = questionsWithStats[_currentQuestionIndex]['questionId'];
     final questionUserStatsRef = FirebaseFirestore.instance
         .collection('questions')
         .doc(questionId)
         .collection('questionUserStats')
         .doc(user.uid);
 
-    final newFlagState = !(_isFlagged ?? false);
+    // フラグ状態を切り替え
+    final newFlagState = !questionsWithStats[_currentQuestionIndex]['isFlagged'];
 
+    // Firestoreを更新
     await questionUserStatsRef.set({
       'isFlagged': newFlagState,
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
+    // UIを更新
     setState(() {
-      _isFlagged = newFlagState; // UI を更新
+      questionsWithStats[_currentQuestionIndex]['isFlagged'] = newFlagState;
     });
   }
-
-
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.gray50,
-      appBar: AppBar(title: Text(widget.questionSetName)),
-      body: _questions.isEmpty
+      appBar: AppBar(title: Text(
+        //のこりの問題数を表示
+        'あと${questionsWithStats.length - _currentQuestionIndex}問',
+        style: const TextStyle(color: AppColors.gray700),
+      )),
+      body: _isLoading
+          ? Center(
+        child: CircularProgressIndicator(
+          valueColor: const AlwaysStoppedAnimation(AppColors.blue500),
+        ),
+      )
+          : questionsWithStats.isEmpty
           ? Center(
         child: Padding(
           padding: const EdgeInsets.all(16.0),
@@ -547,7 +594,7 @@ class _AnswerPageState extends State<AnswerPage> {
           : Column(
         children: [
           LinearProgressIndicator(
-            value: (_currentQuestionIndex + 1) / _questions.length,
+            value: (_currentQuestionIndex + 1) / questionsWithStats.length,
             minHeight: 10,
             backgroundColor: AppColors.gray50,
             valueColor: const AlwaysStoppedAnimation(AppColors.blue500),
@@ -580,8 +627,7 @@ class _AnswerPageState extends State<AnswerPage> {
                         Expanded(
                           child: Align(
                             alignment: Alignment.center,
-                            child: Text(
-                              _questions[_currentQuestionIndex]['questionText'],
+                            child: Text(questionsWithStats[_currentQuestionIndex]['questionText'],
                               style: const TextStyle(fontSize: 18),
                               textAlign: TextAlign.start,
                             ),
@@ -590,13 +636,22 @@ class _AnswerPageState extends State<AnswerPage> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(
-                              '正答率',
-                              style: const TextStyle(fontSize: 16, color: Colors.grey),
+                            Column(
+                              children: [
+                                Text(
+                                  '正答率',
+                                  style: const TextStyle(fontSize: 16, color: Colors.grey),
+                                ),
+                                Text(
+                                  '${questionsWithStats[_currentQuestionIndex]['accuracy']?.toStringAsFixed(0) ?? '-'}%',
+                                  style: const TextStyle(fontSize: 16, color: Colors.grey),
+                                ),
+                                SizedBox(height: 8),
+                              ],
                             ),
                             IconButton(
                               icon: Icon(
-                                _isFlagged == true ? Icons.bookmark : Icons.bookmark_outline,
+                                questionsWithStats[_currentQuestionIndex]['isFlagged'] == true ? Icons.bookmark : Icons.bookmark_outline,
                                 size:28,
                                 color: Colors.grey,
                               ),
@@ -611,32 +666,33 @@ class _AnswerPageState extends State<AnswerPage> {
               ],
             ),
           ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: _questions[_currentQuestionIndex]['questionType'] == 'true_false'
-                ? Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                buildTrueFalseWidget(
+          Expanded(
+            child: SingleChildScrollView(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                child: questionsWithStats[_currentQuestionIndex]['questionType'] == 'true_false'
+                    ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start, // 必要に応じて調整
+                  children: [
+                    buildTrueFalseWidget(
+                      context: context,
+                      correctChoiceText: questionsWithStats[_currentQuestionIndex]['correctChoiceText'],
+                      selectedChoiceText: _selectedAnswer ?? '',
+                      questionId: questionsWithStats[_currentQuestionIndex]['questionId'],
+                      handleAnswerSelection: _handleAnswerSelection,
+                    ),
+                  ],
+                )
+                    : buildSingleChoiceWidget(
                   context: context,
-                  correctChoiceText: _questions[_currentQuestionIndex]['correctChoiceText'],
-                  selectedChoiceText: _selectedAnswer ?? '',
-                  questionId: _questions[_currentQuestionIndex].id,
+                  questionText: questionsWithStats[_currentQuestionIndex]['questionText'],
+                  correctChoiceText: questionsWithStats[_currentQuestionIndex]['correctChoiceText'],
+                  questionId: questionsWithStats[_currentQuestionIndex]['questionId'],
                   handleAnswerSelection: _handleAnswerSelection,
                 ),
-              ],
-            )
-                : buildSingleChoiceWidget(
-              context: context,
-              questionText: _questions[_currentQuestionIndex]['questionText'],
-              correctChoiceText: _questions[_currentQuestionIndex]['correctChoiceText'],
-              incorrectChoice1Text: _questions[_currentQuestionIndex]['incorrectChoice1Text'],
-              incorrectChoice2Text: _questions[_currentQuestionIndex]['incorrectChoice2Text'],
-              incorrectChoice3Text: _questions[_currentQuestionIndex]['incorrectChoice3Text'],
-              questionId: _questions[_currentQuestionIndex].id,
-              handleAnswerSelection: _handleAnswerSelection,
-            ),
 
+              ),
+            ),
           ),
         ],
       ),
@@ -659,7 +715,7 @@ class _AnswerPageState extends State<AnswerPage> {
                   onPressed: () {
                     final nextStartedAt = DateTime.now();
                     _saveAnswer(
-                      _questions[_currentQuestionIndex].id,
+                      questionsWithStats[_currentQuestionIndex]['questionId'],
                       _isAnswerCorrect!,
                       _answeredAt!,
                       nextStartedAt,
@@ -694,7 +750,7 @@ class _AnswerPageState extends State<AnswerPage> {
           onPressed: () {
             final nextStartedAt = DateTime.now();
             _saveAnswer(
-              _questions[_currentQuestionIndex].id,
+              questionsWithStats[_currentQuestionIndex]['questionId'],
               _isAnswerCorrect!,
               _answeredAt!,
               nextStartedAt,
@@ -826,58 +882,86 @@ class _AnswerPageState extends State<AnswerPage> {
     required BuildContext context,
     required String questionText,
     required String correctChoiceText,
-    String? incorrectChoice1Text,
-    String? incorrectChoice2Text,
-    String? incorrectChoice3Text,
     required String questionId,
     required void Function(BuildContext context, String selectedChoice) handleAnswerSelection,
   }) {
-    List<String> getShuffledChoices() {
-      final choices = [
-        correctChoiceText,
-        if (incorrectChoice1Text != null) incorrectChoice1Text,
-        if (incorrectChoice2Text != null) incorrectChoice2Text,
-        if (incorrectChoice3Text != null) incorrectChoice3Text,
-      ];
-      choices.shuffle(Random());
-      return choices;
-    }
-
-    final shuffledChoices = getShuffledChoices();
+    // 現在の質問のシャッフル済み選択肢を取得
+    final currentChoices = _shuffledChoices[_currentQuestionIndex];
+    final isAnswerSelected = _selectedAnswer != null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        ...shuffledChoices.map((choice) {
-          return GestureDetector(
-            onTap: () {
+      children: currentChoices.map((choice) {
+        final isSelected = _selectedAnswer == choice;
+        final isCorrect = choice == correctChoiceText;
+        final isIncorrect = isSelected && !isCorrect;
+
+        return GestureDetector(
+          onTap: () {
+            if (!isAnswerSelected) {
               handleAnswerSelection(context, choice);
-            },
-            child: Container(
-              margin: const EdgeInsets.symmetric(vertical: 8),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                // 背景を白にする。
-                color: Colors.white,
-                border: Border.all(color: Colors.grey),
-                borderRadius: BorderRadius.circular(8),
+            }
+          },
+          child: Container(
+            margin: const EdgeInsets.symmetric(vertical: 8),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: isAnswerSelected
+                  ? (isCorrect && isSelected
+                  ? Colors.white
+                  : isIncorrect
+                  ? Colors.white
+                  : Colors.white)
+                  : Colors.white,
+              border: Border.all(
+                color: isAnswerSelected
+                    ? (isCorrect && isSelected
+                    ? Colors.green.shade300
+                    : isIncorrect
+                    ? Colors.orange.shade300
+                    : isCorrect
+                    ? Colors.green.shade300
+                    : Colors.black26)
+                    : Colors.black26,
+                width: isSelected ? 2.0 : 1.0,
               ),
-              child: Row(
-                children: [
-                  Icon(Icons.circle_outlined, color: Colors.grey),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      choice,
-                      style: const TextStyle(fontSize: 16),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  isAnswerSelected
+                      ? (isCorrect
+                      ? Icons.check
+                      : isIncorrect
+                      ? Icons.close
+                      : null)
+                      : null,
+                  color: isAnswerSelected
+                      ? (isCorrect
+                      ? Colors.green
+                      : isIncorrect
+                      ? Colors.orange
+                      : Colors.transparent)
+                      : Colors.transparent,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    choice,
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: isAnswerSelected && (isCorrect || isIncorrect)
+                          ? Colors.black
+                          : Colors.black,
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          );
-        }).toList(),
-      ],
+          ),
+        );
+      }).toList(),
     );
   }
 }
