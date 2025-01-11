@@ -4,6 +4,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:repaso/folder_list_page.dart';
 import 'package:repaso/sign_up_page.dart';
 import 'app_colors.dart';
+import 'main.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({Key? key}) : super(key: key);
@@ -163,7 +164,7 @@ class _LoginPageState extends State<LoginPage> {
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(
-          builder: (context) => const FolderListPage(title: 'ホーム'),
+          builder: (context) => const MainPage(),
         ),
             (Route<dynamic> route) => false,
       );
@@ -193,6 +194,51 @@ class _LoginPageState extends State<LoginPage> {
                   style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 24),
+                SizedBox(
+                  height: 56,
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.g_mobiledata_sharp, color: Colors.black, size: 44),
+                    label: const Text('Googleでログイン', style: TextStyle(color: Colors.black, fontSize: 18)),
+                    onPressed: _signInWithGoogle,
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Colors.grey),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  height: 56,
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.apple, color: Colors.black, size: 32),
+                    label: const Text('Appleでログイン', style: TextStyle(color: Colors.black, fontSize: 18)),
+                    onPressed: () {
+                      // Apple login process
+                    },
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Colors.grey),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 32),
+                Row(
+                  children: const [
+                    Expanded(child: Divider(color: Colors.grey)),
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8.0),
+                      child: Text('または、メールアドレスでログイン'),
+                    ),
+                    Expanded(child: Divider(color: Colors.grey)),
+                  ],
+                ),
+                const SizedBox(height: 32),
                 TextField(
                   controller: _emailController,
                   onChanged: (value) {
@@ -282,7 +328,7 @@ class _LoginPageState extends State<LoginPage> {
                           Navigator.pushAndRemoveUntil(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => const FolderListPage(title: 'ホーム'),
+                              builder: (context) => const MainPage(),
                             ),
                                 (Route<dynamic> route) => false,
                           );
@@ -313,51 +359,6 @@ class _LoginPageState extends State<LoginPage> {
                     child: const Text(
                       'ログインする',
                       style: TextStyle(fontSize: 16, color: Colors.white),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Row(
-                  children: const [
-                    Expanded(child: Divider(color: Colors.grey)),
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 8.0),
-                      child: Text('または'),
-                    ),
-                    Expanded(child: Divider(color: Colors.grey)),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  height: 56,
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.g_mobiledata_sharp, color: Colors.black, size: 44),
-                    label: const Text('Googleでログイン', style: TextStyle(color: Colors.black, fontSize: 18)),
-                    onPressed: _signInWithGoogle,
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Colors.grey),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  height: 56,
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.apple, color: Colors.black, size: 32),
-                    label: const Text('Appleでログイン', style: TextStyle(color: Colors.black, fontSize: 18)),
-                    onPressed: () {
-                      // Apple login process
-                    },
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Colors.grey),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
                     ),
                   ),
                 ),

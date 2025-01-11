@@ -2,8 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:repaso/privacy_policy_page.dart';
 import 'package:repaso/terms_of_service_page.dart';
-import 'app_colors.dart';
-import 'folder_list_page.dart';
+import 'package:repaso/lobby_page.dart'; // LobbyPageをインポート
 
 class MyPage extends StatelessWidget {
   @override
@@ -89,6 +88,22 @@ class MyPage extends StatelessWidget {
                 builder: (context) => const TermsOfServicePage(),
               ),
             );
+          },
+        ),
+        Divider(),
+        ListTile(
+          //ログアウトのiconを追加
+          leading: Icon(Icons.logout),
+          title: Text('ログアウト'),
+          onTap: () {
+            FirebaseAuth.instance.signOut().then((_) {
+              // ログアウト後にLobbyPageへ遷移し、スタックをすべてクリア
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (context) => const LobbyPage()),
+                    (route) => false,
+              );
+            });
           },
         ),
       ],

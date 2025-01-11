@@ -4,6 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:repaso/folder_list_page.dart';
+import 'package:repaso/main.dart';
 import 'package:repaso/privacy_policy_page.dart';
 import 'package:repaso/terms_of_service_page.dart';
 import 'app_colors.dart';
@@ -23,6 +24,8 @@ class SignUpPageState extends State<SignUpPage> {
   bool isPasswordVisible = false;
   bool isConfirmPasswordVisible = false;
   String? passwordError;
+  bool isTermsAccepted = false; // 利用規約およびプライバシーポリシーに同意したかどうかを管理
+
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn(scopes: []);
@@ -62,7 +65,7 @@ class SignUpPageState extends State<SignUpPage> {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) => const FolderListPage(title: "ホーム"),
+            builder: (context) => MainPage(),
           ),
         );
       }
@@ -102,8 +105,10 @@ class SignUpPageState extends State<SignUpPage> {
   bool get isSignUpEnabled {
     return _passwordController.text == _confirmPasswordController.text &&
         passwordError == null &&
-        _passwordController.text.isNotEmpty;
+        _passwordController.text.isNotEmpty &&
+        isTermsAccepted; // 同意チェックボックスの状態を確認
   }
+
 
   Future<void> _signUpUser() async {
     try {
@@ -177,6 +182,64 @@ class SignUpPageState extends State<SignUpPage> {
                 const Text(
                   '新規登録',
                   style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  height: 56,
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.g_mobiledata_sharp, color: Colors.black, size: 44),
+                    label: const Text('Googleで登録', style: TextStyle(color: Colors.black, fontSize: 18)),
+                    onPressed: () {
+                      if (isTermsAccepted) {
+                        signInWithGoogle();
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('利用規約およびプライバシーポリシーに同意してください。')),
+                        );
+                      }
+                    },
+                    style: OutlinedButton.styleFrom(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 22),
+                SizedBox(
+                  height: 56,
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.apple, color: Colors.black, size: 32),
+                    label: const Text('Appleで登録', style: TextStyle(color: Colors.black, fontSize: 18)),
+                    onPressed: () {
+                      if (isTermsAccepted) {
+                        // Appleで登録処理
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('利用規約およびプライバシーポリシーに同意してください。')),
+                        );
+                      }
+                    },
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: const [
+                    Expanded(child: Divider(color: Colors.grey)),
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8.0),
+                      child: Text('または、メールアドレスで登録'),
+                    ),
+                    Expanded(child: Divider(color: Colors.grey)),
+                  ],
                 ),
                 const SizedBox(height: 24),
                 TextField(
@@ -254,53 +317,49 @@ class SignUpPageState extends State<SignUpPage> {
                 ),
                 const SizedBox(height: 32),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
+                    Checkbox(
+                      //色を変更
+                      checkColor: Colors.white,
+                      activeColor: AppColors.blue600,
+                      value: isTermsAccepted,
+                      onChanged: (bool? value) {
+                        setState(() {
+                          isTermsAccepted = value ?? false;
+                        });
+                      },
+                    ),
                     Flexible(
                       child: RichText(
                         text: TextSpan(
-                          text: '「',
-                          style: const TextStyle(color: Colors.black),
+                          text: '利用規約',
+                          style: const TextStyle(color: AppColors.blue600, decoration: TextDecoration.underline),
+                          recognizer: TapGestureRecognizer()
+                            ..onTap = () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => const TermsOfServicePage()),
+                              );
+                            },
                           children: [
-                            TextSpan(
-                              text: '利用規約',
-                              style: const TextStyle(
-                                color: AppColors.blue600,
-                                decoration: TextDecoration.underline,
-                              ),
-                              recognizer: TapGestureRecognizer()
-                                ..onTap = () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => const TermsOfServicePage(),
-                                    ),
-                                  );
-                                },
-                            ),
                             const TextSpan(
-                              text: '」および「',
-                              style: TextStyle(color: Colors.black),
+                              text: ' および ',
+                              style: TextStyle(color: Colors.black, decoration: TextDecoration.none),
                             ),
                             TextSpan(
                               text: 'プライバシーポリシー',
-                              style: const TextStyle(
-                                color: AppColors.blue600,
-                                decoration: TextDecoration.underline,
-                              ),
+                              style: const TextStyle(color: AppColors.blue600, decoration: TextDecoration.underline),
                               recognizer: TapGestureRecognizer()
                                 ..onTap = () {
                                   Navigator.push(
                                     context,
-                                    MaterialPageRoute(
-                                      builder: (context) => const PrivacyPolicyPage(),
-                                    ),
+                                    MaterialPageRoute(builder: (context) => const PrivacyPolicyPage()),
                                   );
                                 },
                             ),
                             const TextSpan(
-                              text: '」に同意して',
-                              style: TextStyle(color: Colors.black),
+                              text: ' に同意する',
+                              style: TextStyle(color: Colors.black, decoration: TextDecoration.none),
                             ),
                           ],
                         ),
@@ -312,7 +371,7 @@ class SignUpPageState extends State<SignUpPage> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: isSignUpEnabled ? _signUpUser : null,
+                    onPressed: isSignUpEnabled ? _signUpUser : null, // チェックボックスに基づいて有効/無効を切り替え
                     style: ElevatedButton.styleFrom(
                       backgroundColor: isSignUpEnabled ? AppColors.blue600 : Colors.grey,
                       shape: RoundedRectangleBorder(
@@ -346,52 +405,6 @@ class SignUpPageState extends State<SignUpPage> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                Row(
-                  children: const [
-                    Expanded(child: Divider(color: Colors.grey)),
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 8.0),
-                      child: Text('または'),
-                    ),
-                    Expanded(child: Divider(color: Colors.grey)),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  height: 56,
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.g_mobiledata_sharp, color: Colors.black, size: 44),
-                    label: const Text('Googleで登録', style: TextStyle(color: Colors.black, fontSize: 18)),
-                    onPressed: () {
-                      signInWithGoogle();
-                    },
-                    style: OutlinedButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  height: 56,
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.apple, color: Colors.black, size: 32),
-                    label: const Text('Appleで登録', style: TextStyle(color: Colors.black, fontSize: 18)),
-                    onPressed: () {
-                      // Appleで登録処理
-                    },
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 40),
               ],
             ),
           ),
