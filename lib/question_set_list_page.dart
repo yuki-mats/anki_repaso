@@ -69,65 +69,6 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
     }
   }
 
-  // 設定モーダルを表示するメソッドを追加
-  void showSettingsModal(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(24.0),
-          topRight: Radius.circular(24.0),
-        ),
-      ),
-      builder: (BuildContext context) {
-        return Wrap(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 48, 24, 24),
-              child: Container(
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: ListTile(
-                    leading: const Icon(Icons.logout,
-                        size: 36,
-                        color: AppColors.gray800
-                        ),
-                    title: const Text('ログアウト', style: TextStyle(fontSize: 18)),
-                    onTap: () async {
-                      Navigator.of(context).pop();
-                      await FirebaseAuth.instance.signOut();
-                      Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(builder: (context) => const LobbyPage()),
-                            (route) => false,
-                      );
-                    },
-                  ),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 48),
-              child: Container(
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: ListTile(
-                    leading: const Icon(Icons.error_outline, size: 36),
-                    title: const Text('開発中', style: TextStyle(fontSize: 18)),
-                    onTap: () {
-
-                    },
-                  ),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   void navigateToQuestionSetsEditPage(BuildContext context, DocumentSnapshot folder, DocumentSnapshot questionSet) async {
     final result = await Navigator.push(
       context,
@@ -217,7 +158,9 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                   ),
                   title: Text(
                     questionSet['name'],
-                    style: const TextStyle(fontSize: 18),
+                    style: const TextStyle(fontSize: 16),
+                    overflow: TextOverflow.ellipsis, // 長すぎる場合は省略記号を表示
+                    maxLines: 2, // 最大1行に制限
                   ),
                 ),
                 SizedBox(height: 8),
@@ -237,7 +180,7 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                           size: 22,
                           color: AppColors.gray600),
                     ),
-                    title: const Text('問題の一覧', style: TextStyle(fontSize: 18)),
+                    title: const Text('問題の一覧', style: TextStyle(fontSize: 16)),
                     onTap: () {
                       Navigator.of(context).pop();
                       navigateToQuestionListPage(context, folder, questionSet);
@@ -259,7 +202,7 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                           size: 22,
                           color: AppColors.gray600),
                     ),
-                    title: const Text('問題の追加', style: TextStyle(fontSize: 18)),
+                    title: const Text('問題の追加', style: TextStyle(fontSize: 16)),
                     onTap: () {
                       Navigator.of(context).pop();
                       navigateToQuestionAddPage(context, folder.reference, questionSet.reference);
@@ -280,7 +223,7 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                           size: 22,
                           color: AppColors.gray600),
                     ),
-                    title: const Text('グラフの確認', style: TextStyle(fontSize: 18)),
+                    title: const Text('グラフの確認', style: TextStyle(fontSize: 16)),
                     onTap: () {
                       Navigator.of(context).pop();
                       navigateToLearningAnalyticsPage(context, questionSet);
@@ -301,7 +244,7 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                           size: 22,
                           color: AppColors.gray600),
                     ),
-                    title: const Text('名前を変更', style: TextStyle(fontSize: 18)),
+                    title: const Text('名前を変更', style: TextStyle(fontSize: 16)),
                     onTap: () {
                       Navigator.of(context).pop();
                       navigateToQuestionSetsEditPage(context, folder, questionSet);
@@ -315,8 +258,6 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
       },
     );
   }
-
-
 
 
   @override
@@ -395,16 +336,17 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       SizedBox(
-                                        height: 52,
+                                        height: 48,
                                         child: Align(
                                           alignment: Alignment.centerLeft,
                                           child: Text(
                                             questionSet['name'],
-                                            style: const TextStyle(fontSize: 18),
+                                            style: const TextStyle(fontSize: 16),
+                                            overflow: TextOverflow.ellipsis, // 長すぎる場合は省略記号を表示
+                                            maxLines: 1, // 最大1行に制限
                                           ),
                                         ),
                                       ),
-                                      const SizedBox(height: 8),
                                       Row(
                                         children: [
                                           const Icon(

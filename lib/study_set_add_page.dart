@@ -74,6 +74,8 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
   late List<String> questionSetIds;
   late int? numberOfQuestions;
   late String? selectedQuestionOrder;
+  List<String> _cachedQuestionSetNames = [];
+
 
   final Map<String, String> orderOptions = {
     "random": "ランダム",
@@ -89,6 +91,7 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
     "lastStudiedAscending": "最終学習日の昇順",
   };
 
+  @override
   @override
   void initState() {
     super.initState();
@@ -108,7 +111,15 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
       _correctRateRange = const RangeValues(0, 100);
       _isFlagged = false;
     }
+    _fetchAndCacheQuestionSetNames();
   }
+
+  Future<void> _fetchAndCacheQuestionSetNames() async {
+    _cachedQuestionSetNames = await _fetchQuestionSetNames(questionSetIds);
+    setState(() {}); // キャッシュ取得後に再描画
+  }
+
+
 
   Future<List<String>> _fetchQuestionSetNames(List<String> ids) async {
     try {
@@ -188,7 +199,7 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
                   color: (questionSetIds.isNotEmpty && studySetName != null && studySetName!.isNotEmpty)
                       ? AppColors.blue500 // 有効時の色
                       : Colors.grey,      // 無効時の色
-                  fontSize: 18,
+                  fontSize: 16,
                 ),
               ),
               onPressed: (questionSetIds.isNotEmpty && studySetName != null && studySetName!.isNotEmpty)
@@ -211,16 +222,16 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
                 ),
                 const SizedBox(width: 6),
                 const SizedBox(
-                  width: 100,
+                  width: 80,
                   child: Text(
                     "セット名",
-                    style: TextStyle(fontSize: 18),
+                    style: TextStyle(fontSize: 16),
                   ),
                 ),
                 Expanded(
                   child: Text(
                     (studySetName?.trim().isEmpty ?? true) ? "入力してください。" : studySetName!,
-                    style: const TextStyle(fontSize: 18),
+                    style: const TextStyle(fontSize: 16),
                   ),
                 ),
               ],
@@ -241,7 +252,6 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
               }
             },
           ),
-          const SizedBox(height: 16),
           ListTile(
             title: Row(
               children: [
@@ -252,35 +262,18 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
                 ),
                 const SizedBox(width: 6),
                 const SizedBox(
-                  width: 100,
+                  width: 80,
                   child: Text(
                     "問題集",
-                    style: TextStyle(fontSize: 18),
+                    style: TextStyle(fontSize: 16),
                   ),
                 ),
-                if (questionSetIds.isNotEmpty) // 選択された問題集がある場合のみ表示
+                if (_cachedQuestionSetNames.isNotEmpty)
                   Expanded(
-                    child: FutureBuilder<List<String>>(
-                      future: _fetchQuestionSetNames(questionSetIds), // Firestoreから名前を取得
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState == ConnectionState.waiting) {
-                          return const Text(
-                            '読み込み中...',
-                            style: TextStyle(fontSize: 18, color: Colors.grey),
-                          );
-                        }
-                        if (snapshot.hasError) {
-                          return const Text(
-                            'エラーが発生しました',
-                            style: TextStyle(fontSize: 18, color: Colors.red),
-                          );
-                        }
-                        final names = snapshot.data ?? [];
-                        return Text(
-                          names.join(', '), // 名前を「,」でつなげる
-                          style: const TextStyle(fontSize: 18),
-                        );
-                      },
+                    child: Text(
+                      _cachedQuestionSetNames.join(', '),
+                      style: const TextStyle(fontSize: 16),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
               ],
@@ -298,12 +291,11 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
               if (result != null && result is List<String>) {
                 setState(() {
                   questionSetIds = result; // 選択されたIDを更新
+                  _fetchAndCacheQuestionSetNames(); // 問題集名を再取得
                 });
               }
             },
           ),
-
-          const SizedBox(height: 16),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -317,15 +309,15 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
                     ),
                     const SizedBox(width: 6),
                     const SizedBox(
-                      width: 100,
+                      width: 80,
                       child: Text(
                         "正答率",
-                        style: TextStyle(fontSize: 18),
+                        style: TextStyle(fontSize: 16),
                       ),
                     ),
                     Text(
                       "${_correctRateRange.start.toInt()} 〜 ${_correctRateRange.end.toInt()}%",
-                      style: const TextStyle(fontSize: 20),
+                      style: const TextStyle(fontSize: 16),
                     ),
                   ],
                 ),
@@ -359,9 +351,9 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          SwitchListTile(
-            title: const Row(
+          ListTile(
+            leading: const Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Padding(
                   padding: EdgeInsets.only(top: 4),
@@ -374,22 +366,31 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
                 SizedBox(width: 6),
                 Text(
                   "フラグあり",
-                  style: TextStyle(fontSize: 18),
+                  style: TextStyle(fontSize: 16),
                 ),
               ],
             ),
-            value: _isFlagged,
-            activeColor: Colors.white,
-            activeTrackColor: AppColors.blue500,
-            inactiveThumbColor: Colors.black,
-            inactiveTrackColor: Colors.white,
-            onChanged: (value) {
+            trailing: Transform.scale(
+              scale: 0.8, // スイッチの大きさを変更（1.0がデフォルト）
+              child: Switch(
+                value: _isFlagged,
+                activeColor: Colors.white,
+                activeTrackColor: AppColors.blue500,
+                inactiveThumbColor: Colors.black,
+                inactiveTrackColor: Colors.white,
+                onChanged: (value) {
+                  setState(() {
+                    _isFlagged = value;
+                  });
+                },
+              ),
+            ),
+            onTap: () {
               setState(() {
-                _isFlagged = value;
+                _isFlagged = !_isFlagged;
               });
             },
           ),
-          const SizedBox(height: 16),
           ListTile(
             title: Row(
               children: [
@@ -403,17 +404,17 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
                 ),
                 const SizedBox(width: 6),
                 const SizedBox(
-                  width: 100,
+                  width: 80,
                   child: Text(
                     "出題順",
-                    style: TextStyle(fontSize: 18),
+                    style: TextStyle(fontSize: 16),
                   ),
                 ),
                 if (selectedQuestionOrder != null) // 出題順が選択されている場合のみ表示
                   Expanded(
                     child: Text(
                       orderOptions[selectedQuestionOrder] ?? '', // 日本語名を取得して表示
-                      style: const TextStyle(fontSize: 20),
+                      style: const TextStyle(fontSize: 16),
                     ),
                   ),
               ],
@@ -435,7 +436,6 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
               }
             },
           ),
-          const SizedBox(height: 16),
           ListTile(
             title: Row(
               children: [
@@ -446,16 +446,16 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
                 ),
                 const SizedBox(width: 6),
                 const SizedBox(
-                  width: 100,
+                  width: 80,
                   child: Text(
                     "出題数",
-                    style: TextStyle(fontSize: 18),
+                    style: TextStyle(fontSize: 16),
                   ),
                 ),
                 if (numberOfQuestions != null) // 出題数が選択されている場合のみ表示
                   Text(
                     "$numberOfQuestions 問",
-                    style: const TextStyle(fontSize: 20),
+                    style: const TextStyle(fontSize: 16),
                   ),
               ],
             ),

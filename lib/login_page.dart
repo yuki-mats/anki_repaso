@@ -1,8 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:repaso/folder_list_page.dart';
 import 'package:repaso/sign_up_page.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'app_colors.dart';
 import 'main.dart';
 
@@ -22,6 +22,7 @@ class _LoginPageState extends State<LoginPage> {
 
   String email = "";
   String password = "";
+
 
   @override
   void dispose() {
@@ -147,6 +148,38 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  Future<void> _signInWithApple() async {
+    try {
+      final result = await SignInWithApple.getAppleIDCredential(
+        scopes: [
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
+      );
+      final oauthProvider = OAuthProvider('apple.com');
+      final credential = oauthProvider.credential(
+        idToken: result.identityToken,
+        accessToken: result.authorizationCode,
+      );
+      await FirebaseAuth.instance.signInWithCredential(credential);
+
+      // トラッキング許可リクエストを追加
+      await requestTrackingPermission();
+
+
+      // サインイン成功後にMainPageに遷移
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const MainPage(),
+        ),
+      );
+    } catch (e) {
+      // エラー処理
+      print('Apple Sign-In Error: $e');
+    }
+  }
+
 
 
   Future<void> _signInWithGoogle() async {
@@ -161,6 +194,10 @@ class _LoginPageState extends State<LoginPage> {
       );
 
       await _auth.signInWithCredential(credential);
+
+      // トラッキング許可リクエストを追加
+      await requestTrackingPermission();
+
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(
@@ -178,6 +215,12 @@ class _LoginPageState extends State<LoginPage> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
+        //テキストの表示を設定
+        title: const Text('ログイン',
+            style: TextStyle(
+                color: Colors.black,
+                fontSize: 24,)
+        ),
         backgroundColor: Colors.white,
         elevation: 0,
       ),
@@ -188,14 +231,9 @@ class _LoginPageState extends State<LoginPage> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const SizedBox(height: 40),
-                const Text(
-                  'ログイン',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 18),
                 SizedBox(
-                  height: 56,
+                  height: 48,
                   width: double.infinity,
                   child: OutlinedButton.icon(
                     icon: const Icon(Icons.g_mobiledata_sharp, color: Colors.black, size: 44),
@@ -211,13 +249,14 @@ class _LoginPageState extends State<LoginPage> {
                 ),
                 const SizedBox(height: 16),
                 SizedBox(
-                  height: 56,
+                  height: 48,
                   width: double.infinity,
                   child: OutlinedButton.icon(
                     icon: const Icon(Icons.apple, color: Colors.black, size: 32),
                     label: const Text('Appleでログイン', style: TextStyle(color: Colors.black, fontSize: 18)),
                     onPressed: () {
                       // Apple login process
+                      _signInWithApple();
                     },
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: Colors.grey),
@@ -324,6 +363,8 @@ class _LoginPageState extends State<LoginPage> {
                             return; // 処理を終了
                           }
 
+                          await requestTrackingPermission();
+
                           // 確認済みの場合はホーム画面に遷移
                           Navigator.pushAndRemoveUntil(
                             context,
@@ -354,7 +395,7 @@ class _LoginPageState extends State<LoginPage> {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
                     child: const Text(
                       'ログインする',

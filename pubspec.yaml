@@ -43,12 +43,20 @@ dependencies:
   cloud_firestore: ^5.5.1
   firebase_auth: ^5.3.2
   google_sign_in: ^6.2.2
+  sign_in_with_apple: ^6.1.4
+  crypto: ^3.0.6
   fl_chart: ^0.69.2
   syncfusion_flutter_charts: ^28.1.33
   intl: ^0.19.0
   path_drawing: ^1.0.1
   url_launcher: ^6.3.1
   dotted_border: ^2.1.0
+  firebase_storage: ^12.4.0
+  image_picker: ^1.1.2
+  image: ^4.5.2
+  image_cropper: ^8.1.0
+  flutter_launcher_icons: ^0.14.2
+  app_tracking_transparency: ^2.0.6+1
 
 
 dev_dependencies:
@@ -66,12 +74,18 @@ dev_dependencies:
 # following page: https://dart.dev/tools/pub/pubspec
 
 # The following section is specific to Flutter packages.
+flutter_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/Icons.school.v3.png"
+
 flutter:
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
 
   # To add assets to your application, add an assets section, like this:
   # assets:

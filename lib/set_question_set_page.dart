@@ -1,7 +1,5 @@
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-
 import 'app_colors.dart';
 
 class SetQuestionSetPage extends StatefulWidget {
@@ -163,7 +161,6 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
         children: [
-          const SizedBox(height: 16),
           Expanded(
             child: Theme(
               data: Theme.of(context).copyWith(
@@ -189,7 +186,14 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
                         ),
                         const Icon(Icons.folder, color: AppColors.gray600),
                         const SizedBox(width: 8),
-                        Text(folderInfo['name']),
+                        Expanded(
+                          child: Text(
+                            folderInfo['name'],
+                            style: const TextStyle(fontSize: 16), // 必要に応じてフォントサイズを調整
+                            overflow: TextOverflow.ellipsis, // 長すぎる場合は省略記号を表示
+                            maxLines: 1, // 最大1行に制限
+                          ),
+                        ),
                       ],
                     ),
                     initiallyExpanded: expandedState[folderId] ?? false,
@@ -221,7 +225,14 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
                                 const Icon(Icons.layers_rounded, color: AppColors.gray600),
                               ],
                             ),
-                            title: Text(questionSet['name']),
+                            title: Expanded(
+                              child: Text(
+                                questionSet['name'],
+                                style: const TextStyle(fontSize: 16), // 必要に応じてフォントサイズを調整
+                                overflow: TextOverflow.ellipsis, // 長すぎる場合は省略記号を表示
+                                maxLines: 1, // 最大1行に制限
+                              ),
+                            ),
                           ),
                         ),
                       );

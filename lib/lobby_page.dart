@@ -38,7 +38,7 @@ class LobbyPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 const Text(
-                  'Anki Hub',
+                  'Anki plus',
                   style: TextStyle(
                     fontSize: 32,
                     fontWeight: FontWeight.bold,

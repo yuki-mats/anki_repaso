@@ -1,10 +1,128 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:repaso/privacy_policy_page.dart';
+import 'package:repaso/profile_edit_page.dart';
 import 'package:repaso/terms_of_service_page.dart';
 import 'package:repaso/lobby_page.dart'; // LobbyPageをインポート
 
-class MyPage extends StatelessWidget {
+class MyPage extends StatefulWidget {
+  @override
+  _MyPageState createState() => _MyPageState();
+}
+
+class _MyPageState extends State<MyPage> {
+  String profileImageUrl = 'https://firebasestorage.googleapis.com/v0/b/repaso-rbaqy4.appspot.com/o/profile_images%2FIcons.school.v3.png?alt=media&token=2fe984d6-b755-439e-a81e-afb8b707f495'; // 初期値
+  String userName = '未設定'; // 初期値
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUserData();
+  }
+
+  Future<void> _fetchUserData() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+
+      if (user != null) {
+        final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+
+        if (doc.exists) {
+          final data = doc.data();
+          setState(() {
+            profileImageUrl = data?['profileImageUrl'] ?? profileImageUrl;
+            userName = data?['name'] ?? userName;
+          });
+        } else {
+          print('ユーザードキュメントが存在しません');
+        }
+      } else {
+        print('ユーザーがログインしていません');
+      }
+    } catch (e) {
+      print('エラーが発生しました: $e');
+    }
+  }
+
+  Future<void> _reauthenticateAndDeleteAccount(BuildContext context) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return;
+    }
+
+    final email = user.email ?? '';
+    final passwordController = TextEditingController();
+
+    // 再認証用ダイアログを表示
+    final reauthenticate = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+          backgroundColor: Colors.white,
+          title: Text('再認証が必要です'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('アカウント削除には再認証が必要です。パスワードを入力してください。'),
+              SizedBox(height: 16),
+              TextField(
+                controller: passwordController,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: 'パスワード',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text('キャンセル', style: TextStyle(color: Colors.black87)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text('アカウントの削除', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (reauthenticate != true) {
+      return; // キャンセルされた場合
+    }
+
+    try {
+      // 再認証を実行
+      final credential = EmailAuthProvider.credential(
+        email: email,
+        password: passwordController.text,
+      );
+      await user.reauthenticateWithCredential(credential);
+
+      // アカウント削除処理
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).delete();
+      await user.delete();
+
+      // 成功時にログアウトしてロビー画面へ遷移
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => const LobbyPage()),
+            (route) => false,
+      );
+    } catch (e) {
+      print('アカウント削除時にエラーが発生しました: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('再認証またはアカウント削除に失敗しました。')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -31,22 +149,26 @@ class MyPage extends StatelessWidget {
       children: [
         CircleAvatar(
           radius: 40,
-          backgroundImage: AssetImage('assets/profile_placeholder.png'), // プロフィール画像
+          backgroundImage: NetworkImage(profileImageUrl),
         ),
         SizedBox(width: 16),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'ユーザー名',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 4),
-            Text(
-              FirebaseAuth.instance.currentUser!.email!,
-              style: TextStyle(fontSize: 16, color: Colors.grey),
-            ),
-          ],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                userName,
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                overflow: TextOverflow.ellipsis,
+              ),
+              SizedBox(height: 4),
+              Text(
+                FirebaseAuth.instance.currentUser?.email ?? 'メールアドレス未設定',
+                style: TextStyle(fontSize: 16, color: Colors.grey),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
         ),
       ],
     );
@@ -58,13 +180,20 @@ class MyPage extends StatelessWidget {
         ListTile(
           leading: Icon(Icons.person),
           title: Text('プロフィール編集'),
-          onTap: () {
-            // プロフィール編集画面へ遷移
+          onTap: () async {
+            final result = await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ProfileEditPage(),
+              ),
+            );
+            if (result == true) {
+              _fetchUserData();
+            }
           },
         ),
         Divider(),
         ListTile(
-          //プライバシーポリシーのiconを追加
           leading: Icon(Icons.privacy_tip_outlined),
           title: Text('プライバシーポリシー'),
           onTap: () {
@@ -78,7 +207,6 @@ class MyPage extends StatelessWidget {
         ),
         Divider(),
         ListTile(
-          //利用規約のiconを追加
           leading: Icon(Icons.library_books_outlined),
           title: Text('利用規約'),
           onTap: () {
@@ -92,12 +220,10 @@ class MyPage extends StatelessWidget {
         ),
         Divider(),
         ListTile(
-          //ログアウトのiconを追加
           leading: Icon(Icons.logout),
           title: Text('ログアウト'),
           onTap: () {
             FirebaseAuth.instance.signOut().then((_) {
-              // ログアウト後にLobbyPageへ遷移し、スタックをすべてクリア
               Navigator.pushAndRemoveUntil(
                 context,
                 MaterialPageRoute(builder: (context) => const LobbyPage()),
@@ -105,6 +231,12 @@ class MyPage extends StatelessWidget {
               );
             });
           },
+        ),
+        Divider(),
+        ListTile(
+          leading: Icon(Icons.delete_forever),
+          title: Text('アカウントの削除'),
+          onTap: () => _reauthenticateAndDeleteAccount(context),
         ),
       ],
     );

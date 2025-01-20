@@ -9,7 +9,6 @@ import 'package:repaso/study_set_answer_page.dart';
 import 'package:repaso/study_set_edit_page.dart' as EditPage; // 既存学習セット編集用
 import 'app_colors.dart';
 import 'folder_add_page.dart';
-import 'lobby_page.dart';
 
 class FolderListPage extends StatefulWidget {
   const FolderListPage({super.key, required this.title});
@@ -50,7 +49,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
         // フォルダデータを取得
         final folderSnapshot = await FirebaseFirestore.instance
             .collection("folders")
-            .where("userRoles.$userId", whereIn: ["owner", "editor", "reader"])
+            .where("userRoles.$userId", whereIn: ["owner", "editor", "viewer"])
             .get();
 
         // 学習セットデータを取得
@@ -102,23 +101,31 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
   void navigateToAddStudySetPage(BuildContext context) async {
     final studySet = AddPage.StudySet(
       name: '',
-      questionSetIds: [], // 初期値
-      numberOfQuestions: 10, // 初期値
-      selectedQuestionOrder: 'random', // 初期値
-      correctRateRange: const RangeValues(0, 100), // 初期値
-      isFlagged: false, // 初期値
+      questionSetIds: [],
+      numberOfQuestions: 10,
+      selectedQuestionOrder: 'random',
+      correctRateRange: const RangeValues(0, 100),
+      isFlagged: false,
     );
 
-    await Navigator.push(
+    final result = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => AddPage.StudySetAddPage(studySet: studySet),
       ),
     );
+
+    // 結果を確認してリストを更新
+    if (result == true) {
+      fetchFirebaseData(); // Firebaseデータを再取得してリストを更新
+    }
   }
 
+
+
+
   void navigateToEditStudySetPage(BuildContext context, String userId, String studySetId, EditPage.StudySet initialStudySet) async {
-    await Navigator.push(
+    final result = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => EditPage.StudySetEditPage(
@@ -128,7 +135,13 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
         ),
       ),
     );
+
+    // 結果を受け取ってリストを更新
+    if (result == true) {
+      fetchFirebaseData();
+    }
   }
+
 
   void navigateToFolderEditPage(BuildContext context, DocumentSnapshot folder) async {
     final result = await Navigator.push(
@@ -146,59 +159,6 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
     }
   }
 
-  void showStartModal(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(24.0),
-          topRight: Radius.circular(24.0),
-        ),
-      ),
-      builder: (BuildContext context) {
-        return Wrap(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 48, 24, 24),
-              child: Container(
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: ListTile(
-                    leading: const Icon(Icons.today_outlined,
-                        size: 36,
-                        color: AppColors.gray800),
-                    title: const Text('今日の学習', style: TextStyle(fontSize: 18)),
-                    onTap: () {
-                      Navigator.of(context).pop();
-                    },
-                  ),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0.0, 24, 48),
-              child: Container(
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: ListTile(
-                    leading: const Icon(Icons.settings,
-                        size: 36,
-                        color: AppColors.gray800),
-                    title: const Text('条件を設定', style: TextStyle(fontSize: 18)),
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      navigateToFolderAddPage(context);
-                    },
-                  ),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
   void showFolderOptionsModal(BuildContext context, DocumentSnapshot folder) {
     showModalBottomSheet(
       isScrollControlled: true,
@@ -226,7 +186,9 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                     ),
                   title: Text(
                     folder['name'],
-                    style: const TextStyle(fontSize: 18),
+                    style: const TextStyle(fontSize: 16),
+                    overflow: TextOverflow.ellipsis, // 長すぎる場合は省略記号を表示
+                    maxLines: 2, // 最大1行に制限
                   ),
                 ),
                 SizedBox(height: 8),
@@ -245,7 +207,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                           size: 22,
                           color: AppColors.gray600),
                     ),
-                    title: const Text('問題集の追加', style: TextStyle(fontSize: 18)),
+                    title: const Text('問題集の追加', style: TextStyle(fontSize: 16)),
                     onTap: () {
                       Navigator.of(context).pop();
                       navigateToQuestionSetsAddPage(context, folder);
@@ -266,7 +228,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                           size: 22,
                           color: AppColors.gray600),
                     ),
-                    title: const Text('フォルダ名の編集', style: TextStyle(fontSize: 18)),
+                    title: const Text('フォルダ名の編集', style: TextStyle(fontSize: 16)),
                     onTap: () {
                       Navigator.of(context).pop();
                       navigateToFolderEditPage(context, folder);
@@ -276,70 +238,6 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
               ],
             ),
           ),
-        );
-      },
-    );
-  }
-
-
-  void showSettingsModal(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(24.0),
-          topRight: Radius.circular(24.0),
-        ),
-      ),
-      builder: (BuildContext context) {
-        return Wrap(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 48, 24, 24),
-              child: Container(
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: ListTile(
-                    leading: const Icon(
-                      Icons.logout,
-                      size: 36,
-                      color: AppColors.gray800,
-                    ),
-                    title: const Text('ログアウト', style: TextStyle(fontSize: 18)),
-                    onTap: () async {
-                      Navigator.of(context).pop();
-                      await FirebaseAuth.instance.signOut();
-                      Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(builder: (context) => const LobbyPage()),
-                            (route) => false,
-                      );
-                    },
-                  ),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 48),
-              child: Container(
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: ListTile(
-                    leading: const Icon(
-                      Icons.error_outline,
-                      size: 36,
-                      color: AppColors.gray800,
-                    ),
-                    title: const Text('開発中', style: TextStyle(fontSize: 18)),
-                    onTap: () {
-                      // アカウント削除処理を追加可能
-                    },
-                  ),
-                ),
-              ),
-            ),
-          ],
         );
       },
     );
@@ -373,12 +271,12 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         const Padding(
-                          padding: EdgeInsets.only(left: 16.0, right: 16.0),
+                          padding: EdgeInsets.only(left: 16.0, right: 8.0),
                           child: SizedBox(
                             width: 40,
                             child: Icon(
                               Icons.folder,
-                              size: 32,
+                              size: 28,
                               color: AppColors.blue500,
                             ),
                           ),
@@ -388,16 +286,18 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               SizedBox(
-                                height: 52,
-                                child: Align(
-                                  alignment: Alignment.centerLeft,
+                                height: 40,
+                                child: Container(
+                                  alignment: Alignment.centerLeft, // 縦中央、左揃え
                                   child: Text(
                                     folder['name'],
-                                    style: const TextStyle(fontSize: 18),
+                                    style: const TextStyle(fontSize: 16),
+                                    overflow: TextOverflow.ellipsis, // 長すぎる場合は省略記号を表示
+                                    maxLines: 1, // 最大1行に制限
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 8),
+
                               Row(
                                 children: [
                                   const Icon(
@@ -497,16 +397,17 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               SizedBox(
-                                height: 52,
+                                height: 40,
                                 child: Align(
                                   alignment: Alignment.centerLeft,
                                   child: Text(
                                     studySet['name'] ?? '未設定',
-                                    style: const TextStyle(fontSize: 18),
+                                    style: const TextStyle(fontSize: 16),
+                                    overflow: TextOverflow.ellipsis, // 長すぎる場合は省略記号を表示
+                                    maxLines: 1, // 最大1行に制限
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 8),
                               Row(
                                 children: [
                                   const Icon(
@@ -552,7 +453,6 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                             navigateToEditStudySetPage(context, userId, studySetId, initialStudySet);
                           },
                         ),
-
                       ],
                     ),
                   ),
@@ -573,7 +473,8 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
     if (user == null) {
       return Scaffold(
         appBar: AppBar(title: Text(widget.title)),
-        body: Center(child: Text('ログインしてください')),
+        body:
+        Center(child: Text('ログインしてください')),
       );
     }
 
@@ -589,7 +490,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                 Text('ホーム'),
                 Icon(Icons.notifications_none_outlined,
                   color: AppColors.gray700,
-                  size: 30,
+                  size: 24,
                 ),
               ],
             ),
@@ -598,8 +499,8 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
             controller: _tabController,
             labelColor: AppColors.blue700,
             unselectedLabelColor: AppColors.gray900,
-            labelStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            unselectedLabelStyle: const TextStyle(fontSize: 18),
+            labelStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            unselectedLabelStyle: const TextStyle(fontSize: 16),
             indicator: const UnderlineTabIndicator(
               borderSide: BorderSide(color: AppColors.blue400, width: 4), // 下線の色と太さ
               insets: EdgeInsets.symmetric(horizontal: -32.0), // 下線の長さを調整（短く）

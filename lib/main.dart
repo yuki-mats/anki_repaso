@@ -1,12 +1,56 @@
+import 'package:app_tracking_transparency/app_tracking_transparency.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:repaso/folder_list_page.dart';
 import 'package:repaso/lobby_page.dart';
+import 'package:repaso/official_list_page.dart';
 import 'app_colors.dart';
 import 'firebase_options.dart';
 import 'my_page.dart';
+
+Future<void> requestTrackingPermission() async {
+  try {
+    // 現在のトラッキング許可状態を取得
+    final trackingStatus = await AppTrackingTransparency.trackingAuthorizationStatus;
+
+    if (trackingStatus == TrackingStatus.notDetermined) {
+      // 許可リクエストを表示
+      await AppTrackingTransparency.requestTrackingAuthorization();
+    }
+
+    // 許可リクエスト後の状態を再取得
+    final newStatus = await AppTrackingTransparency.trackingAuthorizationStatus;
+    print('Tracking Status: $newStatus');
+
+    // 状態に応じた処理を追加（必要に応じて）
+    switch (newStatus) {
+      case TrackingStatus.authorized:
+        print('ユーザーがトラッキングを許可しました。');
+        // 許可された場合の処理を追加
+        break;
+      case TrackingStatus.denied:
+        print('ユーザーがトラッキングを拒否しました。');
+        // 拒否された場合の処理を追加
+        break;
+      case TrackingStatus.notDetermined:
+        print('ユーザーがトラッキングの選択を行っていません。');
+        break;
+      case TrackingStatus.restricted:
+        print('トラッキングが制限されています。');
+        // 制限されている場合の処理を追加
+        break;
+      case TrackingStatus.notSupported:
+        print('トラッキングがサポートされていません。');
+        // サポートされていない場合の処理を追加
+        break;
+    }
+  } catch (e) {
+    // エラー発生時の処理
+    print('トラッキング許可リクエスト中にエラーが発生しました: $e');
+  }
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,42 +69,35 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    print('ThemeData: ${Theme.of(context)}');
-    print('BottomNavigationBar Theme: ${Theme.of(context).bottomNavigationBarTheme}');
-    print('BottomNavigationBar Background Color: ${Theme.of(context).bottomNavigationBarTheme.backgroundColor}');
-    print('Scaffold Background Color: ${Theme.of(context).scaffoldBackgroundColor}');
-
     final bool islogin = FirebaseAuth.instance.currentUser != null;
 
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
       title: 'Themed App',
       theme: ThemeData(
-        // AppBarのテーマ設定
         appBarTheme: const AppBarTheme(
           backgroundColor: Colors.white, // AppBar背景色
           foregroundColor: AppColors.gray900, // AppBarテキスト色
           titleTextStyle: TextStyle(
             color: AppColors.gray900, // テキスト色
-            fontSize: 20, // フォントサイズ
+            fontSize: 18, // フォントサイズ
             fontWeight: FontWeight.bold, // 太字
           ),
         ),
         scaffoldBackgroundColor: Colors.white, // 背景色を白に設定
-
-        // BottomNavigationBarのテーマ設定
         bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-          backgroundColor: Colors.white,// BottomNavigationBarの背景色
-          selectedItemColor: AppColors.blue500, // 選択されたアイコンと文字の色
-          unselectedItemColor: AppColors.gray600, // 非選択時のアイコンと文字の色
-          selectedIconTheme: IconThemeData(size: 32), // 選択されたアイコンのサイズ
-          unselectedIconTheme: IconThemeData(size: 32), // 非選択時のアイコンのサイズ
-          selectedLabelStyle: TextStyle(fontSize: 14), // 選択時のラベルスタイル
-          unselectedLabelStyle: TextStyle(fontSize: 14), // 非選択時のラベルスタイル
-          showSelectedLabels: true, // 選択時のラベルを表示
-          showUnselectedLabels: true, // 非選択時のラベルを表示
+          backgroundColor: Colors.white,
+          selectedItemColor: AppColors.blue500,
+          unselectedItemColor: AppColors.gray600,
+          selectedIconTheme: IconThemeData(size: 28),
+          unselectedIconTheme: IconThemeData(size: 28),
+          selectedLabelStyle: TextStyle(fontSize: 10),
+          unselectedLabelStyle: TextStyle(fontSize: 10),
+          showSelectedLabels: true,
+          showUnselectedLabels: true,
         ),
       ),
-      home: islogin ? const MainPage() : const LobbyPage(), // MainPageを設定
+      home: islogin ? const MainPage() : const LobbyPage(),
     );
   }
 }
@@ -73,20 +110,26 @@ class MainPage extends StatefulWidget {
 }
 
 class _MainPageState extends State<MainPage> {
+  @override
+  void initState() {
+    super.initState();
+    // Show tracking authorization dialog and ask for permission
+    WidgetsFlutterBinding.ensureInitialized().addPostFrameCallback((_) async {
+      await requestTrackingPermission();
+      final status = await AppTrackingTransparency.requestTrackingAuthorization();
+    });
+  }
   int _currentIndex = 0; // 現在のページインデックス
 
   final List<Widget> _pages = [
     FolderListPage(title: 'ホーム'), // ホームページ
-    Placeholder(), // 公式問題ページの仮ページ
-    Placeholder(), // 相談ページの仮ページ
-    MyPage(), // マイページ
+    OfficialListPage(), // 公式問題ページ
+    UnderDevelopmentPage(title: '相談'), // 相談ページ
+    MyPage(),
   ];
 
   @override
   Widget build(BuildContext context) {
-    // デバッグ情報を出力
-    print('BottomNavigationBar backgroundColor: ${Theme.of(context).bottomNavigationBarTheme.backgroundColor}');
-
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex, // 現在のページだけを表示
@@ -98,14 +141,14 @@ class _MainPageState extends State<MainPage> {
             BoxShadow(
               color: Colors.grey.withOpacity(0.5), // 影の色
               spreadRadius: 1, // 拡散の半径
-              blurRadius: 2.5,// ぼかしの量
+              blurRadius: 2.5, // ぼかしの量
               offset: const Offset(0, 3), // 影の位置
             ),
           ],
         ),
         child: BottomNavigationBar(
-          type: BottomNavigationBarType.fixed, // 位置を固定
-          backgroundColor: Colors.white, // 背景色を明示的に設定
+          type: BottomNavigationBarType.fixed,
+          backgroundColor: Colors.white,
           currentIndex: _currentIndex,
           onTap: (index) {
             setState(() {
@@ -140,3 +183,23 @@ class _MainPageState extends State<MainPage> {
   }
 }
 
+class UnderDevelopmentPage extends StatelessWidget {
+  final String title;
+
+  const UnderDevelopmentPage({Key? key, required this.title}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(title),
+      ),
+      body: const Center(
+        child: Text(
+          '現在、開発中です。',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.gray600),
+        ),
+      ),
+    );
+  }
+}

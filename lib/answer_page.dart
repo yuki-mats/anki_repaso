@@ -605,7 +605,7 @@ class _AnswerPageState extends State<AnswerPage> {
               children: [
                 Container(
                   width: double.infinity,
-                  height: 400,
+                  height: MediaQuery.of(context).size.height * 0.4, // 画面高さの40%を使用
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(8),
@@ -620,7 +620,7 @@ class _AnswerPageState extends State<AnswerPage> {
                           child: Padding(
                             padding: const EdgeInsets.only(right: 16.0),
                             child: Text(widget.questionSetName,
-                              style: const TextStyle(fontSize: 16, color: Colors.grey),
+                              style: const TextStyle(fontSize: 14, color: Colors.grey),
                             ),
                           ),
                         ),
@@ -628,7 +628,7 @@ class _AnswerPageState extends State<AnswerPage> {
                           child: Align(
                             alignment: Alignment.center,
                             child: Text(questionsWithStats[_currentQuestionIndex]['questionText'],
-                              style: const TextStyle(fontSize: 18),
+                              style: const TextStyle(fontSize: 14),
                               textAlign: TextAlign.start,
                             ),
                           ),
@@ -640,11 +640,11 @@ class _AnswerPageState extends State<AnswerPage> {
                               children: [
                                 Text(
                                   '正答率',
-                                  style: const TextStyle(fontSize: 16, color: Colors.grey),
+                                  style: const TextStyle(fontSize: 14, color: Colors.grey),
                                 ),
                                 Text(
                                   '${questionsWithStats[_currentQuestionIndex]['accuracy']?.toStringAsFixed(0) ?? '-'}%',
-                                  style: const TextStyle(fontSize: 16, color: Colors.grey),
+                                  style: const TextStyle(fontSize: 14, color: Colors.grey),
                                 ),
                                 SizedBox(height: 8),
                               ],
@@ -855,7 +855,7 @@ class _AnswerPageState extends State<AnswerPage> {
                   child: Text(
                     choice,
                     style: TextStyle(
-                      fontSize: 16,
+                      fontSize: 14,
                       color: isAnswerSelected && (isCorrect || isIncorrect)
                           ? Colors.black
                           : Colors.black,
@@ -950,7 +950,7 @@ class _AnswerPageState extends State<AnswerPage> {
                   child: Text(
                     choice,
                     style: TextStyle(
-                      fontSize: 16,
+                      fontSize: 14,
                       color: isAnswerSelected && (isCorrect || isIncorrect)
                           ? Colors.black
                           : Colors.black,

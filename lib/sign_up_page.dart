@@ -3,10 +3,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:repaso/folder_list_page.dart';
 import 'package:repaso/main.dart';
 import 'package:repaso/privacy_policy_page.dart';
 import 'package:repaso/terms_of_service_page.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'app_colors.dart';
 import 'login_page.dart';
 
@@ -76,6 +76,52 @@ class SignUpPageState extends State<SignUpPage> {
     }
   }
 
+  Future<User?> signInWithApple() async {
+    try {
+      final credential = await SignInWithApple.getAppleIDCredential(
+        scopes: [
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
+      );
+
+      final oauthCredential = OAuthProvider("apple.com").credential(
+        idToken: credential.identityToken,
+        accessToken: credential.authorizationCode,
+      );
+
+      final userCredential = await _auth.signInWithCredential(oauthCredential);
+      final User? user = userCredential.user;
+
+      if (user != null) {
+        // Firestoreにユーザー情報を保存
+        final DocumentReference userRef =
+        FirebaseFirestore.instance.collection('users').doc(user.uid);
+
+        await userRef.set({
+          'name': credential.givenName ?? 'Apple User',
+          'email': credential.email ?? '',
+          'createdQuestions': [],
+          'joinedGroups': [],
+          'createdAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => MainPage(),
+          ),
+        );
+      }
+      return user;
+    } catch (e) {
+      print("Error during Apple Sign In: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Appleサインインに失敗しました: $e')),
+      );
+      return null;
+    }
+  }
 
   Future<void> signOut() async {
     await _googleSignIn.signOut();
@@ -168,6 +214,11 @@ class SignUpPageState extends State<SignUpPage> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
+        title: const Text('新規登録',
+            style: TextStyle(
+              color: Colors.black,
+              fontSize: 24,)
+        ),
         backgroundColor: Colors.white,
         elevation: 0,
       ),
@@ -178,14 +229,9 @@ class SignUpPageState extends State<SignUpPage> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const SizedBox(height: 40),
-                const Text(
-                  '新規登録',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 18),
                 SizedBox(
-                  height: 56,
+                  height: 48,
                   width: double.infinity,
                   child: OutlinedButton.icon(
                     icon: const Icon(Icons.g_mobiledata_sharp, color: Colors.black, size: 44),
@@ -206,16 +252,16 @@ class SignUpPageState extends State<SignUpPage> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 22),
+                const SizedBox(height: 16),
                 SizedBox(
-                  height: 56,
+                  height: 48,
                   width: double.infinity,
                   child: OutlinedButton.icon(
                     icon: const Icon(Icons.apple, color: Colors.black, size: 32),
-                    label: const Text('Appleで登録', style: TextStyle(color: Colors.black, fontSize: 18)),
+                    label: const Text('Appleでログイン', style: TextStyle(color: Colors.black, fontSize: 18)),
                     onPressed: () {
                       if (isTermsAccepted) {
-                        // Appleで登録処理
+                        signInWithApple();
                       } else {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('利用規約およびプライバシーポリシーに同意してください。')),
@@ -223,7 +269,6 @@ class SignUpPageState extends State<SignUpPage> {
                       }
                     },
                     style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -315,7 +360,7 @@ class SignUpPageState extends State<SignUpPage> {
                         : null,
                   ),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 16),
                 Row(
                   children: [
                     Checkbox(
@@ -377,7 +422,7 @@ class SignUpPageState extends State<SignUpPage> {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
                     child: const Text(
                       '登録する',
