@@ -360,7 +360,7 @@ class SignUpPageState extends State<SignUpPage> {
                         : null,
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 32),
                 Row(
                   children: [
                     Checkbox(

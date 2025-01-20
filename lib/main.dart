@@ -80,7 +80,8 @@ class MyApp extends StatelessWidget {
           foregroundColor: AppColors.gray900, // AppBarテキスト色
           titleTextStyle: TextStyle(
             color: AppColors.gray900, // テキスト色
-            fontSize: 18, // フォントサイズ
+            fontSize: 20, // フォントサイズ
+
             fontWeight: FontWeight.bold, // 太字
           ),
         ),

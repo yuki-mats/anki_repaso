@@ -188,6 +188,7 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
       }).toList();
 
       // 出題順でソート
+
       if (selectedOrder == 'random') {
         validQuestions.shuffle();
       } else if (selectedOrder == 'accuracyAscending') {
@@ -230,6 +231,7 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
   Future<void> _saveAnswer(String questionId, bool isAnswerCorrect,
       DateTime answeredAt, DateTime? nextStartedAt,
       {required String memoryLevel}) async {
+
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('User not logged in');
@@ -295,7 +297,6 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
       // Print updated stats and ratios
       print('Updated memory level stats: $memoryLevelStats');
       print('Updated memory level ratios: $memoryLevelRatios');
-
       print('Updated attemptCount: $attemptCount');
       print('Updated correctCount: $correctCount');
       print('Calculated correctRate: $correctRate');
@@ -324,7 +325,6 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
     }
   }
 
-
   Future<void> _updateStatsUsingAggregation(String questionId) async {
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -342,11 +342,13 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
       // ISO week calculation
       int _calculateIsoWeekNumber(DateTime date) {
         final firstDayOfYear = DateTime(date.year, 1, 1);
+
         final firstThursday = firstDayOfYear.add(
             Duration(days: (4 - firstDayOfYear.weekday + 7) % 7));
         final weekNumber = ((date
             .difference(firstThursday)
             .inDays) / 7).ceil() + 1;
+
         return weekNumber;
       }
 
@@ -426,6 +428,7 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
         ).get();
 
         final attemptCount = aggregateQuerySnapshot.count ?? 0;
+
         final totalAnswerTime = aggregateQuerySnapshot.getSum('answerTime') ??
             0;
         final totalPostAnswerTime = aggregateQuerySnapshot.getSum(
@@ -559,6 +562,7 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
 
       // Firestore処理をバックグラウンドで実行
       final nextQuestionId = _questionsWithStats[_currentQuestionIndex]['questionId'];
+
     } else {
       _navigateToCompletionSummaryPage();
     }
@@ -1075,3 +1079,4 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
     );
   }
 }
+

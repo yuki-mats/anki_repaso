@@ -147,7 +147,6 @@ class _LoginPageState extends State<LoginPage> {
       );
     }
   }
-
   Future<void> _signInWithApple() async {
     try {
       final result = await SignInWithApple.getAppleIDCredential(
@@ -166,7 +165,6 @@ class _LoginPageState extends State<LoginPage> {
       // トラッキング許可リクエストを追加
       await requestTrackingPermission();
 
-
       // サインイン成功後にMainPageに遷移
       Navigator.push(
         context,
@@ -179,7 +177,6 @@ class _LoginPageState extends State<LoginPage> {
       print('Apple Sign-In Error: $e');
     }
   }
-
 
 
   Future<void> _signInWithGoogle() async {
@@ -362,7 +359,6 @@ class _LoginPageState extends State<LoginPage> {
                             await FirebaseAuth.instance.signOut(); // サインアウト
                             return; // 処理を終了
                           }
-
                           await requestTrackingPermission();
 
                           // 確認済みの場合はホーム画面に遷移

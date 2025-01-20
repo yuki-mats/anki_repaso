@@ -521,6 +521,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
             ],
           ),
         ),
+
         floatingActionButton: Padding(
           padding: const EdgeInsets.only(bottom: 8.0, right: 16.0), // Positioned above the BottomNavigationBar
           child: FloatingActionButton(
