@@ -567,7 +567,6 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
       _navigateToCompletionSummaryPage();
     }
   }
-
   void _navigateToCompletionSummaryPage() {
     final totalQuestions = _questionsWithStats.length;
     final correctAnswers = _answerResults
@@ -581,43 +580,38 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (context) =>
-            CompletionSummaryPage(
-              totalQuestions: totalQuestions,
-              correctAnswers: correctAnswers,
-              incorrectAnswers: totalQuestions - correctAnswers,
-              onViewResults: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) =>
-                        ReviewAnswersPage(
-                          results: _questionsWithStats
-                              .asMap()
-                              .entries
-                              .map((entry) {
-                            final index = entry.key;
-                            final question = entry.value;
-
-                            return {
-                              'isCorrect': _answerResults[index]['isCorrect'],
-                              'questionText': question['questionText'],
-                              'userAnswer': _selectedAnswer,
-                              'correctAnswer': question['correctChoiceText'],
-                            };
-                          }).toList(),
-                        ),
-                  ),
-                );
-              },
-              onExit: () {
-                Navigator.pop(context); // ホーム画面などに戻る処理
-              },
-            ),
+        builder: (context) => CompletionSummaryPage(
+          totalQuestions: totalQuestions,
+          correctAnswers: correctAnswers,
+          incorrectAnswers: totalQuestions - correctAnswers,
+          // ★ ここに answerResults を追加:
+          answerResults: _answerResults,
+          onViewResults: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ReviewAnswersPage(
+                  results: _questionsWithStats.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final question = entry.value;
+                    return {
+                      'isCorrect': _answerResults[index]['isCorrect'],
+                      'questionText': question['questionText'],
+                      'userAnswer': _selectedAnswer,
+                      'correctAnswer': question['correctChoiceText'],
+                    };
+                  }).toList(),
+                ),
+              ),
+            );
+          },
+          onExit: () {
+            Navigator.pop(context); // ホーム画面などに戻る処理
+          },
+        ),
       ),
     );
   }
-
 
   void _toggleFlag() async {
     try {

@@ -67,6 +67,7 @@ class _QuestionSetsAddPageState extends State<QuestionSetsAddPage> {
         'name': questionSetName, // 問題集名
         'folderRef': widget.folderRef, // 所属フォルダのリファレンス
         'questionCount': 0, // 初期値
+        "isDeleted": false, // 削除フラグ
         'createdByRef': FirebaseFirestore.instance.collection('users').doc(userId),
         'updatedByRef': FirebaseFirestore.instance.collection('users').doc(userId),
         'createdAt': FieldValue.serverTimestamp(), // 作成日時

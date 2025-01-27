@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:repaso/app_colors.dart';
+import 'package:repaso/utils/question_utils.dart';
 
 class QuestionAddPage extends StatefulWidget {
   final DocumentReference folderRef;
@@ -91,6 +92,7 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
       'questionText': _questionTextController.text.trim(),
       'questionType': _selectedQuestionType, // 選択された問題タイプを保存
       'tags': [],
+      'isDeleted': false,
       'isFlagged': false,
       'isOfficialQuestion': false, // デフォルトで公式問題ではない
       'examYear': null,
@@ -116,13 +118,16 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
     try {
       await FirebaseFirestore.instance.collection('questions').add(questionData);
 
-      await _updateQuestionCounts(folderRef, questionSetRef);
+      await updateQuestionCounts(folderRef, questionSetRef);
 
       _clearFields();
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('問題が保存されました')),
       );
+
+      Navigator.pop(context, true);
+
     } catch (e) {
       print('Error saving question: $e');
       ScaffoldMessenger.of(context).showSnackBar(
@@ -130,67 +135,6 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
       );
     }
   }
-
-  Future<void> _updateQuestionCounts(
-      DocumentReference folderRef, DocumentReference questionSetRef) async {
-    try {
-      // 問題集の質問数をカウント
-      final questionSetCountSnapshot = await FirebaseFirestore.instance
-          .collection('questions')
-          .where('questionSetRef', isEqualTo: questionSetRef)
-          .count()
-          .get();
-
-      final questionSetTotalQuestions = questionSetCountSnapshot.count;
-
-      // 問題集の質問数を更新
-      await FirebaseFirestore.instance.runTransaction((transaction) async {
-        transaction.update(questionSetRef, {
-          'questionCount': questionSetTotalQuestions,
-          'updatedByRef': FirebaseFirestore.instance
-              .collection('users')
-              .doc(FirebaseAuth.instance.currentUser!.uid),
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
-      });
-
-      // フォルダの質問数を再計算
-      final folderQuestionSetsSnapshot = await FirebaseFirestore.instance
-          .collection('questionSets')
-          .where('folderRef', isEqualTo: folderRef)
-          .get();
-
-      int folderTotalQuestions = 0;
-
-      for (var doc in folderQuestionSetsSnapshot.docs) {
-        final latestQuestionSetData = await FirebaseFirestore.instance
-            .collection('questionSets')
-            .doc(doc.id)
-            .get();
-
-        final latestQuestionCount = latestQuestionSetData.data()?['questionCount'] ?? 0;
-        folderTotalQuestions += (latestQuestionCount as int);
-      }
-
-      // フォルダの質問数を更新
-      await FirebaseFirestore.instance.runTransaction((transaction) async {
-        transaction.update(folderRef, {
-          'questionCount': folderTotalQuestions,
-          'updatedByRef': FirebaseFirestore.instance
-              .collection('users')
-              .doc(FirebaseAuth.instance.currentUser!.uid),
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
-      });
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('質問数の更新に失敗しました')),
-      );
-    }
-  }
-
-
-
 
   @override
   Widget build(BuildContext context) {

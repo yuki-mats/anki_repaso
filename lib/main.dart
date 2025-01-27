@@ -16,6 +16,8 @@ Future<void> requestTrackingPermission() async {
     final trackingStatus = await AppTrackingTransparency.trackingAuthorizationStatus;
 
     if (trackingStatus == TrackingStatus.notDetermined) {
+      // 説明ダイアログのポップアニメーション待機
+      await Future.delayed(const Duration(milliseconds: 200));
       // 許可リクエストを表示
       await AppTrackingTransparency.requestTrackingAuthorization();
     }
@@ -51,6 +53,7 @@ Future<void> requestTrackingPermission() async {
     print('トラッキング許可リクエスト中にエラーが発生しました: $e');
   }
 }
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -105,27 +108,17 @@ class MyApp extends StatelessWidget {
 
 class MainPage extends StatefulWidget {
   const MainPage({Key? key}) : super(key: key);
-
   @override
   _MainPageState createState() => _MainPageState();
 }
 
 class _MainPageState extends State<MainPage> {
-  @override
-  void initState() {
-    super.initState();
-    // Show tracking authorization dialog and ask for permission
-    WidgetsFlutterBinding.ensureInitialized().addPostFrameCallback((_) async {
-      await requestTrackingPermission();
-      final status = await AppTrackingTransparency.requestTrackingAuthorization();
-    });
-  }
   int _currentIndex = 0; // 現在のページインデックス
 
   final List<Widget> _pages = [
     FolderListPage(title: 'ホーム'), // ホームページ
     OfficialListPage(), // 公式問題ページ
-    UnderDevelopmentPage(title: '相談'), // 相談ページ
+    //UnderDevelopmentPage(title: '相談'), // 相談ページ
     MyPage(),
   ];
 
@@ -167,11 +160,11 @@ class _MainPageState extends State<MainPage> {
               label: '公式問題',
               backgroundColor: Colors.white,
             ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.chat_outlined),
-              label: '相談',
-              backgroundColor: Colors.white,
-            ),
+            // BottomNavigationBarItem(
+            //   icon: Icon(Icons.chat_outlined),
+            //   label: '相談',
+            //   backgroundColor: Colors.white,
+            // ),
             BottomNavigationBarItem(
               icon: Icon(Icons.account_circle),
               label: 'マイページ',

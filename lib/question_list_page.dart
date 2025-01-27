@@ -103,8 +103,9 @@ class _QuestionListPageState extends State<QuestionListPage> {
                   icon: Icons.add,
                   color: AppColors.gray100,
                   text: 'アプリから追加',
-                  onTap: () {
-                    Navigator.push(
+                  onTap: () async {
+                    Navigator.pop(context);  // BottomSheetを閉じる
+                    final result = await Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (context) => QuestionAddPage(
@@ -113,6 +114,9 @@ class _QuestionListPageState extends State<QuestionListPage> {
                         ),
                       ),
                     );
+                    if (result == true) {
+                      setState(() {});  // 画面を更新
+                    }
                   },
                 ),
                 const SizedBox(height: 8),
@@ -188,6 +192,7 @@ class _QuestionListPageState extends State<QuestionListPage> {
         stream: FirebaseFirestore.instance
             .collection("questions")
             .where('questionSetRef', isEqualTo: widget.questionSet.reference)
+            .where('isDeleted', isEqualTo: false)
             .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -296,16 +301,17 @@ class _QuestionListPageState extends State<QuestionListPage> {
       children: [
         Container(
           alignment: Alignment.center,
-          width: 40,
-          height: 40,
+          width: 24,
+          height: 24,
           decoration: BoxDecoration(
             color: labelColor.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(100),
+            borderRadius: BorderRadius.circular(8),
           ),
           child: Text(
             label,
             style: TextStyle(
               fontWeight: FontWeight.bold,
+              fontSize: 12,
               color: labelColor,
             ),
           ),
@@ -314,7 +320,7 @@ class _QuestionListPageState extends State<QuestionListPage> {
         Expanded(
           child: Text(
             text,
-            style: const TextStyle(fontSize: 16),
+            style: const TextStyle(fontSize: 14),
           ),
         ),
       ],

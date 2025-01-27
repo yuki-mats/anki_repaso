@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:repaso/app_colors.dart';
+import 'package:repaso/question_add_page.dart';
+import 'package:repaso/utils/question_utils.dart';
 
 class QuestionEditPage extends StatefulWidget {
   final DocumentSnapshot question; // 編集する問題のID
@@ -88,6 +90,40 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
     }
   }
 
+  Future<void> _deleteQuestion() async {
+    final deletionData = {
+      'isDeleted': true,
+      'deletedAt': FieldValue.serverTimestamp(),
+      'updatedByRef': FirebaseFirestore.instance.collection('users').doc('currentUserId'),
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+
+    try {
+      await widget.question.reference.update(deletionData);
+
+      final questionSetRef = widget.question['questionSetRef'] as DocumentReference;
+      final folderRef = await _getFolderRef(questionSetRef);  // フォルダ参照の取得
+      await updateQuestionCounts(folderRef, questionSetRef);  // 共通メソッドを使用
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('問題が削除されました')),
+      );
+
+      Navigator.pop(context, true);
+
+    } catch (e) {
+      print('Error deleting question: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('問題の削除に失敗しました')),
+      );
+    }
+  }
+
+  Future<DocumentReference> _getFolderRef(DocumentReference questionSetRef) async {
+    final questionSetDoc = await questionSetRef.get();
+    return questionSetDoc['folderRef'] as DocumentReference;
+  }
+
   @override
   void dispose() {
     _questionTextController.dispose();
@@ -127,6 +163,32 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
                 ),
               ),
             ),
+          ),
+          IconButton(
+            icon: Icon(Icons.delete, color: Colors.red),
+            onPressed: () async {
+              final confirm = await showDialog<bool>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: Text('確認'),
+                  content: Text('この問題を削除しますか？'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: Text('キャンセル'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: Text('削除'),
+                    ),
+                  ],
+                ),
+              );
+
+              if (confirm == true) {
+                _deleteQuestion();
+              }
+            },
           ),
         ],
       ),

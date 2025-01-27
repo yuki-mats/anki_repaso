@@ -40,18 +40,32 @@ class _FolderAddPageState extends State<FolderAddPage> {
       try {
         // 作成者のUIDを取得
         final userId = user.uid;
+        final userRef =
+        FirebaseFirestore.instance.collection('users').doc(userId);
 
-        // Firestoreにフォルダデータを保存
-        await FirebaseFirestore.instance.collection('folders').add({
+        // 1. フォルダドキュメントを追加し、DocumentReferenceを受け取る
+        final folderRef = await FirebaseFirestore.instance
+            .collection('folders')
+            .add({
           'name': folderName,
           'tags': [], // 初期状態でタグは空
-          'createdByRef': FirebaseFirestore.instance.collection('users').doc(userId), // 作成者の参照
-          'updatedByRef': FirebaseFirestore.instance.collection('users').doc(userId), // 更新者の参照
-          'userRoles': {
-            userId: 'owner', // 作成者をオーナーとして設定
-          },
+          'createdByRef': userRef,           // 作成者の参照
+          'updatedByRef': userRef,           // 更新者の参照
+          // ↓ userRoles は従来の管理方法なので削除 or 不要なら空にする
+          // 'userRoles': {
+          //   userId: 'owner', // もし後方互換が必要なら残してもOK
+          // },
           'isPublic': false,          // 初期状態で非公開
-          'questionCount':0,         // 初期問題数
+          'questionCount': 0,         // 初期問題数
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+
+        // 2. permissions サブコレクションにドキュメントを作成（owner権限を付与）
+        //    permissionId を userId と同じにしておくと分かりやすい場合が多い
+        await folderRef.collection('permissions').doc(userId).set({
+          'userRef': userRef,
+          'role': 'owner',
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         });

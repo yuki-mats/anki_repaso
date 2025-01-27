@@ -9,6 +9,9 @@ class CompletionSummaryPage extends StatelessWidget {
   final VoidCallback onViewResults;
   final VoidCallback onExit;
 
+  // ProgressBar 用に必要なデータ
+  final List<Map<String, dynamic>> answerResults;
+
   const CompletionSummaryPage({
     Key? key,
     required this.totalQuestions,
@@ -16,7 +19,65 @@ class CompletionSummaryPage extends StatelessWidget {
     required this.incorrectAnswers,
     required this.onViewResults,
     required this.onExit,
+    required this.answerResults,
   }) : super(key: key);
+
+  // メモリレベルごとの色設定
+  Color _getMemoryLevelColor(String level) {
+    switch (level) {
+      case 'unanswered':
+        return Colors.grey[300]!;
+      case 'again':
+        return Colors.red[300]!;
+      case 'hard':
+        return Colors.orange[300]!;
+      case 'good':
+        return Colors.green[300]!;
+      case 'easy':
+        return Colors.blue[300]!;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  // プログレスバーの色を計算
+  List<Color> _getProgressColors() {
+    // 質問数が0なら灰色のみ
+    if (totalQuestions == 0) {
+      return [Colors.grey[300]!];
+    }
+
+    // メモリレベルをカウント
+    final Map<String, int> memoryLevelCounts = {
+      'easy': 0,
+      'good': 0,
+      'hard': 0,
+      'again': 0,
+      'unanswered': totalQuestions - answerResults.length,
+    };
+
+    for (var result in answerResults) {
+      final level = result['memoryLevel'] ?? 'unanswered';
+      if (memoryLevelCounts.containsKey(level)) {
+        memoryLevelCounts[level] = memoryLevelCounts[level]! + 1;
+      } else {
+        memoryLevelCounts[level] = 1;
+      }
+    }
+
+    // 表示順を定義
+    List<String> levelOrder = ['easy', 'good', 'hard', 'again', 'unanswered'];
+
+    // レベルごとのカラーをまとめて生成
+    List<Color> colors = [];
+    for (String level in levelOrder) {
+      final count = memoryLevelCounts[level] ?? 0;
+      if (count > 0) {
+        colors.addAll(List.filled(count, _getMemoryLevelColor(level)));
+      }
+    }
+    return colors;
+  }
 
   String getRandomMessageByAccuracy(double accuracy) {
     final random = Random();
@@ -71,7 +132,6 @@ class CompletionSummaryPage extends StatelessWidget {
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
     final accuracy = (correctAnswers / totalQuestions * 100).toStringAsFixed(1);
@@ -85,90 +145,111 @@ class CompletionSummaryPage extends StatelessWidget {
           style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
         ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.only(top: 80.0, left: 32.0, right: 32.0),
-        child: Column(
-          children: [
-            // 正答率の円グラフ表示エリア
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Container(
-                margin: const EdgeInsets.only(bottom: 24.0),
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    SizedBox(
-                      width: 160,
-                      height: 160,
-                      child: CircularProgressIndicator(
-                        value: correctAnswers / totalQuestions,
-                        backgroundColor: Colors.grey.shade300,
-                        color: correctAnswers == totalQuestions
-                            ? Colors.green
-                            : Colors.red,
-                        strokeWidth: 10,
+      // AnswerPage と同じように Column を使って、上部にプログレスバーを表示
+      body: Column(
+        children: [
+          // 上部のプログレスバー
+          Row(
+            children: _getProgressColors().map((color) {
+              return Expanded(
+                child: Container(
+                  height: 10,
+                  color: color,
+                ),
+              );
+            }).toList(),
+          ),
+
+          // 残りのコンテンツをまとめてスクロール可能にする
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.only(top: 16.0, left: 32.0, right: 32.0),
+              child: Column(
+                children: [
+                  // 正答率の円グラフ表示
+                  Padding(
+                    padding: const EdgeInsets.only(top:48.0),
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 24.0),
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          SizedBox(
+                            width: 160,
+                            height: 160,
+                            child: CircularProgressIndicator(
+                              value: correctAnswers / totalQuestions,
+                              backgroundColor: Colors.grey.shade300,
+                              color: correctAnswers == totalQuestions
+                                  ? AppColors.blue400
+                                  : AppColors.blue400,
+                              strokeWidth: 10,
+                            ),
+                          ),
+                          Text(
+                            accuracy.replaceAll(RegExp(r'\.0'), '') + '%',
+                            style: const TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    Text(
-                      accuracy.replaceAll(RegExp(r'\.0'), '') + '%',
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black,
+                  ),
+                  Text(
+                    message,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 32),
+
+                  // ボタンエリア
+                  Column(
+                    children: [
+                      ElevatedButton(
+                        onPressed: onViewResults,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.blue600,
+                          padding: const EdgeInsets.symmetric(vertical: 16.0),
+                          minimumSize: const Size(double.infinity, 48),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: const Text(
+                          '結果を確認',
+                          style: TextStyle(fontSize: 16, color: Colors.white),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
+                      const SizedBox(height: 16),
+                      OutlinedButton(
+                        onPressed: onExit,
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16.0),
+                          minimumSize: const Size(double.infinity, 48),
+                          side: BorderSide(color: AppColors.blue600),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: const Text(
+                          '終了',
+                          style: TextStyle(fontSize: 16, color: AppColors.blue600),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
-            Text(
-              message,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-                color: Colors.grey,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 56),
-            // ボタンエリア
-            Column(
-              children: [
-                ElevatedButton(
-                  onPressed: onViewResults,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.blue600,
-                    padding: const EdgeInsets.symmetric(vertical: 16.0),
-                    minimumSize: const Size(double.infinity, 48),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: const Text(
-                    '結果を確認',
-                    style: TextStyle(fontSize: 16, color: Colors.white),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                OutlinedButton(
-                  onPressed: onExit,
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16.0),
-                    minimumSize: const Size(double.infinity, 48),
-                    side: BorderSide(color: AppColors.blue600),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: const Text(
-                    '終了',
-                    style: TextStyle(fontSize: 16, color: AppColors.blue600),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

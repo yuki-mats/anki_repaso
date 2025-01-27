@@ -39,26 +39,48 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
 
   Future<void> fetchFoldersAndQuestionSets() async {
     try {
+      // フォルダを一括取得
       final folderSnapshot = await FirebaseFirestore.instance
           .collection('folders')
-          .where('userRoles.${widget.userId}', whereIn: ['owner', 'editor', 'viewer'])
           .get();
 
       final Map<String, dynamic> fetchedData = {};
       final Map<String, bool?> folderState = {};
       final Map<String, bool> expandedStateInit = {};
 
+      // 各フォルダに対して権限を確認し、権限があるものだけ表示
       for (var folder in folderSnapshot.docs) {
         final folderId = folder.id;
         final folderName = folder['name'];
+
+        // ユーザー権限の取得（permissions サブコレクション）
+        final permissionSnapshot = await FirebaseFirestore.instance
+            .collection('folders')
+            .doc(folderId)
+            .collection('permissions')
+            .where(
+          'userRef',
+          isEqualTo:
+          FirebaseFirestore.instance.doc('users/${widget.userId}'),
+        )
+            .where('role', whereIn: ['owner', 'editor', 'viewer'])
+            .get();
+
+        // 権限がない場合はスキップ
+        if (permissionSnapshot.docs.isEmpty) {
+          continue;
+        }
+
         folderState[folderId] = false;
         expandedStateInit[folderId] = false;
 
+        // フォルダに紐づく問題集を取得
         final questionSetsSnapshot = await FirebaseFirestore.instance
             .collection('questionSets')
             .where('folderRef', isEqualTo: folder.reference)
             .get();
 
+        // 問題集の選択状態を初期化し、既に選択済みのものがあれば展開状態に設定
         final questionSets = questionSetsSnapshot.docs.map((doc) {
           final questionSetId = doc.id;
           final isSelected = widget.selectedQuestionSetIds.contains(questionSetId);
@@ -73,16 +95,19 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
           return {'id': questionSetId, 'name': doc['name']};
         }).toList();
 
+        // フォルダ情報を格納
         fetchedData[folderId] = {
           'name': folderName,
           'questionSets': questionSets,
         };
 
+        // フォルダ自体のチェック状態（全選択・一部選択・未選択）を計算
         folderState[folderId] = _calculateFolderSelection(
           questionSets.map((qs) => qs['id'] as String).toList(),
         );
       }
 
+      // 状態を更新
       setState(() {
         folderData = fetchedData;
         folderSelection = folderState;
@@ -101,7 +126,7 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
 
     if (allSelected) return true;
     if (noneSelected) return false;
-    return null;
+    return null; // 一部のみチェックされている状態
   }
 
   void updateParentSelection(String folderId) {
@@ -117,6 +142,7 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
   void updateChildSelection(String folderId, bool isSelected) {
     final questionSets = folderData[folderId]['questionSets'] as List<Map<String, dynamic>>;
     setState(() {
+      // フォルダ配下の問題集を一括で選択/解除
       for (var questionSet in questionSets) {
         questionSetSelection[questionSet['id']] = isSelected;
       }
@@ -131,21 +157,24 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
   void updateSelectedQuestionSetNames() {
     selectedQuestionSetNames = questionSetSelection.entries
         .where((entry) => entry.value)
-        .map((entry) => folderData.values
-        .expand((folder) => folder['questionSets'])
-        .firstWhere((qs) => qs['id'] == entry.key)['name'] as String)
+        .map(
+          (entry) => folderData.values
+          .expand((folder) => folder['questionSets'])
+          .firstWhere((qs) => qs['id'] == entry.key)['name'] as String,
+    )
         .toList();
   }
 
   void _onBackPressed() {
-    // 選択された問題集IDとその名前を更新して戻り値として渡す
+    // 選択された問題集IDのみ返却
     updateSelectedQuestionSetNames();
     Navigator.pop(
       context,
-      questionSetSelection.keys.where((id) => questionSetSelection[id] == true).toList(), // questionSetIdsのみ返却
+      questionSetSelection.keys
+          .where((id) => questionSetSelection[id] == true)
+          .toList(),
     );
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -189,9 +218,9 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
                         Expanded(
                           child: Text(
                             folderInfo['name'],
-                            style: const TextStyle(fontSize: 16), // 必要に応じてフォントサイズを調整
-                            overflow: TextOverflow.ellipsis, // 長すぎる場合は省略記号を表示
-                            maxLines: 1, // 最大1行に制限
+                            style: const TextStyle(fontSize: 16),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
                           ),
                         ),
                       ],
@@ -225,13 +254,17 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
                                 const Icon(Icons.layers_rounded, color: AppColors.gray600),
                               ],
                             ),
-                            title: Expanded(
-                              child: Text(
-                                questionSet['name'],
-                                style: const TextStyle(fontSize: 16), // 必要に応じてフォントサイズを調整
-                                overflow: TextOverflow.ellipsis, // 長すぎる場合は省略記号を表示
-                                maxLines: 1, // 最大1行に制限
-                              ),
+                            title: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    questionSet['name'],
+                                    style: const TextStyle(fontSize: 16),
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),

@@ -89,34 +89,48 @@ class _OfficialListPageState extends State<OfficialListPage> {
         // 1秒待機
         await Future.delayed(const Duration(seconds: 1));
 
-        await FirebaseFirestore.instance.collection('folders').doc(folderId).update({
-          'userRoles.$userId': 'viewer', // userRoles フィールドに viewer を追加
+        // `permissions` サブコレクションにユーザーの権限を追加
+        final folderRef = FirebaseFirestore.instance.collection('folders').doc(folderId);
+        final permissionRef = folderRef.collection('permissions').doc(userId);
+
+        await permissionRef.set({
+          'userRef': FirebaseFirestore.instance.collection('users').doc(userId),
+          'role': 'viewer',
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
         });
 
         // ローディング画面を閉じる
-        Navigator.pop(context);
+        if (mounted) {
+          Navigator.pop(context);
+        }
 
         // SnackBar で通知
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('ホームに追加しました')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('ホームに追加しました')),
+          );
+        }
 
         // フォルダ一覧ページに遷移し、最新データを表示
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (context) => const MainPage()),
-              (Route<dynamic> route) => false,  // 既存のページスタックをすべて削除
-        );
+        if (mounted) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (context) => const MainPage()),
+                (Route<dynamic> route) => false,  // 既存のページスタックをすべて削除
+          );
+        }
 
       } else {
         throw Exception('ユーザーがログインしていません');
       }
     } catch (e) {
-      Navigator.pop(context); // エラー時にローディング画面を閉じる
-      print('エラー: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('追加中にエラーが発生しました: $e')),
-      );
+      if (mounted) {
+        Navigator.pop(context); // エラー時にローディング画面を閉じる
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('追加中にエラーが発生しました: $e')),
+        );
+      }
     }
   }
 
