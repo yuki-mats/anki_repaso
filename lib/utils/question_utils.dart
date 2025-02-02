@@ -54,6 +54,7 @@ Future<void> updateQuestionCounts(
         'updatedAt': FieldValue.serverTimestamp(),
       });
     });
+
   } catch (e) {
     print('質問数の更新に失敗しました: $e');
   }

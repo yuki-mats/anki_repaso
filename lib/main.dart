@@ -81,6 +81,7 @@ class MyApp extends StatelessWidget {
         appBarTheme: const AppBarTheme(
           backgroundColor: Colors.white, // AppBar背景色
           foregroundColor: AppColors.gray900, // AppBarテキスト色
+          surfaceTintColor: Colors.white,
           titleTextStyle: TextStyle(
             color: AppColors.gray900, // テキスト色
             fontSize: 20, // フォントサイズ

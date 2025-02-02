@@ -191,10 +191,10 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                     height: 40,
                     decoration: BoxDecoration(
                       color: AppColors.blue200,
-                      borderRadius: BorderRadius.circular(100),
+                      borderRadius: BorderRadius.circular(10),
                     ),
                     child: Icon(
-                      Icons.quiz_rounded,
+                      Icons.quiz_outlined,
                       size: 22,
                       color: AppColors.blue500,
                     ),
@@ -472,7 +472,7 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
 
                 return StreamBuilder<DocumentSnapshot>(
                   stream: questionSet.reference
-                      .collection('questionSetuserStats')
+                      .collection('questionSetUserStats')
                       .doc(FirebaseAuth.instance.currentUser?.uid)
                       .snapshots(),
                   builder: (context, userStatsSnapshot) {
@@ -495,7 +495,7 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
 
                     final totalAnswered = memoryLevels.values.reduce((a, b) => a + b);
                     final unanswered = questionCount - totalAnswered;
-                    final sortedMemoryLevels = ['easy', 'good', 'hard', 'again', 'unanswered'];
+                    final sortedMemoryLevels = ['again', 'hard', 'good', 'easy', 'unanswered'];
 
                     return Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
@@ -526,7 +526,7 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                                       ),
                                       child: Icon(
                                         Icons.quiz_outlined,
-                                        size: 18,
+                                        size: 16,
                                         color: AppColors.blue600,
                                       ),
                                     ),
@@ -569,9 +569,11 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                                         int flexValue = level == 'unanswered' ? unanswered : memoryLevels[level] as int;
                                         return Expanded(
                                           flex: flexValue,
-                                          child: Container(
-                                            height: 8,
-                                            color: _getMemoryLevelColor(level),
+                                          child: DecoratedBox(
+                                            decoration: BoxDecoration(
+                                              gradient: _getGradientForLevel(level), // グラデーションを取得
+                                            ),
+                                            child: Container(height: 8), // 高さを指定
                                           ),
                                         );
                                       }).toList(),
@@ -609,19 +611,43 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
   }
 }
 
-Color _getMemoryLevelColor(String level) {
+Gradient _getGradientForLevel(String level) {
   switch (level) {
     case 'unanswered':
-      return Colors.grey[300]!;
-    case 'again':
-      return Colors.red[300]!;
-    case 'hard':
-      return Colors.orange[300]!;
-    case 'good':
-      return Colors.green[300]!;
+      return LinearGradient(
+        colors: [Colors.grey[300]!, Colors.grey[300]!],
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+      );
     case 'easy':
-      return Colors.blue[300]!;
+      return LinearGradient(
+        colors: [Colors.blue[300]!, Colors.blue[300]!],
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+      );
+    case 'good':
+      return LinearGradient(
+        colors: [Colors.green[300]!, Colors.green[300]!],
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+      );
+    case 'hard':
+      return LinearGradient(
+        colors: [Colors.orange[300]!, Colors.orange[300]!],
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+      );
+    case 'again':
+      return LinearGradient(
+        colors: [Colors.red[300]!, Colors.red[300]!],
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+      );
     default:
-      return Colors.grey;
+      return LinearGradient(
+        colors: [Colors.grey, Colors.grey],
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+      );
   }
 }

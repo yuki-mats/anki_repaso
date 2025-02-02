@@ -85,7 +85,7 @@ class _AnswerPageState extends State<AnswerPage> {
 
     // メモリレベルごとにまとめて色を追加（左→右）
     // 順序はお好みで並べ替えてください
-    List<String> levelOrder = ['easy', 'good', 'hard', 'again', 'unanswered'];
+    List<String> levelOrder = ['again', 'hard', 'good', 'easy', 'unanswered'];
 
     List<Color> colors = [];
     for (String level in levelOrder) {
@@ -203,7 +203,7 @@ class _AnswerPageState extends State<AnswerPage> {
       final questionUserStatsRef =
       questionRef.collection('questionUserStats').doc(userId);
       final questionSetUserStatsRef =
-      widget.questionSetRef.collection('questionSetuserStats').doc(userId);
+      widget.questionSetRef.collection('questionSetUserStats').doc(userId);
 
       final answerTime = _startedAt != null
           ? answeredAt.difference(_startedAt!).inMilliseconds
@@ -224,7 +224,8 @@ class _AnswerPageState extends State<AnswerPage> {
         'postAnswerTime': postAnswerTime,
         'isCorrect': isAnswerCorrect,
         'selectedChoice': _selectedAnswer,
-        'correctChoice': questionsWithStats[_currentQuestionIndex]['correctChoiceText'],
+        'correctChoice': questionsWithStats[_currentQuestionIndex]
+        ['correctChoiceText'],
         'memoryLevel': memoryLevel,
         'createdAt': FieldValue.serverTimestamp(),
       });
@@ -236,7 +237,7 @@ class _AnswerPageState extends State<AnswerPage> {
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      // questionSetuserStats の更新
+      // questionSetUserStats の更新
       await questionSetUserStatsRef.set({
         'userRef': FirebaseFirestore.instance.collection('users').doc(userId),
         'memoryLevels': {
@@ -246,6 +247,18 @@ class _AnswerPageState extends State<AnswerPage> {
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
+      // folderSetUserStats の更新
+      final folderSetUserStatsRef =
+      widget.folderRef.collection('folderSetUserStats').doc(userId);
+
+      await folderSetUserStatsRef.set({
+        'userRef': FirebaseFirestore.instance.collection('users').doc(userId),
+        'memoryLevels': {
+          questionId: memoryLevel, // 同じくフォルダ側に対しても記録
+        },
+        'lastStudiedAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
 
       // 統計情報を集計して更新
       await _updateStatsUsingAggregation(questionId);
@@ -253,7 +266,6 @@ class _AnswerPageState extends State<AnswerPage> {
       print('Error saving answer: $e');
     }
   }
-
 
   Future<void> _updateStatsUsingAggregation(String questionId) async {
     try {
@@ -436,6 +448,7 @@ class _AnswerPageState extends State<AnswerPage> {
       // 回答結果リストに追加
       _answerResults.add({
         'index': _currentQuestionIndex + 1,
+        'questionId': questionId,
         'questionText': questionText ?? '質問内容不明',
         'correctAnswer': correctChoiceText ?? '正解不明',
         'isCorrect': _isAnswerCorrect!,
@@ -453,7 +466,6 @@ class _AnswerPageState extends State<AnswerPage> {
       selectedChoice,
     );
   }
-
 
   void _showFeedbackAndNextQuestion(
       bool isAnswerCorrect,
@@ -500,7 +512,9 @@ class _AnswerPageState extends State<AnswerPage> {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => ReviewAnswersPage(results: _answerResults,),  // 実際にレビューを表示するページへ
+                builder: (context) => ReviewAnswersPage(
+                  results: _answerResults,
+                ), // 実際にレビューを表示するページへ
               ),
             );
           },
@@ -511,7 +525,6 @@ class _AnswerPageState extends State<AnswerPage> {
       ),
     );
   }
-
 
   Future<void> _toggleFlag() async {
     final user = FirebaseAuth.instance.currentUser;
@@ -537,6 +550,64 @@ class _AnswerPageState extends State<AnswerPage> {
     });
   }
 
+  // ヒント表示用モーダル
+  void _showHintDialog() {
+    final question = questionsWithStats[_currentQuestionIndex];
+    final hintText = question['hintText'] ?? '';
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8), // 角丸の大きさを調整
+          ),
+          backgroundColor: Colors.white,
+          title: const Text('ヒント', style: TextStyle(
+              color: Colors.black,
+              fontSize: 16,)),
+          content: Text(hintText),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('閉じる', style: TextStyle(
+                  color: Colors.black87,
+                  fontSize: 14,)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // 解説表示用モーダル
+  void _showExplanationDialog() {
+    final question = questionsWithStats[_currentQuestionIndex];
+    final explanationText = question['explanationText'] ?? '';
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8), // 角丸の大きさを調整
+          ),
+          backgroundColor: Colors.white,
+          title: const Text('解説', style: TextStyle(
+            color: Colors.black,
+            fontSize: 16,)),
+          content: Text(explanationText),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child:const Text('閉じる', style: TextStyle(
+                color: Colors.black87,
+                fontSize: 14,)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -550,7 +621,8 @@ class _AnswerPageState extends State<AnswerPage> {
       body: _isLoading
           ? Center(
         child: CircularProgressIndicator(
-          valueColor: const AlwaysStoppedAnimation(AppColors.blue500),
+          valueColor:
+          const AlwaysStoppedAnimation(AppColors.blue500),
         ),
       )
           : questionsWithStats.isEmpty
@@ -570,16 +642,18 @@ class _AnswerPageState extends State<AnswerPage> {
               children: [
                 const Text(
                   '問題がありません',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
                 const Text(
                   '最初の問題を作成しよう',
-                  style: TextStyle(fontSize: 16, color: Colors.black87),
+                  style: TextStyle(
+                      fontSize: 16, color: Colors.black87),
                 ),
                 const SizedBox(height: 24),
                 SizedBox(
-                  width: 300,
+                  width: 240,
                   height: 48,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
@@ -598,7 +672,10 @@ class _AnswerPageState extends State<AnswerPage> {
                     ),
                     child: const Text(
                       '作成する',
-                      style: TextStyle(fontSize: 18, color: Colors.white),
+                      style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold),
                     ),
                   ),
                 ),
@@ -623,7 +700,8 @@ class _AnswerPageState extends State<AnswerPage> {
                 .toList(),
           ),
           Padding(
-            padding: const EdgeInsets.only(top:16.0, left: 16.0, right: 16.0),
+            padding: const EdgeInsets.only(
+                top: 16.0, left: 16.0, right: 16.0),
             child: Column(
               children: [
                 Container(
@@ -635,13 +713,15 @@ class _AnswerPageState extends State<AnswerPage> {
                     border: Border.all(color: Colors.black26),
                   ),
                   child: Padding(
-                    padding: const EdgeInsets.only(left: 16.0, top: 16.0),
+                    padding:
+                    const EdgeInsets.only(left: 16.0, top: 16.0),
                     child: Column(
                       children: [
                         Align(
                           alignment: Alignment.topLeft,
                           child: Padding(
-                            padding: const EdgeInsets.only(right: 16.0),
+                            padding:
+                            const EdgeInsets.only(right: 16.0),
                             child: Text(
                               widget.questionSetName,
                               style: const TextStyle(
@@ -657,13 +737,15 @@ class _AnswerPageState extends State<AnswerPage> {
                             child: Text(
                               questionsWithStats[_currentQuestionIndex]
                               ['questionText'],
-                              style: const TextStyle(fontSize: 14),
+                              style:
+                              const TextStyle(fontSize: 14),
                               textAlign: TextAlign.start,
                             ),
                           ),
                         ),
                         Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          mainAxisAlignment:
+                          MainAxisAlignment.spaceBetween,
                           children: [
                             Column(
                               children: [
@@ -684,17 +766,64 @@ class _AnswerPageState extends State<AnswerPage> {
                                 const SizedBox(height: 8),
                               ],
                             ),
-                            IconButton(
-                              icon: Icon(
-                                questionsWithStats[_currentQuestionIndex]
-                                ['isFlagged'] ==
-                                    true
-                                    ? Icons.bookmark
-                                    : Icons.bookmark_outline,
-                                size: 28,
-                                color: Colors.grey,
-                              ),
-                              onPressed: _toggleFlag,
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (((_selectedAnswer == null) &&
+                                    (questionsWithStats[
+                                    _currentQuestionIndex]
+                                    ['hintText']
+                                        ?.toString()
+                                        .trim()
+                                        .isNotEmpty ??
+                                        false)) ||
+                                    ((_selectedAnswer != null) &&
+                                        (questionsWithStats[
+                                        _currentQuestionIndex]
+                                        ['explanationText']
+                                            ?.toString()
+                                            .trim()
+                                            .isNotEmpty ??
+                                            false)))
+                                  IconButton(
+                                    icon: Icon(
+                                      _selectedAnswer == null
+                                          ? Icons.lightbulb_outline
+                                          : Icons.description_outlined,
+                                      size: 28,
+                                      color: Colors.grey,
+                                    ),
+                                    onPressed: () {
+                                      if (_selectedAnswer == null) {
+                                        _showHintDialog();
+                                      } else {
+                                        _showExplanationDialog();
+                                      }
+                                    },
+                                  ),
+                                //メモするためのアイコンを設置
+                                IconButton(
+                                  icon: Icon(
+                                    Icons.edit_note_outlined,
+                                    size: 28,
+                                    color: Colors.grey,),
+                                  onPressed: () {
+
+                                  },
+                                ),
+                                IconButton(
+                                  icon: Icon(
+                                    questionsWithStats[_currentQuestionIndex]
+                                    ['isFlagged'] ==
+                                        true
+                                        ? Icons.bookmark
+                                        : Icons.bookmark_outline,
+                                    size: 28,
+                                    color: Colors.grey,
+                                  ),
+                                  onPressed: _toggleFlag,
+                                ),
+                              ],
                             ),
                           ],
                         ),
@@ -708,7 +837,8 @@ class _AnswerPageState extends State<AnswerPage> {
           Expanded(
             child: SingleChildScrollView(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                padding:
+                const EdgeInsets.symmetric(horizontal: 16.0),
                 child: questionsWithStats[_currentQuestionIndex]
                 ['questionType'] ==
                     'true_false'
@@ -721,21 +851,27 @@ class _AnswerPageState extends State<AnswerPage> {
                       questionsWithStats[_currentQuestionIndex]
                       ['correctChoiceText'],
                       selectedChoiceText: _selectedAnswer ?? '',
-                      questionId: questionsWithStats[_currentQuestionIndex]
+                      questionId:
+                      questionsWithStats[_currentQuestionIndex]
                       ['questionId'],
-                      handleAnswerSelection: _handleAnswerSelection,
+                      handleAnswerSelection:
+                      _handleAnswerSelection,
                     ),
                   ],
                 )
                     : buildSingleChoiceWidget(
                   context: context,
-                  questionText: questionsWithStats[_currentQuestionIndex]
+                  questionText:
+                  questionsWithStats[_currentQuestionIndex]
                   ['questionText'],
-                  correctChoiceText: questionsWithStats[_currentQuestionIndex]
+                  correctChoiceText:
+                  questionsWithStats[_currentQuestionIndex]
                   ['correctChoiceText'],
-                  questionId: questionsWithStats[_currentQuestionIndex]
+                  questionId:
+                  questionsWithStats[_currentQuestionIndex]
                   ['questionId'],
-                  handleAnswerSelection: _handleAnswerSelection,
+                  handleAnswerSelection:
+                  _handleAnswerSelection,
                 ),
               ),
             ),
@@ -749,29 +885,59 @@ class _AnswerPageState extends State<AnswerPage> {
   Widget _buildFooterButtons() {
     if (_footerButtonType == 'HardGoodEasy') {
       return Container(
-        color: Colors.white,
+        decoration: BoxDecoration(
+          color: Colors.white, // 背景色
+          border: Border(
+            top: BorderSide(color: Colors.green, width: 4.0), // 上端のみ緑の太線
+          ),
+        ),
         padding: const EdgeInsets.only(
-            bottom: 48.0, left: 16.0, right: 16.0, top: 16.0),
+          bottom: 32.0,
+          left: 16.0,
+          right: 16.0,
+          top: 24.0,
+        ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          // ボタン表示: ['Hard', 'Good', 'Easy']
           // 内部的に 'hard', 'good', 'easy' として保存
           children: ['Hard', 'Good', 'Easy'].map((displayText) {
             final memoryLevel = displayText.toLowerCase();
+
+            // ボタン色とアイコンを切り替え
+            Color buttonColor;
+            IconData buttonIcon;
+            switch (memoryLevel) {
+              case 'easy':
+                buttonColor = Colors.blue[300]!;
+                buttonIcon = Icons.sentiment_satisfied_alt_outlined;
+                break;
+              case 'good':
+                buttonColor = Colors.green[300]!;
+                buttonIcon = Icons.sentiment_satisfied;
+                break;
+              case 'hard':
+                buttonColor = Colors.orange[300]!;
+                buttonIcon = Icons.sentiment_dissatisfied_outlined;
+                break;
+              default:
+                buttonColor = Colors.grey;
+                buttonIcon = Icons.help_outline;
+            }
+
             return Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4.0),
                 child: ElevatedButton(
                   onPressed: () {
                     final nextStartedAt = DateTime.now();
-
                     // 直近の回答データにメモリレベルをセット
-                    _answerResults[_answerResults.length - 1]['memoryLevel'] =
-                        memoryLevel;
+                    _answerResults[_answerResults.length - 1]
+                    ['memoryLevel'] = memoryLevel;
 
                     // Firestoreにも保存
                     _saveAnswer(
-                      questionsWithStats[_currentQuestionIndex]['questionId'],
+                      questionsWithStats[_currentQuestionIndex]
+                      ['questionId'],
                       _isAnswerCorrect!,
                       _answeredAt!,
                       nextStartedAt,
@@ -784,14 +950,26 @@ class _AnswerPageState extends State<AnswerPage> {
                     });
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.blue500,
+                    backgroundColor: buttonColor,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  child: Text(
-                    displayText,
-                    style: const TextStyle(fontSize: 18, color: Colors.white),
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 4.0, bottom: 4.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center, // 中央揃え
+                      mainAxisSize: MainAxisSize.min, // アイコン＋テキスト分の最小幅
+                      children: [
+                        Icon(buttonIcon, color: Colors.white, size: 18),
+                        const SizedBox(width: 4),
+                        Text(
+                          displayText,
+                          style:
+                          const TextStyle(fontSize: 14, color: Colors.white),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -801,9 +979,18 @@ class _AnswerPageState extends State<AnswerPage> {
       );
     } else if (_footerButtonType == 'Next') {
       return Container(
-        color: Colors.white,
+        decoration: BoxDecoration(
+          color: Colors.white, // 背景色
+          border: Border(
+            top: BorderSide(color: Colors.redAccent, width: 4.0), // 上端のみ緑の太線
+          ),
+        ),
         padding: const EdgeInsets.only(
-            bottom: 48.0, left: 16.0, right: 16.0, top: 16.0),
+          bottom: 32.0,
+          left: 16.0,
+          right: 16.0,
+          top: 24.0,
+        ),
         child: ElevatedButton(
           onPressed: () {
             final nextStartedAt = DateTime.now();
@@ -823,7 +1010,7 @@ class _AnswerPageState extends State<AnswerPage> {
             });
           },
           style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.blue500,
+            backgroundColor: Colors.black87,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),
             ),
@@ -877,7 +1064,7 @@ class _AnswerPageState extends State<AnswerPage> {
                     ? (isCorrect && isSelected
                     ? Colors.green.shade300
                     : isIncorrect
-                    ? Colors.orange.shade300
+                    ? Colors.red.shade300
                     : isCorrect
                     ? Colors.green.shade300
                     : Colors.black26)
@@ -900,7 +1087,7 @@ class _AnswerPageState extends State<AnswerPage> {
                       ? (isCorrect
                       ? Colors.green
                       : isIncorrect
-                      ? Colors.orange
+                      ? Colors.red
                       : Colors.transparent)
                       : Colors.transparent,
                 ),

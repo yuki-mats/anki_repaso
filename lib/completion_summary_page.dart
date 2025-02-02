@@ -66,7 +66,7 @@ class CompletionSummaryPage extends StatelessWidget {
     }
 
     // 表示順を定義
-    List<String> levelOrder = ['easy', 'good', 'hard', 'again', 'unanswered'];
+    List<String> levelOrder = ['again', 'hard', 'good', 'easy', 'unanswered'];
 
     // レベルごとのカラーをまとめて生成
     List<Color> colors = [];

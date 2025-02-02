@@ -4,7 +4,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:repaso/question_add_page.dart';
-import 'package:repaso/question_set_add_page.dart';
 import 'app_colors.dart';
 import 'question_edit_page.dart';
 
@@ -160,23 +159,6 @@ class _QuestionListPageState extends State<QuestionListPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.questionSetName),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1.0),
-          child: Container(
-            decoration: BoxDecoration(
-              color: AppColors.gray300,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  spreadRadius: 1,
-                  blurRadius: 3,
-                  offset: const Offset(0, 1),
-                ),
-              ],
-            ),
-            height: 1.0,
-          ),
-        ),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16.0),
@@ -211,6 +193,7 @@ class _QuestionListPageState extends State<QuestionListPage> {
             itemCount: questions.length,
             itemBuilder: (context, index) {
               final question = questions[index];
+              // ※以下のquestionText, correctAnswerは _buildQuestionItem 内で最新のデータにより上書きされます。
               final questionText = question['questionText'] is String
                   ? question['questionText']
                   : '問題なし';
@@ -229,65 +212,88 @@ class _QuestionListPageState extends State<QuestionListPage> {
     );
   }
 
+  // 修正箇所：各問題項目を個別のStreamBuilderで監視するように変更
   Widget _buildQuestionItem({
     required BuildContext context,
     required DocumentSnapshot question,
     required String questionText,
     required String correctAnswer,
   }) {
-    return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => QuestionEditPage(
-              question: question,
+    return StreamBuilder<DocumentSnapshot>(
+      stream: question.reference.snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          // 個別項目の読み込み中は空のコンテナを返す（UIの変更はしない）
+          return Container();
+        }
+        final updatedQuestion = snapshot.data!;
+        final updatedQuestionText = updatedQuestion['questionText'] is String
+            ? updatedQuestion['questionText']
+            : '問題なし';
+        final updatedCorrectAnswer = updatedQuestion['correctChoiceText'] as String? ?? '正解なし';
+        return GestureDetector(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => QuestionEditPage(
+                  question: updatedQuestion,
+                ),
+              ),
+            );
+          },
+          child: Padding(
+            padding: const EdgeInsets.only(left: 16.0, right: 16.0, top: 16.0),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    spreadRadius: 1,
+                    blurRadius: 3,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.only(left: 16.0, right: 16.0, top: 16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildQuestionAnswerRow(
+                        label: "問",
+                        text: updatedQuestionText,
+                        labelColor: Colors.blue),
+                    const SizedBox(height: 16),
+                    _buildQuestionAnswerRow(
+                        label: "答",
+                        text: updatedCorrectAnswer,
+                        labelColor: Colors.green),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        IconButton(
+                          icon: Icon(
+                            updatedQuestion['isFlagged'] == true
+                                ? Icons.bookmark
+                                : Icons.bookmark_outline,
+                            color: AppColors.gray400,
+                          ),
+                          onPressed: () async {
+                            await _toggleFlag(updatedQuestion);
+                          },
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         );
       },
-      child: Padding(
-        padding: const EdgeInsets.only(left: 16.0, right: 16.0, top: 16.0),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(8),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                spreadRadius: 1,
-                blurRadius: 3,
-                offset: const Offset(0, 1),
-              ),
-            ],
-          ),
-          child: Padding(
-            padding: const EdgeInsets.only(left: 16.0, right: 16.0, top: 16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildQuestionAnswerRow(label: "問", text: questionText, labelColor: Colors.blue),
-                const SizedBox(height: 16),
-                _buildQuestionAnswerRow(label: "答", text: correctAnswer, labelColor: Colors.green),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    IconButton(
-                      icon: Icon(
-                        question['isFlagged'] == true ? Icons.bookmark : Icons.bookmark_outline,
-                        color: AppColors.gray400,
-                      ),
-                      onPressed: () async {
-                        await _toggleFlag(question);
-                      },
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:repaso/app_colors.dart';
+// ↓ Firestore と FirebaseAuth を使うために必要
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class ReviewAnswersPage extends StatelessWidget {
   final List<Map<String, dynamic>> results;
@@ -11,6 +14,8 @@ class ReviewAnswersPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('回答結果'),
@@ -26,9 +31,12 @@ class ReviewAnswersPage extends StatelessWidget {
             final questionText = result['questionText'] as String;
             final correctAnswer = result['correctAnswer'] as String;
 
+            // questionId を持っている前提で進めます
+            final questionId = result['questionId'] as String;
+
             return GestureDetector(
               onTap: () {
-                // タップ時の処理を追加（例: 詳細ページへの遷移）
+                // タップ時の処理（例: 詳細ページへ飛ぶなど）
               },
               child: Padding(
                 padding: const EdgeInsets.only(bottom: 16.0),
@@ -49,9 +57,9 @@ class ReviewAnswersPage extends StatelessWidget {
                         Icon(
                           isCorrect ? Icons.check_circle_outline : Icons.cancel_outlined,
                           color: isCorrect ? Colors.green : Colors.red,
-                          size: 32,
+                          size: 24,
                         ),
-                        const SizedBox(width: 16),
+                        const SizedBox(width: 8),
                         // 質問と答えの内容
                         Expanded(
                           child: Column(
@@ -65,7 +73,7 @@ class ReviewAnswersPage extends StatelessWidget {
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       color: Colors.blue,
-                                      fontSize: 16,
+                                      fontSize: 14,
                                     ),
                                   ),
                                   const SizedBox(width: 8),
@@ -73,7 +81,7 @@ class ReviewAnswersPage extends StatelessWidget {
                                     child: Text(
                                       questionText,
                                       style: const TextStyle(
-                                        fontSize: 16,
+                                        fontSize: 14,
                                       ),
                                     ),
                                   ),
@@ -82,20 +90,20 @@ class ReviewAnswersPage extends StatelessWidget {
                               const SizedBox(height: 8),
                               Row(
                                 children: [
-                                  Text(
+                                  const Text(
                                     "答",
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       color: Colors.blue,
-                                      fontSize: 16,
+                                      fontSize: 14,
                                     ),
                                   ),
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: Text(
                                       correctAnswer,
-                                      style: TextStyle(
-                                        fontSize: 16,
+                                      style: const TextStyle(
+                                        fontSize: 14,
                                       ),
                                     ),
                                   ),
@@ -104,12 +112,101 @@ class ReviewAnswersPage extends StatelessWidget {
                             ],
                           ),
                         ),
-                      IconButton(
-                            icon: const Icon(Icons.bookmark_border),
-                            onPressed: () {
-                              // お気に入りの処理
-                            },
-                          ),
+                        // ここから修正部分：StreamBuilder でFirestoreを監視
+                        StreamBuilder<DocumentSnapshot>(
+                          stream: FirebaseFirestore.instance
+                              .collection('questions')
+                              .doc(questionId)
+                              .collection('questionUserStats')
+                              .doc(user?.uid) // user が null の可能性もある
+                              .snapshots(),
+                          builder: (context, snapshot) {
+                            // ドキュメント未取得・エラー時は一旦「ブックマークなし」で表示
+                            if (!snapshot.hasData || snapshot.hasError) {
+                              return IconButton(
+                                icon: const Icon(Icons.bookmark_border),
+                                color: Colors.grey,
+                                onPressed: () async {
+                                  if (user == null) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('ブックマークにはログインが必要です。'),
+                                      ),
+                                    );
+                                    return;
+                                  }
+                                  // ログインしていてドキュメント未取得の場合は、
+                                  // とりあえずブックマーク登録( isFlagged=true )する例
+                                  await FirebaseFirestore.instance
+                                      .collection('questions')
+                                      .doc(questionId)
+                                      .collection('questionUserStats')
+                                      .doc(user.uid)
+                                      .set({
+                                    'userRef': FirebaseFirestore.instance.collection('users').doc(user.uid),
+                                    'isFlagged': true,
+                                  }, SetOptions(merge: true));
+                                },
+                              );
+                            }
+
+                            // データが取得できた場合
+                            final data = snapshot.data!.data() as Map<String, dynamic>?;
+
+                            // isFlagged がなければ false とする
+                            final bool isFlagged = data?['isFlagged'] ?? false;
+
+                            return IconButton(
+                              icon: Icon(
+                                // フラグが true なら Icons.bookmark、false なら Icons.bookmark_border
+                                isFlagged ? Icons.bookmark : Icons.bookmark_border,
+                              ),
+                              // アイコンの色も true/false で変える例
+                              color: isFlagged ? Colors.grey : Colors.grey,
+                              onPressed: () async {
+                                if (user == null) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('ブックマークにはログインが必要です。'),
+                                    ),
+                                  );
+                                  return;
+                                }
+
+                                try {
+                                  // クリックすると、isFlagged をトグル(反転)する例
+                                  await FirebaseFirestore.instance
+                                      .collection('questions')
+                                      .doc(questionId)
+                                      .collection('questionUserStats')
+                                      .doc(user.uid)
+                                      .set({
+                                    'userRef': FirebaseFirestore.instance.collection('users').doc(user.uid),
+                                    'isFlagged': !isFlagged,
+                                  }, SetOptions(merge: true));
+
+                                  // 成功時のメッセージはご自由に
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        isFlagged ? 'ブックマーク解除しました。' : 'ブックマークしました。',
+                                      ),
+                                    ),
+                                  );
+                                } catch (e) {
+                                  // エラー処理
+                                  print('Error toggling bookmark: $e');
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('ブックマーク更新に失敗しました。'),
+                                    ),
+                                  );
+                                }
+                              },
+                            );
+                          },
+                        ),
+                        // ここまで修正
                       ],
                     ),
                   ),

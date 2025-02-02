@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:repaso/app_colors.dart';
 
 class QuestionSetEditPage extends StatefulWidget {
   final String initialQuestionSetName;
@@ -21,18 +22,37 @@ class _QuestionSetEditPageState extends State<QuestionSetEditPage> {
   bool _isButtonEnabled = false;
   final TextEditingController _questionSetNameController = TextEditingController();
 
+  // UIでフォーカス状態を扱うため FocusNode を追加
+  final FocusNode _focusNode = FocusNode();
+
   @override
   void initState() {
     super.initState();
-    _questionSetNameController.text = widget.initialQuestionSetName; // 初期値を設定
+
+    // 初期値を設定
+    _questionSetNameController.text = widget.initialQuestionSetName;
+
+    // ★★ 修正: 「空文字 or 同じ文字列」ならボタン無効、それ以外は有効にする
     _questionSetNameController.addListener(() {
-      updateButtonState(_questionSetNameController.text.trim().isNotEmpty);
+      final currentText = _questionSetNameController.text.trim();
+      final initialText = widget.initialQuestionSetName.trim();
+
+      // 空でない && 初期値と異なる => true
+      // 上記以外(空 or 同じ) => false
+      final isEnabled = currentText.isNotEmpty && currentText != initialText;
+      updateButtonState(isEnabled);
+    });
+
+    // フォーカス状態が変わればUI再描画
+    _focusNode.addListener(() {
+      setState(() {});
     });
   }
 
   @override
   void dispose() {
     _questionSetNameController.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -49,7 +69,7 @@ class _QuestionSetEditPageState extends State<QuestionSetEditPage> {
     try {
       await FirebaseFirestore.instance
           .collection('questionSets')
-          .doc(widget.questionSetId) // 指定された問題集を更新
+          .doc(widget.questionSetId)
           .update({
         'name': questionSetName,
         'updatedAt': FieldValue.serverTimestamp(), // 更新日時を記録
@@ -69,7 +89,13 @@ class _QuestionSetEditPageState extends State<QuestionSetEditPage> {
 
   @override
   Widget build(BuildContext context) {
+    // フォーカス中かどうか
+    final bool hasFocus = _focusNode.hasFocus;
+    // テキスト入力があるかどうか
+    final bool hasText = _questionSetNameController.text.isNotEmpty;
+
     return Scaffold(
+      backgroundColor: AppColors.gray50,
       appBar: AppBar(
         title: const Text('問題集の編集'),
       ),
@@ -79,32 +105,58 @@ class _QuestionSetEditPageState extends State<QuestionSetEditPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 16),
-            TextField(
-              controller: _questionSetNameController,
-              autofocus: true,
-              minLines: 1,
-              maxLines: 1,
-              style: const TextStyle(height: 1.5),
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(8)),
+
+            // ContainerでTextFieldを包んで枠線を消す (UIは既存どおり)
+            Container(
+              alignment: Alignment.center,
+              height: 64,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: Colors.transparent,
+                  width: 2.0,
                 ),
-                labelText: '問題集名',
+              ),
+              child: TextField(
+                focusNode: _focusNode,
+                controller: _questionSetNameController,
+                autofocus: true,
+                minLines: 1,
+                maxLines: 1,
+                style: const TextStyle(height: 1.5),
+                cursorColor: AppColors.blue500,
+                decoration: InputDecoration(
+                  filled: true,
+                  fillColor: Colors.white,
+                  labelText: (hasFocus || hasText) ? '問題集名' : null,
+                  hintText: (!hasFocus && !hasText)
+                      ? '問題集名'
+                      : (hasFocus && !hasText)
+                      ? '例）製造基礎'
+                      : null,
+                  floatingLabelBehavior: FloatingLabelBehavior.auto,
+                  floatingLabelStyle: const TextStyle(color: AppColors.blue500),
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                ),
               ),
             ),
+
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
               height: 48,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: _isButtonEnabled ? Colors.blue : Colors.grey,
+                  backgroundColor: _isButtonEnabled ? AppColors.blue500 : Colors.grey,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
                 onPressed: _isButtonEnabled ? _saveQuestionSet : null,
-                child: const Text('保存'),
+                child: const Text('保存', style: TextStyle(color: Colors.white)),
               ),
             ),
           ],
@@ -114,8 +166,13 @@ class _QuestionSetEditPageState extends State<QuestionSetEditPage> {
   }
 }
 
+// 画面遷移の関数はそのまま
 void navigateToEditQuestionSetPage(
-    BuildContext context, String folderId, String questionSetId, String initialQuestionSetName) {
+    BuildContext context,
+    String folderId,
+    String questionSetId,
+    String initialQuestionSetName,
+    ) {
   Navigator.push(
     context,
     MaterialPageRoute(
