@@ -7,7 +7,7 @@ import 'package:repaso/main.dart';
 import 'package:repaso/privacy_policy_page.dart';
 import 'package:repaso/terms_of_service_page.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
-import 'app_colors.dart';
+import 'utils/app_colors.dart';
 import 'login_page.dart';
 
 class SignUpPage extends StatefulWidget {

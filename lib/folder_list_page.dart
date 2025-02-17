@@ -4,10 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:repaso/folder_edit_page.dart';
 import 'package:repaso/question_set_add_page.dart';
 import 'package:repaso/question_set_list_page.dart';
-import 'package:repaso/study_set_add_page.dart' as AddPage; // 新しい学習セット用
+import 'package:repaso/study_set_add_page.dart' as AddPage; // 新しい暗記セット用
 import 'package:repaso/study_set_answer_page.dart';
-import 'package:repaso/study_set_edit_page.dart' as EditPage; // 既存学習セット編集用
-import 'app_colors.dart';
+import 'package:repaso/study_set_edit_page.dart' as EditPage; // 既存暗記セット編集用
+import 'utils/app_colors.dart';
 import 'folder_add_page.dart';
 import 'main.dart';
 
@@ -72,11 +72,12 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
           }
         }
 
-        // 学習セットデータを取得
+        // 暗記セットデータを取得
         final studySetSnapshot = await FirebaseFirestore.instance
             .collection("users")
             .doc(userId)
             .collection("studySets")
+            .where('isDeleted', isEqualTo: false)
             .get();
 
         setState(() {
@@ -131,7 +132,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
     }
   }
 
-  // --- 学習セット追加 ---
+// --- 暗記セット追加 ---
   void navigateToAddStudySetPage(BuildContext context) async {
     final studySet = AddPage.StudySet(
       name: '',
@@ -140,6 +141,11 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
       selectedQuestionOrder: 'random',
       correctRateRange: const RangeValues(0, 100),
       isFlagged: false,
+      memoryLevelStats: {'again': 0, 'hard': 0, 'good': 0, 'easy': 0},
+      memoryLevelRatios: {'again': 0, 'hard': 0, 'good': 0, 'easy': 0},
+      totalAttemptCount: 0,
+      studyStreakCount: 0,
+      lastStudiedDate: "",
     );
 
     final result = await Navigator.push(
@@ -155,7 +161,8 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
     }
   }
 
-  // --- 学習セット編集 ---
+
+  // --- 暗記セット編集 ---
   void navigateToEditStudySetPage(BuildContext context, String userId, String studySetId, EditPage.StudySet initialStudySet) async {
     final result = await Navigator.push(
       context,
@@ -204,7 +211,8 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
     // ユーザーの権限を取得
     final permissionSnapshot = await folder.reference
         .collection('permissions')
-        .where('userRef', isEqualTo: FirebaseFirestore.instance.collection('users').doc(user.uid))
+        .where('userRef',
+        isEqualTo: FirebaseFirestore.instance.collection('users').doc(user.uid))
         .get();
 
     if (permissionSnapshot.docs.isNotEmpty) {
@@ -231,8 +239,9 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
       builder: (BuildContext context) {
         return Padding(
           padding: const EdgeInsets.all(16.0),
+          // 高さを項目数に合わせて調整（今回は 280 に設定）
           child: Container(
-            height: 220,
+            height: 280,
             child: Column(
               children: [
                 ListTile(
@@ -286,6 +295,86 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                     navigateToFolderEditPage(context, folder);
                   },
                 ),
+                const SizedBox(height: 8),
+                // ↓ フォルダ削除オプションを追加 ↓
+                ListTile(
+                  leading: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: AppColors.gray100,
+                      borderRadius: BorderRadius.circular(100),
+                    ),
+                    child: const Icon(Icons.delete_outline,
+                        size: 22, color: AppColors.gray600),
+                  ),
+                  title: const Text('フォルダの削除', style: TextStyle(fontSize: 16)),
+                  onTap: () async {
+                    Navigator.of(context).pop();
+                    // 削除確認ダイアログを表示
+                    bool? confirmDelete = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        backgroundColor: Colors.white,
+                        title: const Text(
+                          '本当に削除しますか？',
+                          style: TextStyle(color: Colors.black87, fontSize: 18),
+                        ),
+                        content: const Text('フォルダの配下の問題集および問題も削除されます。この操作は取り消しできません。'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('戻る', style: TextStyle(color: Colors.black87)),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text('削除', style: TextStyle(color: Colors.red)),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirmDelete == true) {
+                      FirebaseFirestore firestore = FirebaseFirestore.instance;
+                      WriteBatch batch = firestore.batch();
+                      final deletedAt = FieldValue.serverTimestamp();
+
+                      // フォルダ自体をソフトデリート
+                      batch.update(folder.reference, {
+                        'isDeleted': true,
+                        'deletedAt': deletedAt,
+                      });
+
+                      // フォルダ内の問題集を取得し、ソフトデリート
+                      QuerySnapshot qsSnapshot = await firestore
+                          .collection('questionSets')
+                          .where('folderRef', isEqualTo: folder.reference)
+                          .get();
+                      for (var qsDoc in qsSnapshot.docs) {
+                        batch.update(qsDoc.reference, {
+                          'isDeleted': true,
+                          'deletedAt': deletedAt,
+                        });
+                        // 各問題集に紐づく問題もソフトデリート
+                        QuerySnapshot questionsSnapshot = await firestore
+                            .collection('questions')
+                            .where('questionSetRef', isEqualTo: qsDoc.reference)
+                            .get();
+                        for (var questionDoc in questionsSnapshot.docs) {
+                          batch.update(questionDoc.reference, {
+                            'isDeleted': true,
+                            'deletedAt': deletedAt,
+                          });
+                        }
+                      }
+
+                      await batch.commit();
+
+                    }
+                  },
+                ),
               ],
             ),
           ),
@@ -294,42 +383,35 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
     );
   }
 
-  // --- 学習セット削除 ---
   Future<void> deleteStudySet(BuildContext context, DocumentSnapshot studySetDoc) async {
     try {
-      await studySetDoc.reference.delete();
-
-      // Navigator.pop() を実行した後に context を遅延して使用
-      Future.delayed(Duration(milliseconds: 100), () {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('学習セットを削除しました')),
-          );
-        }
+      // studySet ドキュメントをソフトデリートする（isDeleted を true に更新）
+      await studySetDoc.reference.update({
+        'isDeleted': true,
+        'deletedAt': FieldValue.serverTimestamp(), // 必要に応じて削除日時も記録
       });
 
-      // 画面を更新する処理
+      // UI を更新
       if (mounted) {
         setState(() {
           fetchFirebaseData();
         });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('暗記セットが削除されました')),
+        );
       }
     } catch (e) {
       print("Error deleting study set: $e");
-
-      // 例外処理に遅延を適用
-      Future.delayed(Duration(milliseconds: 100), () {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('削除に失敗しました')),
-          );
-        }
-      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('削除に失敗しました')),
+        );
+      }
     }
   }
 
 
-  // --- 学習セット操作用モーダル ---
+  // --- 暗記セット操作用モーダル ---
   void showStudySetOptionsModal(BuildContext context, DocumentSnapshot studySetDoc) {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) {
@@ -372,7 +454,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
               children: [
                 ListTile(
                   leading: Icon(
-                    Icons.star,
+                    Icons.school_outlined,
                     size: 32,
                     color: AppColors.blue500,
                   ),
@@ -397,7 +479,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                     child: const Icon(Icons.edit_outlined,
                         size: 22, color: AppColors.gray600),
                   ),
-                  title: const Text('学習セットの編集', style: TextStyle(fontSize: 16)),
+                  title: const Text('暗記セットの編集', style: TextStyle(fontSize: 16)),
                   onTap: () {
                     Navigator.of(context).pop();
                     navigateToEditStudySetPage(context, userId, studySetId, initialStudySet);
@@ -415,23 +497,31 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                     child: const Icon(Icons.delete_outline,
                         size: 22, color: AppColors.gray600),
                   ),
-                  title: const Text('学習セットの削除', style: TextStyle(fontSize: 16)),
+                  title: const Text('暗記セットの削除', style: TextStyle(fontSize: 16)),
                   onTap: () async {
                     Navigator.of(context).pop();
                     // 確認ダイアログを表示し、削除実行
                     final shouldDelete = await showDialog<bool>(
                       context: context,
                       builder: (context) => AlertDialog(
-                        title: const Text('削除確認'),
-                        content: Text('${studySetDoc['name'] ?? '未設定'} を削除しますか？'),
+                        backgroundColor: Colors.white,
+                        shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.all(Radius.circular(8.0)),
+                        ),
+                        title: const Text('本当に削除しますか？',
+                            style: TextStyle(
+                                color: Colors.black87,
+                                fontSize: 18))
+                        ,
+                        content: const Text('削除した暗記セットを復元することはできません。'),
                         actions: [
                           TextButton(
                             onPressed: () => Navigator.pop(context, false),
-                            child: const Text('キャンセル'),
+                            child: const Text('戻る', style: TextStyle(color: Colors.black87)),
                           ),
                           TextButton(
                             onPressed: () => Navigator.pop(context, true),
-                            child: const Text('削除'),
+                            child: const Text('削除', style: TextStyle(color: Colors.red)),
                           ),
                         ],
                       ),
@@ -505,6 +595,11 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                 final folderName = folderData['name'] ?? '未設定';
                 final questionCount = folderData['questionCount'] ?? 0;
                 final isPublic = folderData['isPublic'] ?? false;
+                final isDeleted = folderData['isDeleted'] ?? false;
+
+                if (isDeleted) {
+                  return const SizedBox.shrink();
+                }
 
                 // --- フォルダユーザーステータスも購読 ---
                 final folderUserStatsStream = folderRef
@@ -669,18 +764,16 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
     }
   }
 
-// --- 学習セット一覧表示 ---
+// --- 暗記セット一覧表示 ---
   Widget buildStudySetList() {
     if (studySets.isEmpty) {
-      return Center(child: Text('学習セットがありません'));
+      return Center(child: Text('暗記セットがありません'));
     }
     return ListView.builder(
       itemCount: studySets.length,
       itemBuilder: (context, index) {
         final studySet = studySets[index];
         final numberOfQuestions = studySet['numberOfQuestions'] ?? 0;
-        final createdAt = DateTime.now();
-        final updatedAt = DateTime.now();
 
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
@@ -699,7 +792,6 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                   );
                   return;
                 }
-
                 final studySetId = studySet.id; // Firestore ドキュメント ID
                 Navigator.push(
                   context,
@@ -716,13 +808,14 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // タイトル行（暗記セット名など）
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Padding(
                           padding: const EdgeInsets.only(top: 3.0),
                           child: Icon(
-                            Icons.star_border,
+                            Icons.school_outlined,
                             size: 24,
                             color: AppColors.blue500,
                           ),
@@ -757,29 +850,58 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                       ],
                     ),
                     const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        const Text(
-                          '作成日:',
-                          style: TextStyle(fontSize: 14, color: AppColors.gray500),
+                    // ▼ 修正後の memoryLevelRatios を元にしたプログレスバー ▼
+                    Builder(builder: (context) {
+                      // Firestoreからの memoryLevelRatios を取得（null の場合は空の Map にする）
+                      final Map<String, dynamic> ratioData =
+                          studySet['memoryLevelRatios'] as Map<String, dynamic>? ?? {};
+
+                      // 各比率（double）を取得、デフォルトは0
+                      final double againRatio = (ratioData['again'] ?? 0).toDouble();
+                      final double hardRatio = (ratioData['hard'] ?? 0).toDouble();
+                      final double goodRatio = (ratioData['good'] ?? 0).toDouble();
+                      final double easyRatio = (ratioData['easy'] ?? 0).toDouble();
+
+                      // 合計値を計算し、100% に満たない場合は未回答（unanswered）として残りを算出
+                      final double totalRatios = againRatio + hardRatio + goodRatio + easyRatio;
+                      final double unansweredRatio = (totalRatios < 100) ? (100 - totalRatios) : 0;
+
+                      // `memoryLevelRatios` が存在しない場合（totalRatios == 0）、未回答（100%）にする
+                      final bool noData = totalRatios == 0;
+                      final Map<String, int> memoryRatiosMap = noData
+                          ? {'unanswered': 100} // データがない場合、グレー100%
+                          : {
+                        'again': againRatio.round(),
+                        'hard': hardRatio.round(),
+                        'good': goodRatio.round(),
+                        'easy': easyRatio.round(),
+                        'unanswered': unansweredRatio.round(),
+                      };
+
+                      // 表示順序（Folderと同様：左から "again", "hard", "good", "easy", "unanswered"）
+                      final List<String> sortedOrder = ['again', 'hard', 'good', 'easy', 'unanswered'];
+
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 16.0),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(2.0),
+                          child: Row(
+                            children: sortedOrder.map((level) {
+                              final flexValue = memoryRatiosMap[level] ?? 0;
+                              if (flexValue <= 0) return const SizedBox.shrink();
+                              return Expanded(
+                                flex: flexValue,
+                                child: Container(
+                                  height: 8,
+                                  color: _getMemoryLevelColor(level),
+                                ),
+                              );
+                            }).toList(),
+                          ),
                         ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${createdAt.year}/${createdAt.month.toString().padLeft(2, '0')}/${createdAt.day.toString().padLeft(2, '0')}',
-                          style: const TextStyle(fontSize: 14, color: AppColors.gray700),
-                        ),
-                        const SizedBox(width: 12),
-                        const Text(
-                          '更新日:',
-                          style: TextStyle(fontSize: 14, color: AppColors.gray500),
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${updatedAt.year}/${updatedAt.month.toString().padLeft(2, '0')}/${updatedAt.day.toString().padLeft(2, '0')}',
-                          style: const TextStyle(fontSize: 14, color: AppColors.gray700),
-                        ),
-                      ],
-                    ),
+                      );
+                    }),
+                    // ▲ 修正後のプログレスバーここまで ▲
                   ],
                 ),
               ),
@@ -789,6 +911,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
       },
     );
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -832,7 +955,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
             ),
             tabs: const [
               Tab(text: 'フォルダ'),
-              Tab(text: '学習セット'),
+              Tab(text: '暗記セット'),
             ],
           ),
         ),

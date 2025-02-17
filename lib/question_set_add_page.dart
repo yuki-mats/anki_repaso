@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:repaso/app_colors.dart';
+import 'package:repaso/utils/app_colors.dart';
 import 'question_add_page.dart';
 
 class QuestionSetsAddPage extends StatefulWidget {
@@ -181,7 +181,7 @@ class _QuestionSetsAddPageState extends State<QuestionSetsAddPage> {
                   backgroundColor:
                   _isButtonEnabled ? AppColors.blue500 : Colors.grey,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(32),
                   ),
                 ),
                 onPressed: _isButtonEnabled && !_isLoading ? _addQuestionSet : null,

@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'app_colors.dart';
+import 'utils/app_colors.dart';
 
 class SetQuestionSetPage extends StatefulWidget {
   final String userId; // ログイン中のユーザーID
@@ -31,42 +31,54 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
     fetchFoldersAndQuestionSets();
   }
 
-  void initializeSelectedQuestionSets() {
+  void initializeSelectedQuestionSets() async {
+    List<String> validIds = [];
+
     for (var questionSetId in widget.selectedQuestionSetIds) {
-      questionSetSelection[questionSetId] = true;
+      final doc = await FirebaseFirestore.instance
+          .collection('questionSets')
+          .doc(questionSetId)
+          .get();
+
+      // 削除されていない場合のみリストに追加
+      if (doc.exists && (doc.data()?['isDeleted'] ?? false) == false) {
+        questionSetSelection[questionSetId] = true;
+        validIds.add(questionSetId);
+      }
     }
+
+    setState(() {
+      widget.selectedQuestionSetIds.clear();
+      widget.selectedQuestionSetIds.addAll(validIds);
+    });
   }
+
 
   Future<void> fetchFoldersAndQuestionSets() async {
     try {
-      // フォルダを一括取得
+      // 削除されていないフォルダのみ取得
       final folderSnapshot = await FirebaseFirestore.instance
           .collection('folders')
+          .where('isDeleted', isEqualTo: false)
           .get();
 
       final Map<String, dynamic> fetchedData = {};
       final Map<String, bool?> folderState = {};
       final Map<String, bool> expandedStateInit = {};
 
-      // 各フォルダに対して権限を確認し、権限があるものだけ表示
       for (var folder in folderSnapshot.docs) {
         final folderId = folder.id;
         final folderName = folder['name'];
 
-        // ユーザー権限の取得（permissions サブコレクション）
+        // ユーザーの権限を取得
         final permissionSnapshot = await FirebaseFirestore.instance
             .collection('folders')
             .doc(folderId)
             .collection('permissions')
-            .where(
-          'userRef',
-          isEqualTo:
-          FirebaseFirestore.instance.doc('users/${widget.userId}'),
-        )
+            .where('userRef', isEqualTo: FirebaseFirestore.instance.doc('users/${widget.userId}'))
             .where('role', whereIn: ['owner', 'editor', 'viewer'])
             .get();
 
-        // 権限がない場合はスキップ
         if (permissionSnapshot.docs.isEmpty) {
           continue;
         }
@@ -74,13 +86,13 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
         folderState[folderId] = false;
         expandedStateInit[folderId] = false;
 
-        // フォルダに紐づく問題集を取得
+        // 削除されていない問題集のみ取得
         final questionSetsSnapshot = await FirebaseFirestore.instance
             .collection('questionSets')
             .where('folderRef', isEqualTo: folder.reference)
+            .where('isDeleted', isEqualTo: false) // 🔹 削除されていないものだけ取得
             .get();
 
-        // 問題集の選択状態を初期化し、既に選択済みのものがあれば展開状態に設定
         final questionSets = questionSetsSnapshot.docs.map((doc) {
           final questionSetId = doc.id;
           final isSelected = widget.selectedQuestionSetIds.contains(questionSetId);
@@ -95,19 +107,16 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
           return {'id': questionSetId, 'name': doc['name']};
         }).toList();
 
-        // フォルダ情報を格納
         fetchedData[folderId] = {
           'name': folderName,
           'questionSets': questionSets,
         };
 
-        // フォルダ自体のチェック状態（全選択・一部選択・未選択）を計算
         folderState[folderId] = _calculateFolderSelection(
           questionSets.map((qs) => qs['id'] as String).toList(),
         );
       }
 
-      // 状態を更新
       setState(() {
         folderData = fetchedData;
         folderSelection = folderState;
@@ -120,7 +129,11 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
     }
   }
 
+
   bool? _calculateFolderSelection(List<String> questionSetIds) {
+    if (questionSetIds.isEmpty) {
+      return false; // フォルダに問題集がない場合は未選択
+    }
     final allSelected = questionSetIds.every((id) => questionSetSelection[id] == true);
     final noneSelected = questionSetIds.every((id) => questionSetSelection[id] == false);
 
@@ -179,17 +192,28 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Text('問題集の選択'),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
+          icon: const Icon(Icons.arrow_back_ios),
           onPressed: _onBackPressed,
+        ),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1.0), // 線の高さ
+          child: Container(
+            color: Colors.grey[300], // 薄いグレーの線
+            height: 1.0,
+          ),
         ),
       ),
       body: isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator(
+        valueColor: AlwaysStoppedAnimation<Color>(AppColors.blue500),
+      ))
           : Column(
         children: [
+          SizedBox(height: 16,),
           Expanded(
             child: Theme(
               data: Theme.of(context).copyWith(
@@ -212,6 +236,14 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
                               updateChildSelection(folderId, value == true);
                             });
                           },
+                          fillColor: WidgetStateProperty.resolveWith<Color>(
+                                (Set<WidgetState> states) {
+                              if (states.contains(WidgetState.selected)) {
+                                return AppColors.blue500; // チェックされたときの色
+                              }
+                              return Colors.white; // 未チェック時の色
+                            },
+                          ),
                         ),
                         const Icon(Icons.folder, color: AppColors.gray600),
                         const SizedBox(width: 8),
@@ -250,6 +282,14 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
                                       updateSelectedQuestionSetNames();
                                     });
                                   },
+                                  fillColor: WidgetStateProperty.resolveWith<Color>(
+                                        (Set<WidgetState> states) {
+                                      if (states.contains(WidgetState.selected)) {
+                                        return AppColors.blue500; // チェックされたときの色
+                                      }
+                                      return Colors.white; // 未チェック時の色
+                                    },
+                                  ),
                                 ),
                                 const Icon(Icons.layers_rounded, color: AppColors.gray600),
                               ],

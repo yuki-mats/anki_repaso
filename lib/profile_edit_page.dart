@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:image/image.dart' as img; // 画像圧縮用ライブラリ
 import 'dart:io';
 import 'dart:typed_data';
+import 'utils/app_colors.dart';
 
 class ProfileEditPage extends StatefulWidget {
   @override
@@ -20,13 +21,36 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
   bool isCompressing = false; // 圧縮中フラグ
   bool isUploading = false; // アップロード状態を管理
   late TextEditingController _nameController;
+  late final FocusNode _focusNode;
   File? _selectedImageFile;
+  bool _isButtonEnabled = false;
+
 
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: name);
+    _focusNode = FocusNode();
     _fetchUserData();
+
+    // 🔹 ページ遷移後にテキストフィールドへ自動フォーカス
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _focusNode.requestFocus();
+    });
+
+    // 🔹 入力の変更を監視し、ボタンの有効状態を更新
+    _nameController.addListener(() {
+      final currentText = _nameController.text.trim();
+      final initialText = name.trim();
+      setState(() {
+        _isButtonEnabled = currentText.isNotEmpty && currentText != initialText;
+      });
+    });
+
+    // 🔹 フォーカス状態を監視し、UIを更新
+    _focusNode.addListener(() {
+      setState(() {});
+    });
   }
 
   Future<void> _fetchUserData() async {
@@ -82,6 +106,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
         setState(() {
           _selectedImageFile = compressedFile; // 圧縮した画像をセット
           isCompressing = false; // 圧縮終了後にロードを非表示
+          _isButtonEnabled = true; //　画像が変更されたため、ボタンを有効化
         });
 
         print('圧縮された画像をセットしました: ${compressedFile.path}');
@@ -117,7 +142,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
       _checkFileFormat(pngFile, expectedFormat: 'PNG');
 
       // 40%の品質で圧縮
-      final compressedImage = img.encodeJpg(img.decodeImage(pngFile.readAsBytesSync())!, quality: 40);
+      final compressedImage = img.encodeJpg(img.decodeImage(pngFile.readAsBytesSync())!, quality: 10);
       final compressedFile = File('${tempDir.path}/compressed_${DateTime.now().millisecondsSinceEpoch}.jpg')
         ..writeAsBytesSync(compressedImage);
 
@@ -219,27 +244,16 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
   @override
   void dispose() {
     _nameController.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.gray50,
       appBar: AppBar(
         title: Text('プロフィール編集'),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 8.0),
-            child: TextButton(
-                onPressed: _saveProfile,
-                child: Text('保存',
-                    style: TextStyle(
-                        color: Colors.black87,
-                        fontSize: 18,),
-                ),
-            ),
-          ),
-        ],
       ),
       body: isDataLoaded
           ? Padding(
@@ -249,6 +263,8 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
             _buildProfileImageSection(),
             SizedBox(height: 20),
             _buildUsernameField(),
+            const SizedBox(height: 24), // 🔹 余白を追加
+            _buildSaveButton(), // 🔹 保存ボタンを配置
             Spacer(),
           ],
         ),
@@ -256,6 +272,30 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
           : Center(child: CircularProgressIndicator()),
     );
   }
+
+  /// 🔹 保存ボタン
+  Widget _buildSaveButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 48,
+      child: ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: _isButtonEnabled ? AppColors.blue600 : Colors.grey,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+        onPressed: _isButtonEnabled ? _saveProfile : null,
+        child: Text(
+          '保存',
+          style: TextStyle(
+            color: _isButtonEnabled ? Colors.white : Colors.black54,
+          ),
+        ),
+      ),
+    );
+  }
+
 
   Widget _buildProfileImageSection() {
     return Center(
@@ -287,17 +327,52 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
   }
 
   Widget _buildUsernameField() {
-    return TextField(
-      controller: _nameController,
-      decoration: InputDecoration(
-        labelText: 'ユーザー名',
-        border: OutlineInputBorder(),
+    final bool hasFocus = _focusNode.hasFocus;
+    final bool hasText = _nameController.text.isNotEmpty;
+
+    return Container(
+      alignment: Alignment.center,
+      height: 64,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: Colors.transparent,
+          width: 2.0,
+        ),
       ),
-      onChanged: (value) {
-        setState(() {
-          name = value;
-        });
-      },
+      child: TextField(
+        focusNode: _focusNode, // 🔹 フォーカス管理
+        controller: _nameController,
+        minLines: 1,
+        maxLines: 1,
+        style: const TextStyle(height: 1.5),
+        cursorColor: AppColors.blue600,
+        decoration: InputDecoration(
+          filled: true,
+          fillColor: Colors.white,
+          labelText: (hasFocus || hasText) ? 'ユーザー名' : null,
+          hintText: (!hasFocus && !hasText)
+              ? 'ユーザー名'
+              : (hasFocus && !hasText)
+              ? '例）暗記 太郎'
+              : null,
+          floatingLabelBehavior: FloatingLabelBehavior.auto,
+          floatingLabelStyle: const TextStyle(
+            color: AppColors.blue600,
+          ),
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+        ),
+        onChanged: (value) {
+          setState(() {
+            name = value;
+          });
+        },
+      ),
     );
   }
 }
+
+

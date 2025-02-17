@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'app_colors.dart';
+import 'utils/app_colors.dart';
 
 class FolderAddPage extends StatefulWidget {
   const FolderAddPage({Key? key}) : super(key: key);
@@ -64,6 +64,7 @@ class _FolderAddPageState extends State<FolderAddPage> {
           'tags': [],
           'createdByRef': userRef,
           'updatedByRef': userRef,
+          'isDeleted': false,
           'isPublic': false,
           'questionCount': 0,
           'createdAt': FieldValue.serverTimestamp(),
@@ -173,7 +174,7 @@ class _FolderAddPageState extends State<FolderAddPage> {
                   backgroundColor:
                   _isButtonEnabled ? AppColors.blue600 : Colors.grey,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(32),
                   ),
                 ),
                 // 上記ロジックで _isButtonEnabled が true のときのみ押下可能
@@ -187,7 +188,7 @@ class _FolderAddPageState extends State<FolderAddPage> {
                   style: TextStyle(
                     color: _isButtonEnabled
                         ? Colors.white
-                        : Colors.black.withOpacity(0.5),
+                        : Colors.black54,
                   ),
                 ),
               ),

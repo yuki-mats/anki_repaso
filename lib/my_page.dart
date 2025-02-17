@@ -148,7 +148,7 @@ class _MyPageState extends State<MyPage> {
     return Row(
       children: [
         CircleAvatar(
-          radius: 40,
+          radius: 32,
           backgroundImage: NetworkImage(profileImageUrl),
         ),
         SizedBox(width: 16),
@@ -158,7 +158,7 @@ class _MyPageState extends State<MyPage> {
             children: [
               Text(
                 userName,
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 overflow: TextOverflow.ellipsis,
               ),
               SizedBox(height: 4),
@@ -177,9 +177,10 @@ class _MyPageState extends State<MyPage> {
   Widget _buildSettingsList(BuildContext context) {
     return Column(
       children: [
+        SizedBox(height: 16),
         ListTile(
-          leading: Icon(Icons.person),
-          title: Text('プロフィール編集'),
+          leading: Icon(Icons.person, size: 22),
+          title: Text('プロフィール編集', style: TextStyle(fontSize: 14)),
           onTap: () async {
             final result = await Navigator.push(
               context,
@@ -194,8 +195,8 @@ class _MyPageState extends State<MyPage> {
         ),
         Divider(),
         ListTile(
-          leading: Icon(Icons.privacy_tip_outlined),
-          title: Text('プライバシーポリシー'),
+          leading: Icon(Icons.privacy_tip_outlined, size: 22),
+          title: Text('プライバシーポリシー', style: TextStyle(fontSize: 14)),
           onTap: () {
             Navigator.push(
               context,
@@ -207,8 +208,8 @@ class _MyPageState extends State<MyPage> {
         ),
         Divider(),
         ListTile(
-          leading: Icon(Icons.library_books_outlined),
-          title: Text('利用規約'),
+          leading: Icon(Icons.library_books_outlined, size: 22),
+          title: Text('利用規約', style: TextStyle(fontSize: 14)),
           onTap: () {
             Navigator.push(
               context,
@@ -220,8 +221,8 @@ class _MyPageState extends State<MyPage> {
         ),
         Divider(),
         ListTile(
-          leading: Icon(Icons.logout),
-          title: Text('ログアウト'),
+          leading: Icon(Icons.logout, size: 22),
+          title: Text('ログアウト',style: TextStyle(fontSize: 14)),
           onTap: () {
             FirebaseAuth.instance.signOut().then((_) {
               Navigator.pushAndRemoveUntil(
@@ -234,8 +235,8 @@ class _MyPageState extends State<MyPage> {
         ),
         Divider(),
         ListTile(
-          leading: Icon(Icons.delete_forever),
-          title: Text('アカウントの削除'),
+          leading: Icon(Icons.delete_forever,size: 22),
+          title: Text('アカウントの削除', style: TextStyle(fontSize: 14)),
           onTap: () => _reauthenticateAndDeleteAccount(context),
         ),
       ],

@@ -1,8 +1,15 @@
+import 'dart:typed_data';
+import 'dart:ui';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
-import 'package:repaso/app_colors.dart';
-import 'package:repaso/utils/question_utils.dart';
+import 'package:repaso/utils/app_colors.dart';
+import 'package:repaso/services/question_count.dart';
+import 'package:image/image.dart' as img;
+import 'package:repaso/widgets/question_widgets.dart';
 
 class QuestionEditPage extends StatefulWidget {
   final DocumentSnapshot question; // 編集する問題のドキュメント
@@ -39,6 +46,12 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
   final FocusNode _examYearFocusNode = FocusNode();
   final FocusNode _examMonthFocusNode = FocusNode();
 
+  // **現在フォーカスされているコントローラーを追跡**
+  TextEditingController? _currentFocusedController;
+
+  // フォーカスノードとコントローラーのマップ（※late final ではなく、空のマップで初期化）
+  final Map<FocusNode, TextEditingController> _focusToControllerMap = {};
+
   String _selectedQuestionType = 'true_false';
   bool _trueFalseAnswer = true;
   bool _isSaving = false;
@@ -46,12 +59,52 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
   bool _isExamDateError = false;
   bool _isLoading = true;
   DateTime? _selectedExamDate;
+  bool _isUploading = false; // 画像アップロードの状態を管理
+
+  Map<TextEditingController, List<Uint8List>> _localImagesMap = {};
+
+  Map<String, List<String>> uploadedImageUrls = {
+    'questionImageUrls': [],
+    'explanationImageUrls': [],
+    'hintImageUrls': [],
+  };
 
   @override
   void initState() {
     super.initState();
     _questionTextController.addListener(_onQuestionTextChanged);
     _loadQuestionData();
+
+    // _focusToControllerMap を空のマップで初期化後、エントリーを追加
+    _focusToControllerMap.addAll({
+      _questionTextFocusNode: _questionTextController,
+      _correctChoiceTextFocusNode: _correctChoiceTextController,
+      _explanationTextFocusNode: _explanationTextController,
+      _hintTextFocusNode: _hintTextController,
+    });
+
+    // 各 FocusNode にリスナーを設定して、現在フォーカスされているコントローラーを追跡
+    for (var entry in _focusToControllerMap.entries) {
+      entry.key.addListener(() {
+        if (entry.key.hasFocus) {
+          if (_currentFocusedController != entry.value) {
+            setState(() {
+              _currentFocusedController = entry.value;
+              print("🔹 フォーカスが変更されました: ${entry.value.text} (Controller HashCode: ${entry.value.hashCode})");
+            });
+          }
+        } else {
+          if (_currentFocusedController == entry.value) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              setState(() {
+                print("🔹 フォーカスが外れました: ${entry.value.text} (Controller HashCode: ${entry.value.hashCode})");
+                _currentFocusedController = null;
+              });
+            });
+          }
+        }
+      });
+    }
   }
 
   void _onQuestionTextChanged() {
@@ -75,7 +128,13 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
         _incorrectChoice1TextController.text = data['incorrectChoice1Text'] ?? '';
         _incorrectChoice2TextController.text = data['incorrectChoice2Text'] ?? '';
         _incorrectChoice3TextController.text = data['incorrectChoice3Text'] ?? '';
+      } else if (_selectedQuestionType == 'flash_card') {
+        // flash_card の場合
+        _correctChoiceTextController.text = data['correctChoiceText'] ?? '';
+        uploadedImageUrls['correctChoiceImageUrls'] =
+        List<String>.from(data['correctChoiceImageUrls'] ?? []);
       }
+
       // 出題年月（examDate）の読み込み
       if (data['examDate'] != null) {
         final Timestamp ts = data['examDate'] as Timestamp;
@@ -84,7 +143,15 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
         _examMonthController.text = _selectedExamDate!.month.toString().padLeft(2, '0');
       }
       _explanationTextController.text = data['explanationText'] ?? '';
-      _hintTextController.text = data['hint'] ?? '';
+      _hintTextController.text = data['hintText'] ?? '';
+
+      // Firestore に保存済みの画像 URL を読み込む
+      uploadedImageUrls['questionImageUrls'] =
+      List<String>.from(data['questionImageUrls'] ?? []);
+      uploadedImageUrls['explanationImageUrls'] =
+      List<String>.from(data['explanationImageUrls'] ?? []);
+      uploadedImageUrls['hintImageUrls'] =
+      List<String>.from(data['hintImageUrls'] ?? []);
 
       _isLoading = false;
     });
@@ -95,17 +162,10 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
     final yearText = _examYearController.text;
     final monthText = _examMonthController.text;
     if (yearText.isEmpty) {
-      if (monthText.isNotEmpty) {
-        setState(() {
-          _selectedExamDate = null;
-          _isExamDateError = true;
-        });
-      } else {
-        setState(() {
-          _selectedExamDate = null;
-          _isExamDateError = false;
-        });
-      }
+      setState(() {
+        _selectedExamDate = null;
+        _isExamDateError = monthText.isNotEmpty;
+      });
       return;
     }
     final year = int.tryParse(yearText);
@@ -138,45 +198,83 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
   }
 
   Future<void> _updateQuestion() async {
-    // 入力内容から最新の出題年月を反映
     _updateExamDateFromInput();
     if (!_isSaveEnabled || _isSaving || _isExamDateError) return;
+
     setState(() {
       _isSaving = true;
     });
 
-    final questionData = {
-      'questionText': _questionTextController.text.trim(),
-      'questionType': _selectedQuestionType,
-      'explanationText': _explanationTextController.text.trim(),
-      'hintText': _hintTextController.text.trim(),
-      'examDate': _selectedExamDate != null ? Timestamp.fromDate(_selectedExamDate!) : null,
-      'updatedByRef': FirebaseFirestore.instance.collection('users').doc('currentUserId'),
-      'updatedAt': FieldValue.serverTimestamp(),
-    };
-
-    if (_selectedQuestionType == 'true_false') {
-      questionData.addAll({
-        'correctChoiceText': _trueFalseAnswer ? '正しい' : '間違い',
-        'incorrectChoice1Text': !_trueFalseAnswer ? '正しい' : '間違い',
-      });
-    } else if (_selectedQuestionType == 'single_choice') {
-      questionData.addAll({
-        'correctChoiceText': _correctChoiceTextController.text.trim(),
-        'incorrectChoice1Text': _incorrectChoice1TextController.text.trim(),
-        'incorrectChoice2Text': _incorrectChoice2TextController.text.trim(),
-        'incorrectChoice3Text': _incorrectChoice3TextController.text.trim(),
-      });
-    }
-
     try {
-      await widget.question.reference.update(questionData);
+      final questionRef = widget.question.reference;
+
+      // 画像アップロード処理
+      Map<String, List<Uint8List>> imageMap = {
+        'questionImageUrls': _localImagesMap[_questionTextController] ?? [],
+        'correctChoiceImageUrls': _localImagesMap[_correctChoiceTextController] ?? [],
+        'explanationImageUrls': _localImagesMap[_explanationTextController] ?? [],
+        'hintImageUrls': _localImagesMap[_hintTextController] ?? [],
+      };
+
+      Map<String, List<String>> newUploadedImageUrls = {};
+      for (var entry in imageMap.entries) {
+        newUploadedImageUrls[entry.key] =
+        await _uploadImagesToStorage(questionRef.id, entry.key, entry.value);
+      }
+
+      final questionData = {
+        'questionText': _questionTextController.text.trim(),
+        'questionType': _selectedQuestionType,
+        'explanationText': _explanationTextController.text.trim(),
+        'hintText': _hintTextController.text.trim(),
+        'examDate': _selectedExamDate != null ? Timestamp.fromDate(_selectedExamDate!) : null,
+        'updatedAt': FieldValue.serverTimestamp(),
+        'questionImageUrls': [
+          ...(uploadedImageUrls['questionImageUrls'] ?? []),
+          ...newUploadedImageUrls['questionImageUrls']!
+        ],
+        'explanationImageUrls': [
+          ...(uploadedImageUrls['explanationImageUrls'] ?? []),
+          ...newUploadedImageUrls['explanationImageUrls']!
+        ],
+        'hintImageUrls': [
+          ...(uploadedImageUrls['hintImageUrls'] ?? []),
+          ...newUploadedImageUrls['hintImageUrls']!
+        ],
+      };
+
+      if (_selectedQuestionType == 'true_false') {
+        questionData.addAll({
+          'correctChoiceText': _trueFalseAnswer ? '正しい' : '間違い',
+          'incorrectChoice1Text': !_trueFalseAnswer ? '正しい' : '間違い',
+        });
+      } else if (_selectedQuestionType == 'single_choice') {
+        questionData.addAll({
+          'correctChoiceText': _correctChoiceTextController.text.trim(),
+          'incorrectChoice1Text': _incorrectChoice1TextController.text.trim(),
+          'incorrectChoice2Text': _incorrectChoice2TextController.text.trim(),
+          'incorrectChoice3Text': _incorrectChoice3TextController.text.trim(),
+        });
+      } else if (_selectedQuestionType == 'flash_card') {
+        questionData.addAll({
+          'correctChoiceText': _correctChoiceTextController.text.trim(),
+          'correctChoiceImageUrls': [
+            ...(uploadedImageUrls['correctChoiceImageUrls'] ?? []),
+            ...newUploadedImageUrls['correctChoiceImageUrls']!
+          ],
+        });
+      }
+
+      await questionRef.update(questionData);
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('問題が更新されました')),
       );
+
+      _localImagesMap.clear();
       Navigator.pop(context);
     } catch (e) {
-      print('Error updating question: $e');
+      print('❌ Firestore 更新エラー: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('問題の更新に失敗しました')),
       );
@@ -197,11 +295,22 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
 
     try {
       await widget.question.reference.update(deletionData);
-
       final questionSetRef = widget.question['questionSetRef'] as DocumentReference;
-      final folderRef = await _getFolderRef(questionSetRef); // フォルダ参照の取得
-      await updateQuestionCounts(folderRef, questionSetRef); // 共通メソッドを使用
-
+      final folderRef = await _getFolderRef(questionSetRef);
+      await updateQuestionCounts(folderRef, questionSetRef);
+      final currentUserId = FirebaseAuth.instance.currentUser!.uid;
+      await questionSetRef
+          .collection('questionSetUserStats')
+          .doc(currentUserId)
+          .update({
+        "memoryLevels.${widget.question.id}": FieldValue.delete()
+      });
+      await folderRef
+          .collection('folderSetUserStats')
+          .doc(currentUserId)
+          .update({
+        "memoryLevels.${widget.question.id}": FieldValue.delete()
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('問題が削除されました')),
       );
@@ -243,6 +352,123 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
     _examMonthFocusNode.dispose();
 
     super.dispose();
+  }
+
+  void _deleteUploadedImage(String field, String url) {
+    setState(() {
+      uploadedImageUrls[field]?.remove(url);
+    });
+  }
+
+  TextEditingController? _getFocusedController() {
+    FocusNode? focusedNode = FocusManager.instance.primaryFocus;
+    if (focusedNode != null && _focusToControllerMap.containsKey(focusedNode)) {
+      return _focusToControllerMap[focusedNode];
+    }
+    return null;
+  }
+
+  void _insertImage() async {
+    TextEditingController? targetController = _currentFocusedController ?? _getFocusedController();
+
+    if (targetController == _incorrectChoice1TextController ||
+        targetController == _incorrectChoice2TextController ||
+        targetController == _incorrectChoice3TextController) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('誤答には画像を挿入できません')),
+      );
+      return;
+    }
+
+    if (_selectedQuestionType != 'flash_card' &&
+        targetController == _correctChoiceTextController) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('正答の画像はフラッシュカードでのみ追加可能です')),
+      );
+      return;
+    }
+
+    if (targetController == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('画像を挿入するテキストフィールドを選択してください')),
+      );
+      return;
+    }
+
+    FocusScope.of(context).unfocus();
+
+    List<Uint8List> existingImages = _localImagesMap[targetController] ?? [];
+    if (existingImages.length >= 2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('1つのフィールドには最大2枚まで画像を追加できます')),
+      );
+      return;
+    }
+
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        withData: true,
+      );
+
+      if (result == null || result.files.isEmpty) return;
+
+      Uint8List? imageData = result.files.first.bytes;
+      if (imageData == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('画像の読み込みに失敗しました')),
+        );
+        return;
+      }
+
+      setState(() {
+        _localImagesMap.putIfAbsent(targetController, () => []).add(imageData);
+      });
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        setState(() {});
+      });
+    } catch (e) {
+      print("❌ 画像選択エラー: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('画像の選択に失敗しました')),
+      );
+    }
+  }
+
+  void _removeImage(TextEditingController controller, Uint8List image) {
+    setState(() {
+      _localImagesMap[controller]?.remove(image);
+      if (_localImagesMap[controller]?.isEmpty ?? false) {
+        _localImagesMap.remove(controller);
+      }
+    });
+  }
+
+  Future<List<String>> _uploadImagesToStorage(String questionId, String field, List<Uint8List> images) async {
+    if (images.isEmpty) return [];
+    List<String> uploadedUrls = [];
+    final storageRef = FirebaseStorage.instance.ref().child('question_images');
+    for (int i = 0; i < images.length; i++) {
+      try {
+        img.Image? decodedImage = img.decodeImage(images[i]);
+        if (decodedImage == null) {
+          print("❌ 画像のデコードに失敗しました");
+          continue;
+        }
+        Uint8List compressedImage = Uint8List.fromList(
+            img.encodeJpg(decodedImage, quality: 40));
+        String fileName = '$questionId-$field-$i.jpg';
+        Reference imageRef = storageRef.child(fileName);
+        UploadTask uploadTask = imageRef.putData(compressedImage);
+        TaskSnapshot snapshot = await uploadTask;
+        String downloadUrl = await snapshot.ref.getDownloadURL();
+        uploadedUrls.add(downloadUrl);
+      } catch (e) {
+        print("画像アップロード失敗: $e");
+      }
+    }
+    return uploadedUrls;
   }
 
   @override
@@ -297,10 +523,19 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
       bottomSheet: showBottomSaveButton
           ? Container(
         color: AppColors.gray50,
-        padding: const EdgeInsets.only(bottom: 4.0, right: 16.0),
+        padding: const EdgeInsets.only(bottom: 0.0, right: 16.0, left: 16.0),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.end,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
+            IconButton(
+              icon: const Icon(
+                Icons.photo_size_select_actual_outlined,
+                color: AppColors.blue500,
+                size: 32,
+              ),
+              onPressed: _insertImage,
+            ),
+            const SizedBox(width: 16),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: canSave ? AppColors.blue500 : Colors.grey,
@@ -332,44 +567,63 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  _buildChip(
-                    label: '正誤問題',
-                    icon: Icons.check_circle_outline,
-                    isSelected: _selectedQuestionType == 'true_false',
-                    onTap: () {
-                      setState(() {
-                        _selectedQuestionType = 'true_false';
-                      });
-                    },
-                  ),
-                  const SizedBox(width: 8),
-                  _buildChip(
-                    label: '四択問題',
-                    icon: Icons.list_alt,
-                    isSelected: _selectedQuestionType == 'single_choice',
-                    onTap: () {
-                      setState(() {
-                        _selectedQuestionType = 'single_choice';
-                      });
-                    },
-                  ),
-                ],
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    ChipWidget(
+                      label: '正誤問題',
+                      icon: Icons.check_circle_outline,
+                      isSelected: _selectedQuestionType == 'true_false',
+                      onTap: () {
+                        setState(() {
+                          _selectedQuestionType = 'true_false';
+                        });
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                    ChipWidget(
+                      label: 'カード',
+                      icon: Icons.filter_none_rounded,
+                      isSelected: _selectedQuestionType == 'flash_card',
+                      onTap: () {
+                        setState(() {
+                          _selectedQuestionType = 'flash_card';
+                        });
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                    ChipWidget(
+                      label: '四択問題',
+                      icon: Icons.list_alt,
+                      isSelected: _selectedQuestionType == 'single_choice',
+                      onTap: () {
+                        setState(() {
+                          _selectedQuestionType = 'single_choice';
+                        });
+                      },
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 16),
-              _buildExpandableTextField(
+              ExpandableTextField(
                 controller: _questionTextController,
+                focusNode: _questionTextFocusNode,
                 labelText: '問題文',
                 textFieldHeight: 80,
                 focusedHintText: '例）日本の首都は東京である。',
+                imageUrls: uploadedImageUrls['questionImageUrls'] ?? [],
+                localImageBytes: _localImagesMap[_questionTextController] ?? [],
+                onRemoveLocalImage: (imgData) => _removeImage(_questionTextController, imgData),
+                onDeleteUploadedImage: (url) => _deleteUploadedImage('questionImageUrls', url),
               ),
               const SizedBox(height: 16),
               if (_selectedQuestionType == 'true_false')
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildTrueFalseSelectionTile(
+                    TrueFalseTile(
                       label: '正しい',
                       value: true,
                       groupValue: _trueFalseAnswer,
@@ -380,7 +634,7 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
                       },
                     ),
                     const SizedBox(height: 8),
-                    _buildTrueFalseSelectionTile(
+                    TrueFalseTile(
                       label: '間違い',
                       value: false,
                       groupValue: _trueFalseAnswer,
@@ -392,30 +646,51 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
                     ),
                   ],
                 ),
-              if (_selectedQuestionType == 'single_choice') ...[
-                _buildExpandableTextField(
+              if (_selectedQuestionType == 'flash_card') ...[
+                ExpandableTextField(
                   controller: _correctChoiceTextController,
+                  focusNode: _correctChoiceTextFocusNode,
                   labelText: '正解の選択肢',
                   textFieldHeight: 18,
                   focusedHintText: '例）東京である。',
+                  imageUrls: uploadedImageUrls['correctChoiceImageUrls'] ?? [],
+                  localImageBytes: _localImagesMap[_correctChoiceTextController] ?? [],
+                  onRemoveLocalImage: (imgData) => _removeImage(_correctChoiceTextController, imgData),
+                  onDeleteUploadedImage: (url) => _deleteUploadedImage('correctChoiceImageUrls', url),
+                ),
+              ],
+              if (_selectedQuestionType == 'single_choice') ...[
+                ExpandableTextField(
+                  controller: _correctChoiceTextController,
+                  focusNode: _correctChoiceTextFocusNode,
+                  labelText: '正解の選択肢',
+                  textFieldHeight: 18,
+                  focusedHintText: '例）東京である。',
+                  imageUrls: uploadedImageUrls['correctChoiceImageUrls'] ?? [],
+                  localImageBytes: _localImagesMap[_correctChoiceTextController] ?? [],
+                  onRemoveLocalImage: (imgData) => _removeImage(_correctChoiceTextController, imgData),
+                  onDeleteUploadedImage: (url) => _deleteUploadedImage('correctChoiceImageUrls', url),
                 ),
                 const SizedBox(height: 16),
-                _buildExpandableTextField(
+                ExpandableTextField(
                   controller: _incorrectChoice1TextController,
+                  focusNode: _incorrectChoice1TextFocusNode,
                   labelText: '誤答1',
                   textFieldHeight: 18,
                   focusedHintText: '例）大阪である。',
                 ),
                 const SizedBox(height: 16),
-                _buildExpandableTextField(
+                ExpandableTextField(
                   controller: _incorrectChoice2TextController,
+                  focusNode: _incorrectChoice2TextFocusNode,
                   labelText: '誤答2',
                   textFieldHeight: 16,
                   focusedHintText: '例）京都である。',
                 ),
                 const SizedBox(height: 16),
-                _buildExpandableTextField(
+                ExpandableTextField(
                   controller: _incorrectChoice3TextController,
+                  focusNode: _incorrectChoice3TextFocusNode,
                   labelText: '誤答3',
                   textFieldHeight: 18,
                   focusedHintText: '例）名古屋である。',
@@ -424,23 +699,40 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
               const SizedBox(height: 32),
               _buildExamDateField(),
               const SizedBox(height: 16),
-              _buildExpandableTextField(
+              ExpandableTextField(
                 controller: _explanationTextController,
+                focusNode: _explanationTextFocusNode,
                 labelText: '解説',
                 textFieldHeight: 24,
                 focusedHintText: '例）東京は、1869年（明治2年）に首都となりました',
+                imageUrls: uploadedImageUrls['explanationImageUrls'] ?? [],
+                localImageBytes: _localImagesMap[_explanationTextController] ?? [],
+                onRemoveLocalImage: (imgData) => _removeImage(_explanationTextController, imgData),
+                onDeleteUploadedImage: (url) => _deleteUploadedImage('explanationImageUrls', url),
               ),
               const SizedBox(height: 16),
-              _buildExpandableTextField(
+              ExpandableTextField(
                 controller: _hintTextController,
+                focusNode: _hintTextFocusNode,
                 labelText: 'ヒント',
                 textFieldHeight: 24,
                 focusedHintText: '関東地方にある都道府県です。',
+                imageUrls: uploadedImageUrls['hintImageUrls'] ?? [],
+                localImageBytes: _localImagesMap[_hintTextController] ?? [],
+                onRemoveLocalImage: (imgData) => _removeImage(_hintTextController, imgData),
+                onDeleteUploadedImage: (url) => _deleteUploadedImage('hintImageUrls', url),
               ),
               const SizedBox(height: 32),
               Container(
                 width: double.infinity,
                 child: ElevatedButton(
+                  child: const Text(
+                    '問題を削除',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.red,
+                    ),
+                  ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 4),
@@ -451,14 +743,13 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
                       context: context,
                       builder: (context) => AlertDialog(
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8), // 角丸の大きさを調整
+                          borderRadius: BorderRadius.circular(8),
                         ),
                         backgroundColor: Colors.white,
-                        title: const Text('本当に削除しますか？',
-                            style: TextStyle(
-                                color: Colors.black87,
-                                fontSize: 18))
-                        ,
+                        title: const Text(
+                          '本当に削除しますか？',
+                          style: TextStyle(color: Colors.black87, fontSize: 18),
+                        ),
                         content: const Text('削除した問題を復元することはできません。'),
                         actions: [
                           TextButton(
@@ -476,154 +767,10 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
                       _deleteQuestion();
                     }
                   },
-                  child: const Text(
-                    '問題を削除',
-                    style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.red,),
-                  ),
                 ),
               ),
               const SizedBox(height: 300),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildChip({
-    required String label,
-    required IconData icon,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: isSelected ? AppColors.blue100 : Colors.white,
-          borderRadius: BorderRadius.circular(32),
-          border: Border.all(
-            color: AppColors.gray50,
-            width: 1.0,
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: isSelected ? AppColors.blue500 : Colors.grey),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
-                color: isSelected ? AppColors.blue500 : Colors.grey,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTrueFalseSelectionTile({
-    required String label,
-    required bool value,
-    required bool groupValue,
-    required VoidCallback onTap,
-  }) {
-    final isSelected = value == groupValue;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
-        decoration: BoxDecoration(
-          color: isSelected ? AppColors.blue100 : Colors.white,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: AppColors.gray50,
-            width: 1.0,
-          ),
-        ),
-        child: Text(
-          label,
-          textAlign: TextAlign.start,
-          style: TextStyle(
-            color: isSelected ? AppColors.blue500 : Colors.black,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-            fontSize: 14,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildExpandableTextField({
-    required TextEditingController controller,
-    required String labelText,
-    double textFieldHeight = 16,
-    String? focusedHintText,
-  }) {
-    FocusNode? focusNode;
-    if (controller == _questionTextController) {
-      focusNode = _questionTextFocusNode;
-    } else if (controller == _correctChoiceTextController) {
-      focusNode = _correctChoiceTextFocusNode;
-    } else if (controller == _incorrectChoice1TextController) {
-      focusNode = _incorrectChoice1TextFocusNode;
-    } else if (controller == _incorrectChoice2TextController) {
-      focusNode = _incorrectChoice2TextFocusNode;
-    } else if (controller == _incorrectChoice3TextController) {
-      focusNode = _incorrectChoice3TextFocusNode;
-    } else if (controller == _explanationTextController) {
-      focusNode = _explanationTextFocusNode;
-    } else if (controller == _hintTextController) {
-      focusNode = _hintTextFocusNode;
-    }
-    final bool hasFocus = focusNode?.hasFocus ?? false;
-    final bool isEmpty = controller.text.isEmpty;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: Colors.transparent,
-        ),
-      ),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(minHeight: textFieldHeight),
-        child: TextField(
-          controller: controller,
-          focusNode: focusNode,
-          minLines: 1,
-          maxLines: null,
-          style: const TextStyle(height: 1.2),
-          cursorColor: AppColors.blue500,
-          decoration: InputDecoration(
-            filled: true,
-            fillColor: Colors.white,
-            labelText: labelText,
-            labelStyle: const TextStyle(
-              fontSize: 14.0,
-              color: Colors.black54,
-            ),
-            floatingLabelStyle: const TextStyle(
-              fontSize: 16.0,
-              color: AppColors.blue500,
-            ),
-            hintText: (hasFocus && isEmpty) ? focusedHintText : null,
-            hintStyle: const TextStyle(
-              fontSize: 14.0,
-              color: Colors.grey,
-            ),
-            border: InputBorder.none,
-            enabledBorder: InputBorder.none,
-            focusedBorder: InputBorder.none,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12),
           ),
         ),
       ),

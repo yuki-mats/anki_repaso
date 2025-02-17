@@ -3,7 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:repaso/question_set_add_page.dart';
 import 'package:repaso/question_set_edit_page.dart';
-import 'app_colors.dart';
+import 'package:repaso/services/question_count.dart';
+import 'utils/app_colors.dart';
 import 'learning_analytics_page.dart';
 import 'question_add_page.dart';
 import 'answer_page.dart';
@@ -294,12 +295,12 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: Colors.red[100],
+                      color: AppColors.gray100,
                       borderRadius: BorderRadius.circular(100),
                     ),
-                    child: const Icon(Icons.delete_outline, size: 22, color: Colors.red),
+                    child: const Icon(Icons.delete_outline, size: 22, color: AppColors.gray600),
                   ),
-                  title: const Text('削除する', style: TextStyle(fontSize: 16, color: Colors.red)),
+                  title: const Text('削除する', style: TextStyle(fontSize: 16)),
                   onTap: () async {
                     Navigator.of(context).pop();
                     if (isViewer) {
@@ -312,36 +313,72 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                     // 確認ダイアログを表示
                     bool? confirmDelete = await showDialog<bool>(
                       context: context,
-                      builder: (BuildContext context) {
-                        return AlertDialog(
-                          backgroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8.0),
+                      builder: (context) => AlertDialog(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        backgroundColor: Colors.white,
+                        title: const Text(
+                          '本当に削除しますか？',
+                          style: TextStyle(color: Colors.black87, fontSize: 18),
+                        ),
+                        content: const Text('問題集の配下の問題も削除されます。この操作は取り消しできません。'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('戻る', style: TextStyle(color: Colors.black87)),
                           ),
-                          title: const Text("本当に削除しますか？"),
-                          content: const Text("この操作は元に戻せません。"),
-                          actions: <Widget>[
-                            TextButton(
-                              onPressed: () => Navigator.of(context).pop(false),
-                              child: const Text("キャンセル", style: TextStyle(color: Colors.grey)),
-                            ),
-                            TextButton(
-                              onPressed: () => Navigator.of(context).pop(true),
-                              child: const Text("削除する", style: TextStyle(color: Colors.red)),
-                            ),
-                          ],
-                        );
-                      },
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text('削除', style: TextStyle(color: Colors.red)),
+                          ),
+                        ],
+                      ),
                     );
 
                     if (confirmDelete == true) {
-                      await questionSet.reference.update({
+                      FirebaseFirestore firestore = FirebaseFirestore.instance;
+                      WriteBatch batch = firestore.batch();
+                      final deletedAt = FieldValue.serverTimestamp();
+
+                      // ① 質問集自体をソフトデリート
+                      batch.update(questionSet.reference, {
                         'isDeleted': true,
-                        'deletedAt': FieldValue.serverTimestamp(),
+                        'deletedAt': deletedAt,
                       });
 
+                      // ② 配下の質問を取得してソフトデリート
+                      QuerySnapshot questionSnapshot = await firestore
+                          .collection("questions")
+                          .where("questionSetRef", isEqualTo: questionSet.reference)
+                          .get();
+                      for (var question in questionSnapshot.docs) {
+                        batch.update(question.reference, {
+                          'isDeleted': true,
+                          'deletedAt': deletedAt,
+                        });
+                      }
+
+                      // ③ バッチ更新を実行
+                      await batch.commit();
+
+                      // ④ 上位フォルダの質問数を再計算して更新する
+                      await updateQuestionCounts(widget.folder.reference, questionSet.reference);
+
+                      // ⑤ folderSetUserStats の memoryLevels から削除対象の質問IDのエントリーを削除する
+                      Map<String, dynamic> deletionMap = {};
+                      for (var question in questionSnapshot.docs) {
+                        deletionMap["memoryLevels.${question.id}"] = FieldValue.delete();
+                      }
+                      if (deletionMap.isNotEmpty) {
+                        await widget.folder.reference
+                            .collection('folderSetUserStats')
+                            .doc(FirebaseAuth.instance.currentUser!.uid)
+                            .update(deletionMap);
+                      }
+
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('問題集が削除されました。')),
+                        const SnackBar(content: Text('問題集と配下の問題が削除されました。')),
                       );
                       Navigator.of(context).pop(true);
                     }
@@ -354,80 +391,6 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
       },
     );
   }
-
-  Future<void> _showDeleteConfirmationDialog(BuildContext context, String questionSetName, DocumentReference questionSetRef) async {
-    bool? confirmDelete = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8.0),
-          ),
-          title: const Text(
-            "本当に削除しますか？",
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 20,
-            ),
-          ),
-          content: RichText(
-            text: TextSpan(
-              style: const TextStyle(
-                fontSize: 16,
-                color: Colors.black87,
-              ),
-              children: [
-                TextSpan(text: '「'),
-                TextSpan(
-                  text: questionSetName,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                TextSpan(text: '」を削除します。この操作は取り消せません。'),
-              ],
-            ),
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.black,
-                textStyle: const TextStyle(fontSize: 16),
-              ),
-              child: const Text("キャンセル"),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                Navigator.of(context).pop(true);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.black,
-                padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12.0),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(4.0),
-                ),
-              ),
-              child: const Text(
-                "削除",
-                style: TextStyle(fontSize: 16, color: Colors.white),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirmDelete == true) {
-      await questionSetRef.update({
-        'isDeleted': true,
-        'deletedAt': FieldValue.serverTimestamp(),
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('問題集が削除されました。')),
-      );
-    }
-  }
-
-
 
 
   @override
@@ -463,6 +426,16 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
               return const Center(child: Text('エラーが発生しました'));
             }
             final questionSets = snapshot.data?.docs ?? [];
+            if (questionSets.isEmpty) {
+              // ここで「表示する問題集がありません。」というメッセージを表示する
+              return const Center(
+                child: Text(
+                  "問題集がありません。\n\n早速、右下をタップし作成しよう！",
+                  style: TextStyle(fontSize: 16, color: Colors.black54),
+                  textAlign: TextAlign.center,
+                ),
+              );
+            }
             return ListView.builder(
               itemCount: questionSets.length,
               itemBuilder: (context, index) {

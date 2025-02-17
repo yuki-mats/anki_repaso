@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:repaso/app_colors.dart';
+import 'package:repaso/utils/app_colors.dart';
 import 'package:repaso/sign_up_page.dart';
 import 'login_page.dart';
 

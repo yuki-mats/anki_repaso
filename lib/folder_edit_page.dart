@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'app_colors.dart';
+import 'utils/app_colors.dart';
 
 class FolderEditPage extends StatefulWidget {
   final DocumentReference folderRef;

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:repaso/app_colors.dart';
+import 'package:repaso/utils/app_colors.dart';
 // ↓ Firestore と FirebaseAuth を使うために必要
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';

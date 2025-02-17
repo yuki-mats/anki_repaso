@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:repaso/app_colors.dart';
+import 'package:repaso/utils/app_colors.dart';
 import 'package:repaso/set_number_of_questions_page.dart';
 import 'package:repaso/set_question_order_page.dart';
 import 'package:repaso/set_question_set_page.dart';
@@ -137,7 +137,7 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
       await userRef.collection('studySets').doc(widget.studySetId).update(updatedStudySet.toFirestore());
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('学習セットが更新されました。')),
+        const SnackBar(content: Text('暗記セットが更新されました。')),
       );
       Navigator.of(context).pop(true);
     } catch (e) {
@@ -174,26 +174,20 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('学習セットの編集'),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16.0),
-            child: TextButton(
-              child: Text(
-                '保存',
-                style: TextStyle(
-                  color: (questionSetIds.isNotEmpty && studySetName != null && studySetName!.isNotEmpty)
-                      ? AppColors.blue500 // 有効時の色
-                      : Colors.grey,      // 無効時の色
-                  fontSize: 16,
-                ),
-              ),
-              onPressed: (questionSetIds.isNotEmpty && studySetName != null && studySetName!.isNotEmpty)
-                  ? _updateStudySet
-                  : null,
-            ),
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () {
+            Navigator.pop(context);
+          },
+        ),
+        title: const Text('暗記セットの編集'),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1.0), // 線の高さ
+          child: Container(
+            color: Colors.grey[300], // 薄いグレーの線
+            height: 1.0,
           ),
-        ],
+        ),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16.0),
@@ -208,21 +202,22 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
                 ),
                 const SizedBox(width: 6),
                 const SizedBox(
-                  width: 80,
+                  width: 60,
                   child: Text(
                     "セット名",
-                    style: TextStyle(fontSize: 16),
+                    style: TextStyle(fontSize: 14),
                   ),
                 ),
                 Expanded(
                   child: Text(
                     (studySetName?.trim().isEmpty ?? true) ? "入力してください。" : studySetName!,
-                    style: const TextStyle(fontSize: 16),
+                    style: const TextStyle(fontSize: 14),
+                    textAlign: TextAlign.end, // 右揃え
                   ),
                 ),
               ],
             ),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 18),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.gray600),
             onTap: () async {
               final name = await Navigator.of(context).push(
                 MaterialPageRoute(
@@ -248,23 +243,24 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
                 ),
                 const SizedBox(width: 6),
                 const SizedBox(
-                  width: 80,
+                  width: 50,
                   child: Text(
                     "問題集",
-                    style: TextStyle(fontSize: 16),
+                    style: TextStyle(fontSize: 14),
                   ),
                 ),
                 if (_cachedQuestionSetNames.isNotEmpty)
                   Expanded(
                     child: Text(
                       _cachedQuestionSetNames.join(', '),
-                      style: const TextStyle(fontSize: 16),
+                      style: const TextStyle(fontSize: 14),
+                      textAlign: TextAlign.end, // 右揃え
                     ),
                   ),
 
               ],
             ),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 18),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.gray600),
             onTap: () async {
               final result = await Navigator.of(context).push(
                 MaterialPageRoute(
@@ -274,10 +270,27 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
                   ),
                 ),
               );
+
               if (result != null && result is List<String>) {
+                List<String> validIds = [];
+                List<String> validNames = [];
+
+                for (var id in result) {
+                  final doc = await FirebaseFirestore.instance
+                      .collection('questionSets')
+                      .doc(id)
+                      .get();
+
+                  // 削除済みの問題集を除外
+                  if (doc.exists && (doc.data()?['isDeleted'] ?? false) == false) {
+                    validIds.add(id);
+                    validNames.add(doc.data()?['name'] as String);
+                  }
+                }
+
                 setState(() {
-                  questionSetIds = result;
-                  _fetchAndCacheQuestionSetNames(); // 問題集名を再取得
+                  questionSetIds = validIds;
+                  _cachedQuestionSetNames = validNames;
                 });
               }
             },
@@ -298,12 +311,18 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
                       width: 80,
                       child: Text(
                         "正答率",
-                        style: TextStyle(fontSize: 16),
+                        style: TextStyle(fontSize: 14),
                       ),
                     ),
-                    Text(
-                      "${_correctRateRange.start.toInt()} 〜 ${_correctRateRange.end.toInt()}%",
-                      style: const TextStyle(fontSize: 16),
+                    Expanded( // 追加: `Expanded` で空白を作る
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 16.0),
+                        child: Text(
+                          "${_correctRateRange.start.toInt()} 〜 ${_correctRateRange.end.toInt()}%",
+                          style: const TextStyle(fontSize: 14),
+                          textAlign: TextAlign.end, // 右寄せ
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -343,18 +362,15 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
             leading: const Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Padding(
-                  padding: EdgeInsets.only(top: 4),
-                  child: Icon(
-                    Icons.bookmark,
-                    size: 22,
-                    color: AppColors.gray600,
-                  ),
+                Icon(
+                  Icons.bookmark,
+                  size: 22,
+                  color: AppColors.gray600,
                 ),
                 SizedBox(width: 6),
                 Text(
                   "フラグあり",
-                  style: TextStyle(fontSize: 16),
+                  style: TextStyle(fontSize: 14),
                 ),
               ],
             ),
@@ -392,17 +408,18 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
                 ),
                 const SizedBox(width: 6),
                 const SizedBox(
-                  width: 80,
+                  width: 55,
                   child: Text(
                     "出題順",
-                    style: TextStyle(fontSize: 16),
+                    style: TextStyle(fontSize: 14),
                   ),
                 ),
                 if (selectedQuestionOrder != null)
                   Expanded(
                     child: Text(
                       orderOptions[selectedQuestionOrder] ?? '',
-                      style: const TextStyle(fontSize: 16),
+                      style: const TextStyle(fontSize: 14),
+                      textAlign: TextAlign.end,
                     ),
                   ),
               ],
@@ -434,16 +451,19 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
                 ),
                 const SizedBox(width: 6),
                 const SizedBox(
-                  width: 80,
+                  width: 55,
                   child: Text(
                     "最大",
-                    style: TextStyle(fontSize: 16),
+                    style: TextStyle(fontSize: 14),
                   ),
                 ),
                 if (numberOfQuestions != null)
-                  Text(
-                    "$numberOfQuestions 問",
-                    style: const TextStyle(fontSize: 16),
+                  Expanded(
+                    child: Text(
+                      "$numberOfQuestions 問",
+                      style: const TextStyle(fontSize: 14),
+                      textAlign: TextAlign.end,
+                    ),
                   ),
               ],
             ),
@@ -465,6 +485,30 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
             },
           ),
         ],
+      ),
+      bottomNavigationBar: Padding(
+        padding: const EdgeInsets.only(left:16.0, right:16.0, bottom: 24.0),
+        child: Container(
+          padding: const EdgeInsets.all(12.0),
+          child: ElevatedButton(
+            onPressed: (questionSetIds.isNotEmpty && studySetName != null && studySetName!.isNotEmpty)
+                ? _updateStudySet
+                : null, // 必要な条件を満たさない場合は無効化
+            style: ElevatedButton.styleFrom(
+              backgroundColor: (questionSetIds.isNotEmpty && studySetName != null && studySetName!.isNotEmpty)
+                  ? AppColors.blue500 // 有効時の色
+                  : Colors.grey,      // 無効時の色
+              minimumSize: const Size.fromHeight(48), // ボタンの高さを設定
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(32),
+              ),
+            ),
+            child: const Text(
+              '保存',
+              style: TextStyle(fontSize: 16, color: Colors.white),
+            ),
+          ),
+        ),
       ),
     );
   }

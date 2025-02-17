@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'utils/app_colors.dart';
+
 class SetNumberOfQuestionsPage extends StatefulWidget {
   final int? initialSelection; // 初期選択を保持
 
@@ -30,6 +32,13 @@ class _SetNumberOfQuestionsPageState extends State<SetNumberOfQuestionsPage> {
             Navigator.pop(context, selectedNumber); // 現在の選択状態を返す
           },
         ),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1.0), // 線の高さ
+          child: Container(
+            color: Colors.grey[300], // 薄いグレーの線
+            height: 1.0,
+          ),
+        ),
       ),
       body: ListView.builder(
         itemCount: numberOfQuestions.length,
@@ -39,6 +48,7 @@ class _SetNumberOfQuestionsPageState extends State<SetNumberOfQuestionsPage> {
             title: Text('$count問'),
             value: count,
             groupValue: selectedNumber, // 現在選択されている値をグループに設定
+            activeColor: AppColors.blue500,
             onChanged: (int? value) {
               setState(() {
                 selectedNumber = value; // 選択された値を更新

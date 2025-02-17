@@ -1,12 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:repaso/app_colors.dart';
+import 'package:repaso/utils/app_colors.dart';
 import 'package:repaso/set_number_of_questions_page.dart';
 import 'package:repaso/set_question_order_page.dart';
 import 'package:repaso/set_question_set_page.dart';
 import 'package:repaso/set_study_set_name_page.dart';
 
+/// StudySet モデル（StudySetEditPage に合わせた追加フィールド付き）
 class StudySet {
   final String name;
   final List<String> questionSetIds;
@@ -14,6 +15,12 @@ class StudySet {
   final String selectedQuestionOrder;
   final RangeValues correctRateRange;
   final bool isFlagged;
+  // 追加フィールド
+  final Map<String, int> memoryLevelStats;
+  final Map<String, int> memoryLevelRatios;
+  final int totalAttemptCount;
+  final int studyStreakCount;
+  final String lastStudiedDate;
 
   StudySet({
     required this.name,
@@ -22,9 +29,14 @@ class StudySet {
     required this.selectedQuestionOrder,
     required this.correctRateRange,
     required this.isFlagged,
+    required this.memoryLevelStats,
+    required this.memoryLevelRatios,
+    required this.totalAttemptCount,
+    required this.studyStreakCount,
+    required this.lastStudiedDate,
   });
 
-  // Firestoreデータから生成するファクトリコンストラクタ
+  // Firestoreデータから生成するファクトリコンストラクタ（存在しない場合はデフォルト値を設定）
   factory StudySet.fromFirestore(Map<String, dynamic> data) {
     return StudySet(
       name: data['name'] as String,
@@ -32,17 +44,25 @@ class StudySet {
       numberOfQuestions: data['numberOfQuestions'] as int,
       selectedQuestionOrder: data['selectedQuestionOrder'] as String,
       correctRateRange: RangeValues(
-        (data['correctRateRange']?['start'] ?? 0.0) as double,
-        (data['correctRateRange']?['end'] ?? 100.0) as double,
+        (data['correctRateRange']?['start'] ?? 0.0).toDouble(),
+        (data['correctRateRange']?['end'] ?? 100.0).toDouble(),
       ),
       isFlagged: data['isFlagged'] as bool? ?? false,
+      memoryLevelStats: Map<String, int>.from(
+          data['memoryLevelStats'] ?? {'again': 0, 'hard': 0, 'good': 0, 'easy': 0}),
+      memoryLevelRatios: Map<String, int>.from(
+          data['memoryLevelRatios'] ?? {'again': 0, 'hard': 0, 'good': 0, 'easy': 0}),
+      totalAttemptCount: data['totalAttemptCount'] ?? 0,
+      studyStreakCount: data['studyStreakCount'] ?? 0,
+      lastStudiedDate: data['lastStudiedDate'] ?? "",
     );
   }
 
-  // Firestoreに保存するためのMap形式に変換
+  // Firestore に保存するための Map 形式に変換
   Map<String, dynamic> toFirestore() {
     return {
       'name': name,
+      'isDeleted': false,
       'questionSetIds': questionSetIds,
       'numberOfQuestions': numberOfQuestions,
       'selectedQuestionOrder': selectedQuestionOrder,
@@ -51,6 +71,12 @@ class StudySet {
         'end': correctRateRange.end,
       },
       'isFlagged': isFlagged,
+      // 追加フィールドも保存
+      'memoryLevelStats': memoryLevelStats,
+      'memoryLevelRatios': memoryLevelRatios,
+      'totalAttemptCount': totalAttemptCount,
+      'studyStreakCount': studyStreakCount,
+      'lastStudiedDate': lastStudiedDate,
     };
   }
 }
@@ -76,7 +102,6 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
   late String? selectedQuestionOrder;
   List<String> _cachedQuestionSetNames = [];
 
-
   final Map<String, String> orderOptions = {
     "random": "ランダム",
     "attemptsDescending": "試行回数が多い順",
@@ -91,7 +116,6 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
     "lastStudiedAscending": "最終学習日の昇順",
   };
 
-  @override
   @override
   void initState() {
     super.initState();
@@ -116,17 +140,15 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
 
   Future<void> _fetchAndCacheQuestionSetNames() async {
     _cachedQuestionSetNames = await _fetchQuestionSetNames(questionSetIds);
-    setState(() {}); // キャッシュ取得後に再描画
+    setState(() {});
   }
-
-
 
   Future<List<String>> _fetchQuestionSetNames(List<String> ids) async {
     try {
       final List<String> names = [];
       for (final id in ids) {
         final doc = await FirebaseFirestore.instance
-            .collection('questionSets') // 問題集のコレクション名
+            .collection('questionSets')
             .doc(id)
             .get();
         if (doc.exists) {
@@ -143,11 +165,14 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
     }
   }
 
-
   Future<void> _saveStudySet() async {
-    if (studySetName == null || studySetName!.isEmpty || questionSetIds.isEmpty) {
+    if (studySetName == null ||
+        studySetName!.isEmpty ||
+        questionSetIds.isEmpty ||
+        numberOfQuestions == null ||
+        selectedQuestionOrder == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('セット名と問題集を入力してください。')),
+        const SnackBar(content: Text('セット名と問題集、出題数・出題順を入力してください。')),
       );
       return;
     }
@@ -160,6 +185,7 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
       return;
     }
 
+    // 新規作成時は追加フィールドはすべて初期値とする
     final newStudySet = StudySet(
       name: studySetName!,
       questionSetIds: questionSetIds,
@@ -167,6 +193,11 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
       selectedQuestionOrder: selectedQuestionOrder!,
       correctRateRange: _correctRateRange,
       isFlagged: _isFlagged,
+      memoryLevelStats: {'again': 0, 'hard': 0, 'good': 0, 'easy': 0},
+      memoryLevelRatios: {'again': 0, 'hard': 0, 'good': 0, 'easy': 0},
+      totalAttemptCount: 0,
+      studyStreakCount: 0,
+      lastStudiedDate: "",
     );
 
     try {
@@ -189,29 +220,11 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('学習セットの追加'),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16.0),
-            child: TextButton(
-              child: Text(
-                '保存',
-                style: TextStyle(
-                  color: (questionSetIds.isNotEmpty && studySetName != null && studySetName!.isNotEmpty)
-                      ? AppColors.blue500 // 有効時の色
-                      : Colors.grey,      // 無効時の色
-                  fontSize: 16,
-                ),
-              ),
-              onPressed: (questionSetIds.isNotEmpty && studySetName != null && studySetName!.isNotEmpty)
-                  ? _saveStudySet
-                  : null,
-            ),
-          ),
-        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
+          // セット名入力
           ListTile(
             title: Row(
               children: [
@@ -222,21 +235,22 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
                 ),
                 const SizedBox(width: 6),
                 const SizedBox(
-                  width: 80,
+                  width: 60,
                   child: Text(
                     "セット名",
-                    style: TextStyle(fontSize: 16),
+                    style: TextStyle(fontSize: 14),
                   ),
                 ),
                 Expanded(
                   child: Text(
                     (studySetName?.trim().isEmpty ?? true) ? "入力してください。" : studySetName!,
-                    style: const TextStyle(fontSize: 16),
+                    style: const TextStyle(fontSize: 14),
+                    textAlign: TextAlign.end, // 右揃え
                   ),
                 ),
               ],
             ),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 18),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.gray600),
             onTap: () async {
               final name = await Navigator.of(context).push(
                 MaterialPageRoute(
@@ -252,6 +266,7 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
               }
             },
           ),
+          // 問題集選択
           ListTile(
             title: Row(
               children: [
@@ -262,23 +277,24 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
                 ),
                 const SizedBox(width: 6),
                 const SizedBox(
-                  width: 80,
+                  width: 50,
                   child: Text(
                     "問題集",
-                    style: TextStyle(fontSize: 16),
+                    style: TextStyle(fontSize: 14),
                   ),
                 ),
                 if (_cachedQuestionSetNames.isNotEmpty)
                   Expanded(
                     child: Text(
                       _cachedQuestionSetNames.join(', '),
-                      style: const TextStyle(fontSize: 16),
-                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 14),
+                      textAlign: TextAlign.end, // 右揃え
                     ),
                   ),
+
               ],
             ),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 18),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.gray600),
             onTap: () async {
               final result = await Navigator.of(context).push(
                 MaterialPageRoute(
@@ -290,7 +306,7 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
               );
               if (result != null && result is List<String>) {
                 setState(() {
-                  questionSetIds = result; // 選択されたIDを更新
+                  questionSetIds = result;
                   _fetchAndCacheQuestionSetNames(); // 問題集名を再取得
                 });
               }
@@ -312,12 +328,18 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
                       width: 80,
                       child: Text(
                         "正答率",
-                        style: TextStyle(fontSize: 16),
+                        style: TextStyle(fontSize: 14),
                       ),
                     ),
-                    Text(
-                      "${_correctRateRange.start.toInt()} 〜 ${_correctRateRange.end.toInt()}%",
-                      style: const TextStyle(fontSize: 16),
+                    Expanded( // 追加: `Expanded` で空白を作る
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 16.0),
+                        child: Text(
+                          "${_correctRateRange.start.toInt()} 〜 ${_correctRateRange.end.toInt()}%",
+                          style: const TextStyle(fontSize: 14),
+                          textAlign: TextAlign.end, // 右寄せ
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -331,22 +353,24 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
                   activeTrackColor: AppColors.blue500,
                   activeTickMarkColor: AppColors.blue500,
                 ),
-                child: RangeSlider(
-                  values: _correctRateRange,
-                  min: 0,
-                  max: 100,
-                  divisions: 10,
-                  labels: null,
-                  onChanged: (values) {
-                    setState(() {
-                      if ((values.end - values.start) >= 10) {
-                        _correctRateRange = RangeValues(
-                          (values.start / 10).round() * 10.0,
-                          (values.end / 10).round() * 10.0,
-                        );
-                      }
-                    });
-                  },
+                child: SizedBox(
+                  child: RangeSlider(
+                    values: _correctRateRange,
+                    min: 0,
+                    max: 100,
+                    divisions: 10,
+                    labels: null,
+                    onChanged: (values) {
+                      setState(() {
+                        if ((values.end - values.start) >= 10) {
+                          _correctRateRange = RangeValues(
+                            (values.start / 10).round() * 10.0,
+                            (values.end / 10).round() * 10.0,
+                          );
+                        }
+                      });
+                    },
+                  ),
                 ),
               ),
             ],
@@ -355,18 +379,15 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
             leading: const Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Padding(
-                  padding: EdgeInsets.only(top: 4),
-                  child: Icon(
-                    Icons.bookmark,
-                    size: 22,
-                    color: AppColors.gray600,
-                  ),
+                Icon(
+                  Icons.bookmark,
+                  size: 22,
+                  color: AppColors.gray600,
                 ),
                 SizedBox(width: 6),
                 Text(
                   "フラグあり",
-                  style: TextStyle(fontSize: 16),
+                  style: TextStyle(fontSize: 14),
                 ),
               ],
             ),
@@ -404,17 +425,18 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
                 ),
                 const SizedBox(width: 6),
                 const SizedBox(
-                  width: 80,
+                  width: 55,
                   child: Text(
                     "出題順",
-                    style: TextStyle(fontSize: 16),
+                    style: TextStyle(fontSize: 14),
                   ),
                 ),
-                if (selectedQuestionOrder != null) // 出題順が選択されている場合のみ表示
+                if (selectedQuestionOrder != null)
                   Expanded(
                     child: Text(
-                      orderOptions[selectedQuestionOrder] ?? '', // 日本語名を取得して表示
-                      style: const TextStyle(fontSize: 16),
+                      orderOptions[selectedQuestionOrder] ?? '',
+                      style: const TextStyle(fontSize: 14),
+                      textAlign: TextAlign.end,
                     ),
                   ),
               ],
@@ -431,7 +453,7 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
               );
               if (selectedOrder != null && selectedOrder is String) {
                 setState(() {
-                  selectedQuestionOrder = selectedOrder; // 選択した出題順を状態に保存
+                  selectedQuestionOrder = selectedOrder;
                 });
               }
             },
@@ -446,16 +468,19 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
                 ),
                 const SizedBox(width: 6),
                 const SizedBox(
-                  width: 80,
+                  width: 55,
                   child: Text(
-                    "出題数",
-                    style: TextStyle(fontSize: 16),
+                    "最大",
+                    style: TextStyle(fontSize: 14),
                   ),
                 ),
-                if (numberOfQuestions != null) // 出題数が選択されている場合のみ表示
-                  Text(
-                    "$numberOfQuestions 問",
-                    style: const TextStyle(fontSize: 16),
+                if (numberOfQuestions != null)
+                  Expanded(
+                    child: Text(
+                      "$numberOfQuestions 問",
+                      style: const TextStyle(fontSize: 14),
+                      textAlign: TextAlign.end,
+                    ),
                   ),
               ],
             ),
@@ -471,12 +496,44 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
               );
               if (selectedCount != null && selectedCount is int) {
                 setState(() {
-                  numberOfQuestions = selectedCount; // 選択した出題数を状態に保存
+                  numberOfQuestions = selectedCount;
                 });
               }
             },
           ),
         ],
+      ),
+      bottomNavigationBar: Padding(
+        padding: const EdgeInsets.only(left: 16.0, right: 16.0, bottom: 24.0),
+        child: Container(
+          padding: const EdgeInsets.all(12.0),
+          child: ElevatedButton(
+            onPressed: (questionSetIds.isNotEmpty &&
+                studySetName != null &&
+                studySetName!.isNotEmpty &&
+                numberOfQuestions != null &&
+                selectedQuestionOrder != null)
+                ? _saveStudySet
+                : null,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: (questionSetIds.isNotEmpty &&
+                  studySetName != null &&
+                  studySetName!.isNotEmpty &&
+                  numberOfQuestions != null &&
+                  selectedQuestionOrder != null)
+                  ? AppColors.blue500
+                  : Colors.grey,
+              minimumSize: const Size.fromHeight(48),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(32),
+              ),
+            ),
+            child: const Text(
+              '保存',
+              style: TextStyle(fontSize: 16, color: Colors.white),
+            ),
+          ),
+        ),
       ),
     );
   }
