@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 import 'dart:ui';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -34,6 +33,7 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
   final TextEditingController _hintTextController = TextEditingController();
   final TextEditingController _examYearController = TextEditingController();
   final TextEditingController _examMonthController = TextEditingController();
+  final TextEditingController _tagController = TextEditingController();
 
   // 各 FocusNode
   final FocusNode _questionTextFocusNode = FocusNode();
@@ -60,6 +60,8 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
   bool _isLoading = true;
   DateTime? _selectedExamDate;
   bool _isUploading = false; // 画像アップロードの状態を管理
+  List<String> _questionTags = [];
+  List<String> _aggregatedTags = [];
 
   Map<TextEditingController, List<Uint8List>> _localImagesMap = {};
 
@@ -74,6 +76,7 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
     super.initState();
     _questionTextController.addListener(_onQuestionTextChanged);
     _loadQuestionData();
+    _loadAggregatedTags();
 
     // _focusToControllerMap を空のマップで初期化後、エントリーを追加
     _focusToControllerMap.addAll({
@@ -103,6 +106,20 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
             });
           }
         }
+      });
+    }
+  }
+
+  Future<void> _loadAggregatedTags() async {
+    final data = widget.question.data() as Map<String, dynamic>;
+    if (data.containsKey('questionSetRef')) {
+      final questionSetRef = data['questionSetRef'] as DocumentReference;
+      final folderRef = await _getFolderRef(questionSetRef);
+      final folderDoc = await folderRef.get();
+      setState(() {
+        _aggregatedTags = List<String>.from(
+            ((folderDoc.data() as Map<String, dynamic>)['aggregatedQuestionTags'] ?? [])
+        );
       });
     }
   }
@@ -152,7 +169,10 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
       List<String>.from(data['explanationImageUrls'] ?? []);
       uploadedImageUrls['hintImageUrls'] =
       List<String>.from(data['hintImageUrls'] ?? []);
-
+      // タグ情報の読み込み
+      _questionTags = data['questionTags'] != null
+          ? List<String>.from(data['questionTags'])
+          : [];
       _isLoading = false;
     });
   }
@@ -205,8 +225,11 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
       _isSaving = true;
     });
 
+    _showLoadingDialog(); // 🔹 ローディングダイアログを表示
+
     try {
       final questionRef = widget.question.reference;
+
 
       // 画像アップロード処理
       Map<String, List<Uint8List>> imageMap = {
@@ -264,6 +287,7 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
           ],
         });
       }
+      Navigator.pop(context);
 
       await questionRef.update(questionData);
 
@@ -278,6 +302,7 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('問題の更新に失敗しました')),
       );
+      Navigator.pop(context);
     } finally {
       setState(() {
         _isSaving = false;
@@ -327,6 +352,7 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
     final questionSetDoc = await questionSetRef.get();
     return questionSetDoc['folderRef'] as DocumentReference;
   }
+
 
   @override
   void dispose() {
@@ -469,6 +495,82 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
       }
     }
     return uploadedUrls;
+  }
+
+  /// タグを追加する処理
+  void _addTag(String tag) async {
+    tag = tag.trim();
+    if (tag.isEmpty || _questionTags.contains(tag)) return;
+
+    setState(() {
+      _questionTags.add(tag);
+    });
+
+    try {
+      // 問題ドキュメントの questionTags を更新
+      await widget.question.reference.update({
+        'questionTags': FieldValue.arrayUnion([tag]),
+      });
+
+      // フォルダの aggregatedQuestionTags も更新
+      final data = widget.question.data() as Map<String, dynamic>;
+      final questionSetRef = data['questionSetRef'] as DocumentReference;
+      final folderRef = await _getFolderRef(questionSetRef);
+      await folderRef.update({
+        'aggregatedQuestionTags': FieldValue.arrayUnion([tag]),
+      });
+    } catch (e) {
+      print('❌ タグ追加エラー: $e');
+      setState(() {
+        _questionTags.remove(tag);
+      });
+    }
+  }
+
+  /// タグを削除する処理
+  void _removeTag(String tag) async {
+    setState(() {
+      _questionTags.remove(tag);
+    });
+
+    try {
+      await widget.question.reference.update({
+        'questionTags': FieldValue.arrayRemove([tag]),
+      });
+    } catch (e) {
+      print('❌ タグ削除エラー: $e');
+      setState(() {
+        _questionTags.add(tag);
+      });
+    }
+  }
+
+
+  /// **ローディングダイアログ**
+  void _showLoadingDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false, // 🔹 ユーザーが閉じられないようにする
+      builder: (context) {
+        return Dialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(AppColors.blue500),
+                ),
+                const SizedBox(height: 16),
+                const Text("保存中...", style: TextStyle(fontSize: 16)),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -696,8 +798,6 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
                   focusedHintText: '例）名古屋である。',
                 ),
               ],
-              const SizedBox(height: 32),
-              _buildExamDateField(),
               const SizedBox(height: 16),
               ExpandableTextField(
                 controller: _explanationTextController,
@@ -721,6 +821,23 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
                 localImageBytes: _localImagesMap[_hintTextController] ?? [],
                 onRemoveLocalImage: (imgData) => _removeImage(_hintTextController, imgData),
                 onDeleteUploadedImage: (url) => _deleteUploadedImage('hintImageUrls', url),
+              ),
+              const SizedBox(height: 16),
+              QuestionTagsInput(
+                tags: _questionTags,
+                tagController: _tagController,
+                aggregatedTags: _aggregatedTags, // 追加
+                onTagAdded: _addTag,
+                onTagDeleted: _removeTag,
+              ),
+              const SizedBox(height: 16),
+              ExamDateField(
+                examYearController: _examYearController,
+                examMonthController: _examMonthController,
+                examYearFocusNode: _examYearFocusNode,
+                examMonthFocusNode: _examMonthFocusNode,
+                isExamDateError: _isExamDateError,
+                onExamDateChanged: _updateExamDateFromInput, // ← コールバック
               ),
               const SizedBox(height: 32),
               Container(
@@ -773,72 +890,6 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildExamDateField() {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: _isExamDateError ? Colors.red : Colors.transparent),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Text(
-            '出題年月',
-            style: TextStyle(fontSize: 14, color: _isExamDateError ? Colors.red : Colors.black54),
-          ),
-          const SizedBox(width: 32),
-          Container(
-            width: 72,
-            child: TextField(
-              controller: _examYearController,
-              focusNode: _examYearFocusNode,
-              maxLength: 4,
-              keyboardType: TextInputType.number,
-              textAlign: TextAlign.center,
-              decoration: const InputDecoration(
-                counterText: '',
-                hintText: 'yyyy',
-                border: InputBorder.none,
-              ),
-              onChanged: (value) {
-                if (value.length == 4) {
-                  FocusScope.of(context).requestFocus(_examMonthFocusNode);
-                }
-              },
-              onEditingComplete: () {
-                _updateExamDateFromInput();
-              },
-            ),
-          ),
-          Text(
-            '/',
-            style: TextStyle(fontSize: 14, color: _isExamDateError ? Colors.red : Colors.black54),
-          ),
-          Container(
-            width: 48,
-            child: TextField(
-              controller: _examMonthController,
-              focusNode: _examMonthFocusNode,
-              maxLength: 2,
-              keyboardType: TextInputType.number,
-              textAlign: TextAlign.center,
-              decoration: const InputDecoration(
-                counterText: '',
-                hintText: 'mm',
-                border: InputBorder.none,
-              ),
-              onEditingComplete: () {
-                _updateExamDateFromInput();
-              },
-            ),
-          ),
-        ],
       ),
     );
   }

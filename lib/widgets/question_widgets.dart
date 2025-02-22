@@ -137,7 +137,6 @@ class ExpandableTextField extends StatelessWidget {
         children: [
           GestureDetector(
             onTap: () {
-              // ★ 修正: タップ時にフォーカスを取得
               if (focusNode != null) {
                 FocusScope.of(context).requestFocus(focusNode);
               }
@@ -181,91 +180,366 @@ class ExpandableTextField extends StatelessWidget {
           ),
           if (localImageBytes.isNotEmpty || imageUrls.isNotEmpty) ...[
             const SizedBox(height: 8),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal, // **横スクロール可能**
-              child: Row(
-                children: [
-                  // ローカル画像
-                  ...localImageBytes.map((image) => _buildImageItem(image, isNetworkImage: false)).toList(),
-
-                  // アップロード済み画像
-                  ...imageUrls.map((url) => _buildImageItemList(url, isNetworkImage: true)).toList(),
-                ],
-              ),
-            ),
+            _buildScrollableImageList(),
           ],
         ],
       ),
     );
   }
 
-  /// **画像リストの表示**
-  Widget _buildImageList(List<dynamic> images, {required bool isNetworkImage}) {
+  /// **ローカル画像 & アップロード画像を横並びで表示**
+  Widget _buildScrollableImageList() {
     return SizedBox(
-      height: 100,
+      height: 100, // 画像の高さ固定
       child: Padding(
         padding: const EdgeInsets.only(left: 8.0),
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
-            children: images.map((imgData) {
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: Stack(
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: isNetworkImage
-                          ? Image.network(
-                        imgData,
-                        width: 100, // ★ 修正: 画像幅を調整
-                        height: 80,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            width: 100,
-                            height: 80,
-                            color: Colors.grey[300],
-                            child: const Icon(Icons.image_not_supported, color: Colors.grey),
-                          );
-                        },
-                      )
-                          : Image.memory(
-                        imgData,
-                        width: 100, // ★ 修正: 画像幅を調整
-                        height: 80,
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-                    Positioned(
-                      right: 4,
-                      top: 4,
-                      child: GestureDetector(
-                        onTap: () {
-                          if (isNetworkImage && onDeleteUploadedImage != null) {
-                            onDeleteUploadedImage!(imgData);
-                          } else if (!isNetworkImage && onRemoveLocalImage != null) {
-                            onRemoveLocalImage!(imgData);
-                          }
-                        },
-                        child: Container(
-                          decoration: const BoxDecoration(
-                            color: Colors.black54,
-                            shape: BoxShape.circle,
-                          ),
-                          padding: const EdgeInsets.all(4),
-                          child: const Icon(Icons.close, color: Colors.white, size: 16),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
+            children: [
+              ..._buildImageWidgets(localImageBytes, isNetworkImage: false),
+              ..._buildImageWidgets(imageUrls, isNetworkImage: true),
+            ],
           ),
         ),
       ),
     );
   }
+
+  /// **画像ウィジェットをリストで生成**
+  List<Widget> _buildImageWidgets(List<dynamic> images, {required bool isNetworkImage}) {
+    return images.map((imgData) {
+      return Padding(
+        padding: const EdgeInsets.only(right: 8),
+        child: Stack(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: isNetworkImage
+                  ? Image.network(
+                imgData,
+                width: 100, // 画像サイズ統一
+                height: 80,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    width: 100,
+                    height: 80,
+                    color: Colors.grey[300],
+                    child: const Icon(Icons.image_not_supported, color: Colors.grey),
+                  );
+                },
+              )
+                  : Image.memory(
+                imgData,
+                width: 100,
+                height: 80,
+                fit: BoxFit.cover,
+              ),
+            ),
+            Positioned(
+              right: 4,
+              top: 4,
+              child: GestureDetector(
+                onTap: () {
+                  if (isNetworkImage && onDeleteUploadedImage != null) {
+                    onDeleteUploadedImage!(imgData);
+                  } else if (!isNetworkImage && onRemoveLocalImage != null) {
+                    onRemoveLocalImage!(imgData);
+                  }
+                },
+                child: Container(
+                  decoration: const BoxDecoration(
+                    color: Colors.black54,
+                    shape: BoxShape.circle,
+                  ),
+                  padding: const EdgeInsets.all(4),
+                  child: const Icon(Icons.close, color: Colors.white, size: 16),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }).toList();
+  }
 }
+
+/// タグ入力用のウィジェット（共通化）
+/// [tags]：すでに追加されているタグ（問題に設定済み）
+/// [aggregatedTags]：フォルダの aggregatedQuestionTags の候補リスト
+/// [tagController]：入力用の TextEditingController
+/// [onTagAdded]：タグ追加時のコールバック
+/// [onTagDeleted]：タグ削除時のコールバック
+class QuestionTagsInput extends StatefulWidget {
+  final List<String> tags;
+  final List<String> aggregatedTags;
+  final TextEditingController tagController;
+  final Function(String) onTagAdded;
+  final Function(String) onTagDeleted;
+
+  const QuestionTagsInput({
+    Key? key,
+    required this.tags,
+    required this.aggregatedTags,
+    required this.tagController,
+    required this.onTagAdded,
+    required this.onTagDeleted,
+  }) : super(key: key);
+
+  @override
+  _QuestionTagsInputState createState() => _QuestionTagsInputState();
+}
+
+class _QuestionTagsInputState extends State<QuestionTagsInput> {
+  final FocusNode _tagFocusNode = FocusNode();
+  List<String> _filteredSuggestions = [];
+
+  @override
+  void initState() {
+    super.initState();
+    widget.tagController.addListener(_filterSuggestions);
+    _filterSuggestions();
+  }
+
+  @override
+  void dispose() {
+    widget.tagController.removeListener(_filterSuggestions);
+    _tagFocusNode.dispose();
+    super.dispose();
+  }
+
+  void _filterSuggestions() {
+    final input = widget.tagController.text.trim();
+    setState(() {
+      if (input.isEmpty) {
+        // 入力がない場合は、既に追加されていない aggregatedTags を全て表示
+        _filteredSuggestions = widget.aggregatedTags
+            .where((tag) => !widget.tags.contains(tag))
+            .toList();
+      } else {
+        // 入力内容にマッチする候補を絞り込む
+        _filteredSuggestions = widget.aggregatedTags
+            .where((tag) =>
+        tag.toLowerCase().contains(input.toLowerCase()) &&
+            !widget.tags.contains(tag))
+            .toList();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // タグ入力フィールドと既存タグの表示
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+          decoration: BoxDecoration(
+            border: Border.all(color: AppColors.gray100, width: 1.0),
+            borderRadius: BorderRadius.circular(8),
+            color: Colors.white,
+          ),
+          child: Wrap(
+            spacing: 4.0,
+            runSpacing: 4.0,
+            alignment: WrapAlignment.start,
+            children: [
+              // 既存のタグを表示
+              ...widget.tags.map((tag) => Padding(
+                padding: const EdgeInsets.only(left: 8.0),
+                child: Chip(
+                  label: Text(
+                    tag,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    side: const BorderSide(color: AppColors.gray500, width: 1),
+                  ),
+                  backgroundColor: AppColors.gray50,
+                  deleteIcon: const Icon(
+                    Icons.close_rounded,
+                    size: 18,
+                    color: AppColors.gray500,
+                  ),
+                  onDeleted: () => widget.onTagDeleted(tag),
+                ),
+              )),
+              // タグ入力用の TextField（動的な幅）
+              IntrinsicWidth(
+                child: TextField(
+                  controller: widget.tagController,
+                  focusNode: _tagFocusNode,
+                  cursorColor: AppColors.blue500,
+                  style: const TextStyle(
+                    fontSize: 13.0,
+                    height: 1.5,
+                    color: Colors.black,
+                  ),
+                  decoration: const InputDecoration(
+                    hintText: 'タグ追加',
+                    hintStyle: TextStyle(fontSize: 13.0, color: Colors.grey),
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                  ),
+                  onSubmitted: (value) {
+                    final tag = value.trim();
+                    if (tag.isNotEmpty) {
+                      widget.onTagAdded(tag);
+                      widget.tagController.clear();
+                      Future.delayed(const Duration(milliseconds: 50), () {
+                        FocusScope.of(context).requestFocus(_tagFocusNode);
+                      });
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        // 候補表示（入力中、またはフォーカス中）
+        if (_tagFocusNode.hasFocus && _filteredSuggestions.isNotEmpty)
+          Container(
+            // 見た目を「プルダウン」風にする
+            margin: const EdgeInsets.only(top: 4),
+            width: double.infinity,
+            constraints: const BoxConstraints(maxHeight: 200), // 候補リストの最大高さ
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border.all(color: AppColors.gray100, width: 1.0),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: _filteredSuggestions.length,
+              itemBuilder: (context, index) {
+                final suggestion = _filteredSuggestions[index];
+                return InkWell(
+                  onTap: () {
+                    widget.onTagAdded(suggestion);
+                    widget.tagController.clear();
+                    _filterSuggestions();
+                    FocusScope.of(context).requestFocus(_tagFocusNode);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                    child: Text(
+                      suggestion,
+                      style: const TextStyle(fontSize: 13, color: Colors.black87),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class ExamDateField extends StatelessWidget {
+  final TextEditingController examYearController;
+  final TextEditingController examMonthController;
+  final FocusNode examYearFocusNode;
+  final FocusNode examMonthFocusNode;
+  final bool isExamDateError;
+  final VoidCallback onExamDateChanged;
+
+  const ExamDateField({
+    Key? key,
+    required this.examYearController,
+    required this.examMonthController,
+    required this.examYearFocusNode,
+    required this.examMonthFocusNode,
+    required this.isExamDateError,
+    required this.onExamDateChanged,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      // Container全体がタップされたときに、yearフィールドにフォーカスを移す
+      onTap: () {
+        FocusScope.of(context).requestFocus(examYearFocusNode);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isExamDateError ? Colors.red : Colors.transparent,
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Text(
+              '出題年月',
+              style: TextStyle(
+                fontSize: 13,
+                color: isExamDateError ? Colors.red : Colors.black54,
+              ),
+            ),
+            const SizedBox(width: 32),
+            SizedBox(
+              width: 72,
+              child: TextField(
+                controller: examYearController,
+                focusNode: examYearFocusNode,
+                cursorColor: AppColors.blue500,
+                maxLength: 4,
+                keyboardType: TextInputType.number,
+                textAlign: TextAlign.center,
+                decoration: const InputDecoration(
+                  counterText: '',
+                  hintText: 'yyyy',
+                  border: InputBorder.none,
+                ),
+                onChanged: (value) {
+                  if (value.length == 4) {
+                    FocusScope.of(context).requestFocus(examMonthFocusNode);
+                  }
+                },
+                onEditingComplete: onExamDateChanged,
+              ),
+            ),
+            Text(
+              '/',
+              style: TextStyle(
+                fontSize: 14,
+                color: isExamDateError ? Colors.red : Colors.black54,
+              ),
+            ),
+            SizedBox(
+              width: 48,
+              child: TextField(
+                controller: examMonthController,
+                focusNode: examMonthFocusNode,
+                cursorColor: AppColors.blue500,
+                maxLength: 2,
+                keyboardType: TextInputType.number,
+                textAlign: TextAlign.center,
+                decoration: const InputDecoration(
+                  counterText: '',
+                  hintText: 'mm',
+                  border: InputBorder.none,
+                ),
+                onEditingComplete: onExamDateChanged,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 

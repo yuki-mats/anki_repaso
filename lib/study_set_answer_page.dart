@@ -6,6 +6,7 @@ import 'package:repaso/completion_summary_page.dart';
 import 'package:repaso/review_answers_page.dart';
 import 'package:repaso/utils/app_colors.dart';
 import 'package:repaso/widgets/image_preview_widget.dart';
+import 'package:repaso/widgets/info_dialog.dart';
 import 'package:repaso/widgets/memory_level_buttons.dart';
 import 'package:repaso/services/no_questions_widget.dart';
 import 'package:repaso/widgets/choice_widgets.dart'; // ここに TrueFalseWidget, SingleChoiceWidget, FlashCardWidget などが含まれる
@@ -342,20 +343,17 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
 
   /// ヒント表示ダイアログ
   void _showHintDialog() {
-    final currentQuestion = _questionsWithStats[_currentQuestionIndex];
-    final hintText = currentQuestion['hintText'] ?? '';
+    final question = _questionsWithStats[_currentQuestionIndex];
+    final hintText = question['hintText'] ?? '';
+    // Firestore に保存済みのヒント画像URL（存在しない場合は空リスト）
+    final hintImageUrls = List<String>.from(question['hintImageUrls'] ?? []);
     showDialog(
       context: context,
       builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('ヒント'),
-          content: Text(hintText),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('閉じる'),
-            ),
-          ],
+        return InfoDialog(
+          title: 'ヒント',
+          content: hintText,
+          imageUrls: hintImageUrls,
         );
       },
     );
@@ -363,20 +361,17 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
 
   /// 解説表示ダイアログ
   void _showExplanationDialog() {
-    final currentQuestion = _questionsWithStats[_currentQuestionIndex];
-    final explanationText = currentQuestion['explanationText'] ?? '';
+    final question = _questionsWithStats[_currentQuestionIndex];
+    final explanationText = question['explanationText'] ?? '';
+    // Firestore に保存済みの解説画像URL（存在しfない場合は空リスト）
+    final explanationImageUrls = List<String>.from(question['explanationImageUrls'] ?? []);
     showDialog(
       context: context,
       builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('解説'),
-          content: Text(explanationText),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('閉じる'),
-            ),
-          ],
+        return InfoDialog(
+          title: '解説',
+          content: explanationText,
+          imageUrls: explanationImageUrls,
         );
       },
     );
@@ -481,7 +476,7 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
                                               children: [
                                                 Text(
                                                   displayText,
-                                                  style: const TextStyle(fontSize: 12),
+                                                  style: const TextStyle(fontSize: 13),
                                                   textAlign: TextAlign.start,
                                                 ),
                                                 const SizedBox(height: 8),

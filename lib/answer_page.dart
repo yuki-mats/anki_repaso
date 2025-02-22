@@ -273,31 +273,37 @@ class _AnswerPageState extends State<AnswerPage> {
     });
   }
 
-  // ヒント表示用モーダル
+// ヒント表示用モーダル（画像付き）
   void _showHintDialog() {
     final question = _questionsWithStats[_currentQuestionIndex];
     final hintText = question['hintText'] ?? '';
+    // Firestore に保存済みのヒント画像URL（存在しない場合は空リスト）
+    final hintImageUrls = List<String>.from(question['hintImageUrls'] ?? []);
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return InfoDialog(
           title: 'ヒント',
           content: hintText,
+          imageUrls: hintImageUrls,
         );
       },
     );
   }
 
-  // 解説表示用モーダル
+// 解説表示用モーダル（画像付き）
   void _showExplanationDialog() {
     final question = _questionsWithStats[_currentQuestionIndex];
     final explanationText = question['explanationText'] ?? '';
+    // Firestore に保存済みの解説画像URL（存在しfない場合は空リスト）
+    final explanationImageUrls = List<String>.from(question['explanationImageUrls'] ?? []);
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return InfoDialog(
           title: '解説',
           content: explanationText,
+          imageUrls: explanationImageUrls,
         );
       },
     );
@@ -406,7 +412,7 @@ class _AnswerPageState extends State<AnswerPage> {
                                                 children: [
                                                   Text(
                                                     displayText,
-                                                    style: const TextStyle(fontSize: 12),
+                                                    style: const TextStyle(fontSize: 13),
                                                     textAlign: TextAlign.start,
                                                   ),
                                                   const SizedBox(height: 8), // 固定間隔
