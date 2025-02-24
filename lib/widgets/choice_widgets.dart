@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// True/False 選択ウィジェット
 class TrueFalseWidget extends StatelessWidget {
@@ -30,6 +31,8 @@ class TrueFalseWidget extends StatelessWidget {
 
           return GestureDetector(
             onTap: () {
+              // 追加：タップ時にフィードバックを発生させる
+              HapticFeedback.selectionClick();
               if (!isAnswerSelected) {
                 handleAnswerSelection(context, choice);
               }
@@ -115,6 +118,8 @@ class SingleChoiceWidget extends StatelessWidget {
 
         return GestureDetector(
           onTap: () {
+            // 追加：タップ時にフィードバックを発生させる
+            HapticFeedback.selectionClick();
             if (!isAnswerSelected) {
               handleAnswerSelection(context, choice);
             }
@@ -184,7 +189,11 @@ class FlashCardWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onToggle,
+      onTap: () {
+        // 追加：タップ時にフィードバックを発生させる
+        HapticFeedback.selectionClick();
+        onToggle();
+      },
       child: Container(
         height: 48,
         margin: const EdgeInsets.symmetric(vertical: 8),

@@ -436,6 +436,14 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                 ),
               );
             }
+            // 名前の昇順でソート
+            questionSets.sort((a, b) {
+              final aData = a.data() as Map<String, dynamic>? ?? {};
+              final bData = b.data() as Map<String, dynamic>? ?? {};
+              final aName = aData['name'] ?? '';
+              final bName = bData['name'] ?? '';
+              return aName.toString().compareTo(bName.toString());
+            });
             return ListView.builder(
               itemCount: questionSets.length,
               itemBuilder: (context, index) {
@@ -516,14 +524,6 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                                         maxLines: 1,
                                       ),
                                     ),
-                                    Text(
-                                      '$questionCount',
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppColors.gray700,
-                                      ),
-                                    ),
                                     IconButton(
                                       icon: const Icon(Icons.more_vert_rounded, color: Colors.grey),
                                       onPressed: () {
@@ -532,7 +532,82 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 8),
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 16.0),
+                                  child: Builder(
+                                    builder: (context) {
+                                      // 回答済み問題数が 0 の場合は正答率 0 とする
+                                      double correctRate = totalAnswered > 0
+                                          ? (((totalAnswered - memoryLevels['again']!) / totalAnswered) * 100)
+                                          : 0;
+                                      // 小数点第一位で四捨五入
+                                      double roundedRate = (correctRate * 10).round() / 10;
+                                      // 値が整数の場合は小数点以下を省略
+                                      String correctRateStr = roundedRate == 0
+                                          ? '0'
+                                          : (roundedRate % 1 == 0 ? roundedRate.toStringAsFixed(0) : roundedRate.toStringAsFixed(1));
+                                      return Row(
+                                        mainAxisAlignment: MainAxisAlignment.end,
+                                        crossAxisAlignment: CrossAxisAlignment.center,
+                                        children: [
+                                          // 正答率部分（固定幅コンテナ内で左寄せ）
+                                          Container(
+                                            width: 90, // 必要に応じて調整してください
+                                            alignment: Alignment.centerLeft,
+                                            child: Text.rich(
+                                              TextSpan(
+                                                children: [
+                                                  TextSpan(
+                                                    text: '正答率',
+                                                    style: const TextStyle(fontSize: 10, color: Colors.black87),
+                                                  ),
+                                                  TextSpan(
+                                                    text: ' : ',
+                                                    style: const TextStyle(fontSize: 10, color: Colors.black87),
+                                                  ),
+                                                  TextSpan(
+                                                    text: correctRateStr,
+                                                    style: const TextStyle(fontSize: 12, color: Colors.black87),
+                                                  ),
+                                                  TextSpan(
+                                                    text: ' %',
+                                                    style: const TextStyle(fontSize: 10, color: Colors.black87),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                          // 「/」部分を固定表示
+                                          const Text(
+                                            ' / ',
+                                            style: TextStyle(fontSize: 12, color: Colors.black87),
+                                          ),
+                                          // 問題数部分（固定幅コンテナ内で右寄せ）
+                                          Container(
+                                            width: 50, // 必要に応じて調整してください
+                                            alignment: Alignment.centerRight,
+                                            child: Text.rich(
+                                              TextSpan(
+                                                children: [
+                                                  TextSpan(
+                                                    text: '$questionCount',
+                                                    style: const TextStyle(fontSize: 12, color: Colors.black87),
+                                                  ),
+                                                  TextSpan(
+                                                    text: ' 問',
+                                                    style: const TextStyle(fontSize: 10, color: Colors.black87),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 4),
+                                        ],
+                                      );
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
                                 Padding(
                                   padding: const EdgeInsets.only(right: 16.0),
                                   child: ClipRRect(

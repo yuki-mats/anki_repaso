@@ -210,6 +210,7 @@ class _AnswerPageState extends State<AnswerPage> {
         _isAnswerCorrect = null;
         _startedAt = nextStartedAt;
         _isFlashCardAnswerShown = false;
+        _flashCardHasBeenRevealed = false;
       });
     } else {
       _navigateToCompletionSummaryPage();

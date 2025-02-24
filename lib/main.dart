@@ -3,7 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:repaso/folder_list_page.dart';
+import 'package:repaso/home_page.dart';
 import 'package:repaso/lobby_page.dart';
 import 'package:repaso/official_list_page.dart';
 import 'package:repaso/utils/update_checker.dart';
@@ -101,7 +101,7 @@ class _StartupScreenState extends State<StartupScreen> {
   @override
   Widget build(BuildContext context) {
     return const Scaffold(
-      body: Center(child: CircularProgressIndicator()),
+      body: SizedBox.shrink(),
     );
   }
 }

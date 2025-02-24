@@ -7,6 +7,7 @@ import 'package:repaso/question_set_list_page.dart';
 import 'package:repaso/study_set_add_page.dart' as AddPage; // 新しい暗記セット用
 import 'package:repaso/study_set_answer_page.dart';
 import 'package:repaso/study_set_edit_page.dart' as EditPage; // 既存暗記セット編集用
+import 'package:rxdart/rxdart.dart';
 import 'utils/app_colors.dart';
 import 'folder_add_page.dart';
 import 'main.dart';
@@ -548,71 +549,94 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
     // 1) ログイン中ユーザーがアクセス権を持つフォルダの permissions を監視
     final folderPermissionsStream = FirebaseFirestore.instance
         .collectionGroup('permissions')
-        .where('userRef', isEqualTo: FirebaseFirestore.instance.collection('users').doc(user.uid))
+        .where('userRef',
+        isEqualTo: FirebaseFirestore.instance.collection('users').doc(user.uid))
         .where('role', whereIn: ['owner', 'editor', 'viewer'])
         .snapshots();
 
     return StreamBuilder<QuerySnapshot>(
       stream: folderPermissionsStream,
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          print('Error in folderPermissionsStream: ${snapshot.error}');
-          return Center(child: Text('エラーが発生しました: ${snapshot.error}'));
+      builder: (context, permissionsSnapshot) {
+        if (permissionsSnapshot.hasError) {
+          print('Error in folderPermissionsStream: ${permissionsSnapshot.error}');
+          return Center(
+              child: Text('エラーが発生しました: ${permissionsSnapshot.error}'));
         }
-        if (!snapshot.hasData) {
+        if (!permissionsSnapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        final permissionsDocs = snapshot.data!.docs;
+        final permissionsDocs = permissionsSnapshot.data!.docs;
         if (permissionsDocs.isEmpty) {
           return const Center(child: Text('フォルダがありません'));
         }
 
-        // 2) permissionsドキュメントから親フォルダの参照を取得し、それぞれを監視
-        return ListView.builder(
-          itemCount: permissionsDocs.length,
-          itemBuilder: (context, index) {
-            final permissionDoc = permissionsDocs[index];
-            final folderRef = permissionDoc.reference.parent.parent; // 親のフォルダ参照
-            if (folderRef == null) {
-              return const SizedBox.shrink(); // 万一 null の場合は何も描画しない
+        // 2) 各 permission ドキュメントから親フォルダの参照を取得し、そのスナップショットの Stream をリストに格納
+        List<Stream<DocumentSnapshot>> folderStreams = [];
+        for (var permission in permissionsDocs) {
+          final folderRef = permission.reference.parent.parent;
+          if (folderRef != null) {
+            folderStreams.add(folderRef.snapshots());
+          }
+        }
+
+        // CombineLatestStreamで全てのフォルダのスナップショットを一括で監視
+        return StreamBuilder<List<DocumentSnapshot>>(
+          stream: CombineLatestStream.list(folderStreams),
+          builder: (context, folderSnapshots) {
+            if (folderSnapshots.hasError) {
+              print('Error in combined folder stream: ${folderSnapshots.error}');
+              return Center(child: Text('エラー: ${folderSnapshots.error}'));
+            }
+            if (!folderSnapshots.hasData) {
+              return const Center(child: CircularProgressIndicator());
             }
 
-            return StreamBuilder<DocumentSnapshot>(
-              stream: folderRef.snapshots(),
-              builder: (context, folderSnapshot) {
-                if (folderSnapshot.hasError) {
-                  print('Error in folderRef snapshots: ${folderSnapshot.error}');
-                  return Text('エラー: ${folderSnapshot.error}');
-                }
-                if (!folderSnapshot.hasData || !folderSnapshot.data!.exists) {
-                  return const SizedBox.shrink();
-                }
+            List<DocumentSnapshot> folders = folderSnapshots.data!;
 
-                // 取得したフォルダドキュメント
-                final folderDoc = folderSnapshot.data!;
+            // 削除済みのフォルダを除外
+            folders = folders.where((doc) {
+              final data = doc.data() as Map<String, dynamic>? ?? {};
+              return !(data['isDeleted'] ?? false);
+            }).toList();
+
+            // フォルダ名で昇順ソート
+            folders.sort((a, b) {
+              final aData = a.data() as Map<String, dynamic>? ?? {};
+              final bData = b.data() as Map<String, dynamic>? ?? {};
+              final aName = aData['name'] ?? '';
+              final bName = bData['name'] ?? '';
+              return aName.compareTo(bName);
+            });
+
+            // ソート結果の確認用print
+            print("Sorted Folders:");
+            for (var folder in folders) {
+              final data = folder.data() as Map<String, dynamic>? ?? {};
+              print(data['name']);
+            }
+
+            return ListView.builder(
+              itemCount: folders.length,
+              itemBuilder: (context, index) {
+                final folderDoc = folders[index];
                 final folderData = folderDoc.data() as Map<String, dynamic>? ?? {};
                 final folderName = folderData['name'] ?? '未設定';
                 final questionCount = folderData['questionCount'] ?? 0;
                 final isPublic = folderData['isPublic'] ?? false;
-                final isDeleted = folderData['isDeleted'] ?? false;
-
-                if (isDeleted) {
-                  return const SizedBox.shrink();
-                }
 
                 // --- フォルダユーザーステータスも購読 ---
-                final folderUserStatsStream = folderRef
+                final folderUserStatsStream = folderDoc.reference
                     .collection('folderSetUserStats')
                     .doc(user.uid)
                     .snapshots();
 
-                // 2段階目の StreamBuilder
                 return StreamBuilder<DocumentSnapshot>(
                   stream: folderUserStatsStream,
                   builder: (context, userStatsSnapshot) {
                     if (userStatsSnapshot.hasError) {
-                      print('Error in folderSetUserStats: ${userStatsSnapshot.error}');
+                      print(
+                          'Error in folderSetUserStats: ${userStatsSnapshot.error}');
                       return Text('エラー: ${userStatsSnapshot.error}');
                     }
 
@@ -625,31 +649,38 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                     };
 
                     // folderSetUserStatsドキュメントが存在する場合は上書き
-                    if (userStatsSnapshot.hasData && userStatsSnapshot.data!.exists) {
-                      final userStatsData =
-                          userStatsSnapshot.data!.data() as Map<String, dynamic>? ?? {};
+                    if (userStatsSnapshot.hasData &&
+                        userStatsSnapshot.data!.exists) {
+                      final userStatsData = userStatsSnapshot.data!.data()
+                      as Map<String, dynamic>? ??
+                          {};
                       final memoryData =
-                          userStatsData['memoryLevels'] as Map<String, dynamic>? ?? {};
+                          userStatsData['memoryLevels'] as Map<String, dynamic>? ??
+                              {};
 
-                      // memoryLevels の集計
                       memoryData.forEach((questionId, level) {
                         if (memoryLevels.containsKey(level)) {
-                          memoryLevels[level] = (memoryLevels[level] ?? 0) + 1;
+                          memoryLevels[level] =
+                              (memoryLevels[level] ?? 0) + 1;
                         }
                       });
                     }
 
                     // 合計回答数を計算 → 未回答 = questionCount - answered
-                    final totalAnswered = memoryLevels.values.fold<int>(0, (a, b) => a + b);
-                    final unanswered = (questionCount is int && questionCount > totalAnswered)
+                    final totalAnswered =
+                    memoryLevels.values.fold<int>(0, (a, b) => a + b);
+                    final unanswered = (questionCount is int &&
+                        questionCount > totalAnswered)
                         ? (questionCount - totalAnswered)
                         : 0;
 
                     // プログレスバー左→右のレベル順
-                    final sortedMemoryLevels = ['again', 'hard', 'good', 'easy', 'unanswered'];
+                    final sortedMemoryLevels =
+                    ['again', 'hard', 'good', 'easy', 'unanswered'];
 
                     return Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16.0, vertical: 4.0),
                       child: Card(
                         color: Colors.white,
                         elevation: 0.5,
@@ -663,7 +694,8 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                           },
                           borderRadius: BorderRadius.circular(8.0),
                           child: Padding(
-                            padding: const EdgeInsets.only(top: 8.0, bottom: 16.0, left: 16.0),
+                            padding: const EdgeInsets.only(
+                                top: 8.0, bottom: 16.0, left: 16.0),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -674,7 +706,9 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                                     Icon(
                                       Icons.folder_outlined,
                                       size: 24,
-                                      color: isPublic ? Colors.amber : AppColors.blue500,
+                                      color: isPublic
+                                          ? Colors.amber
+                                          : AppColors.blue500,
                                     ),
                                     const SizedBox(width: 12),
                                     Expanded(
@@ -689,16 +723,9 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                                         maxLines: 1,
                                       ),
                                     ),
-                                    Text(
-                                      '$questionCount',
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppColors.gray700,
-                                      ),
-                                    ),
                                     IconButton(
-                                      icon: const Icon(Icons.more_vert_rounded, color: Colors.grey),
+                                      icon: const Icon(Icons.more_vert_rounded,
+                                          color: Colors.grey),
                                       onPressed: () {
                                         // フォルダ操作用モーダル
                                         showFolderOptionsModal(context, folderDoc);
@@ -706,18 +733,93 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 8),
-                                // プログレスバー（左: easy -> good -> hard -> again -> unanswered）
                                 Padding(
                                   padding: const EdgeInsets.only(right: 16.0),
+                                  child: Builder(
+                                    builder: (context) {
+                                      // 回答済み問題数が 0 の場合は正答率 0 とする
+                                      double correctRate = totalAnswered > 0
+                                          ? (((totalAnswered - memoryLevels['again']!) / totalAnswered) * 100)
+                                          : 0;
+                                      // 小数点第一位で四捨五入
+                                      double roundedRate = (correctRate * 10).round() / 10;
+                                      // 値が整数の場合は小数点以下を省略
+                                      String correctRateStr = roundedRate == 0
+                                          ? '0'
+                                          : (roundedRate % 1 == 0 ? roundedRate.toStringAsFixed(0) : roundedRate.toStringAsFixed(1));
+                                      return Row(
+                                        mainAxisAlignment: MainAxisAlignment.end,
+                                        crossAxisAlignment: CrossAxisAlignment.center,
+                                        children: [
+                                          // 正答率部分（固定幅コンテナ内で左寄せ）
+                                          Container(
+                                            width: 90, // 必要に応じて調整してください
+                                            alignment: Alignment.centerLeft,
+                                            child: Text.rich(
+                                              TextSpan(
+                                                children: [
+                                                  TextSpan(
+                                                    text: '正答率',
+                                                    style: const TextStyle(fontSize: 10, color: Colors.black87),
+                                                  ),
+                                                  TextSpan(
+                                                    text: ' : ',
+                                                    style: const TextStyle(fontSize: 10, color: Colors.black87),
+                                                  ),
+                                                  TextSpan(
+                                                    text: correctRateStr,
+                                                    style: const TextStyle(fontSize: 12, color: Colors.black87),
+                                                  ),
+                                                  TextSpan(
+                                                    text: ' %',
+                                                    style: const TextStyle(fontSize: 10, color: Colors.black87),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                          // 「/」部分を固定表示
+                                          const Text(
+                                            ' / ',
+                                            style: TextStyle(fontSize: 12, color: Colors.black87),
+                                          ),
+                                          // 問題数部分（固定幅コンテナ内で右寄せ）
+                                          Container(
+                                            width: 50, // 必要に応じて調整してください
+                                            alignment: Alignment.centerRight,
+                                            child: Text.rich(
+                                              TextSpan(
+                                                children: [
+                                                  TextSpan(
+                                                    text: '$questionCount',
+                                                    style: const TextStyle(fontSize: 12, color: Colors.black87),
+                                                  ),
+                                                  TextSpan(
+                                                    text: ' 問',
+                                                    style: const TextStyle(fontSize: 10, color: Colors.black87),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 4),
+                                        ],
+                                      );
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Padding(
+                                  padding:
+                                  const EdgeInsets.only(right: 16.0),
                                   child: ClipRRect(
                                     borderRadius: BorderRadius.circular(2.0),
                                     child: Row(
                                       children: sortedMemoryLevels.map((level) {
-                                        final flexValue = (level == 'unanswered')
+                                        final flexValue =
+                                        (level == 'unanswered')
                                             ? unanswered
                                             : (memoryLevels[level] ?? 0);
-
                                         return Expanded(
                                           flex: flexValue,
                                           child: Container(
@@ -744,8 +846,6 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
       },
     );
   }
-
-
 // メモリーレベルに応じた色を返す関数
   Color _getMemoryLevelColor(String level) {
     switch (level) {
