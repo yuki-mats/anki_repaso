@@ -10,11 +10,11 @@ import 'question_count.dart';
 
 /// Firestore への問題インポートやファイル解析を行うサービス
 class ImportQuestionsService {
-  /// [context] は UI 表示用、[folderRef] と [questionSetRef] は対象のリファレンスです。
+  /// [context] は UI 表示用、[folderId] と [questionSetId] は対象のIDです。
   Future<void> pickFileAndImport(
       BuildContext context,
-      DocumentReference folderRef,
-      DocumentReference questionSetRef,
+      String folderId,
+      String questionSetId,
       ) async {
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -151,7 +151,7 @@ class ImportQuestionsService {
         return;
       }
 
-      await _importQuestions(context, folderRef, questionSetRef, questionsData);
+      await _importQuestions(context, folderId, questionSetId, questionsData);
     } catch (e) {
       print("Error processing file: $e");
       ScaffoldMessenger.of(context).showSnackBar(
@@ -165,8 +165,8 @@ class ImportQuestionsService {
   /// importKey が null または空欄の場合は重複チェックをせず、そのまま登録します。
   Future<void> _importQuestions(
       BuildContext context,
-      DocumentReference folderRef,
-      DocumentReference questionSetRef,
+      String folderId,
+      String questionSetId,
       List<Map<String, dynamic>> questionsData,
       ) async {
     final user = FirebaseAuth.instance.currentUser;
@@ -179,26 +179,22 @@ class ImportQuestionsService {
     }
 
     WriteBatch batch = FirebaseFirestore.instance.batch();
-    CollectionReference questionsCol =
-    FirebaseFirestore.instance.collection('questions');
+    CollectionReference questionsCol = FirebaseFirestore.instance.collection('questions');
 
     print("Debug: ${questionsData.length}件のデータをFirestoreにインポート");
 
     Set<String> seenImportKeys = {};
     // importKey が空欄の場合は重複チェック対象外とするため、既存キー取得は行うがチェックはしない
-    List<String> existingImportKeys =
-    await _fetchExistingImportKeys(questionSetRef);
+    List<String> existingImportKeys = await _fetchExistingImportKeys(questionSetId);
 
     int skippedFirestoreCount = 0;
     int skippedFileCount = 0;
     int addedCount = 0;
 
     for (var data in questionsData) {
-      // もしimportKeyがnullや"null"や空文字なら、空文字にする
+      // importKey が null や "null" や空文字の場合は、空文字にする
       String rawKey = data['importKey']?.toString() ?? '';
-      String importKey = (rawKey.trim().toLowerCase() == 'null' || rawKey.trim().isEmpty)
-          ? ''
-          : rawKey.trim();
+      String importKey = (rawKey.trim().toLowerCase() == 'null' || rawKey.trim().isEmpty) ? '' : rawKey.trim();
 
       // importKey が空でない場合のみ重複チェックを実施
       if (importKey.isNotEmpty) {
@@ -215,7 +211,7 @@ class ImportQuestionsService {
       }
 
       Map<String, dynamic> questionDoc = {
-        'questionSetRef': questionSetRef,
+        'questionSetId': questionSetId, // DocumentReference ではなくIDとして保存
         'questionText': data['questionText'] ?? '',
         'questionType': data['questionType'] ?? 'single_choice',
         'correctChoiceText': data['correctChoiceText'] ?? '',
@@ -229,19 +225,26 @@ class ImportQuestionsService {
         'isDeleted': false,
         'isFlagged': false,
         'importKey': importKey,
-        'createdByRef': FirebaseFirestore.instance.collection('users').doc(user.uid),
+        'createdById': user.uid,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       };
 
-      DocumentReference docRef = questionsCol.doc();
-      batch.set(docRef, questionDoc);
+      // importKey がある場合はその値をドキュメントIDとして利用、なければ自動生成
+      DocumentReference docRef;
+      if (importKey.isNotEmpty) {
+        docRef = questionsCol.doc(importKey);
+      } else {
+        docRef = questionsCol.doc();
+      }
+
+      batch.set(docRef, questionDoc, SetOptions(merge: true));
       addedCount++;
     }
 
     try {
       await batch.commit();
-      await updateQuestionCounts(folderRef, questionSetRef);
+      await updateQuestionCounts(folderId, questionSetId);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('問題のインポートが完了しました')),
@@ -257,13 +260,11 @@ class ImportQuestionsService {
   }
 
   /// Firestore から、指定された問題セットの importKey を取得する
-  Future<List<String>> _fetchExistingImportKeys(
-      DocumentReference questionSetRef,
-      ) async {
+  Future<List<String>> _fetchExistingImportKeys(String questionSetId) async {
     try {
       QuerySnapshot snapshot = await FirebaseFirestore.instance
           .collection('questions')
-          .where('questionSetRef', isEqualTo: questionSetRef)
+          .where('questionSetId', isEqualTo: questionSetId)
           .where('importKey', isGreaterThan: '')
           .get();
 

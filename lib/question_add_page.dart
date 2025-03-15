@@ -8,16 +8,16 @@ import 'package:repaso/services/question_count.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:typed_data';
 import 'package:image/image.dart' as img;
-import 'package:repaso/widgets/question_widgets.dart';
+import 'package:repaso/widgets/add_page_widgets/question_widgets.dart';
 
 class QuestionAddPage extends StatefulWidget {
-  final DocumentReference folderRef;
-  final DocumentReference questionSetRef;
+  final String folderId;
+  final String questionSetId;
 
   const QuestionAddPage({
     Key? key,
-    required this.folderRef,
-    required this.questionSetRef,
+    required this.folderId,
+    required this.questionSetId,
   }) : super(key: key);
 
   @override
@@ -325,7 +325,7 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
       }
     });
   }
-  
+
   /// タグ追加処理
   void _addTag(String tag) {
     if (!_questionTags.contains(tag)) {
@@ -344,8 +344,11 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
   }
 
   Future<void> _loadAggregatedTags() async {
-    // 例として、folderRef を利用してフォルダドキュメントを取得する場合
-    final folderDoc = await widget.folderRef.get();
+    // folderId を用いてフォルダドキュメントを取得
+    final folderDoc = await FirebaseFirestore.instance
+        .collection('folders')
+        .doc(widget.folderId)
+        .get();
     setState(() {
       _aggregatedTags = List<String>.from(
           ((folderDoc.data() as Map<String, dynamic>)['aggregatedQuestionTags'] ?? [])
@@ -414,7 +417,6 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
       return;
     }
 
-    final questionSetRef = widget.questionSetRef;
     final questionDocRef = FirebaseFirestore.instance.collection('questions').doc();
 
     // 画像のアップロード
@@ -433,7 +435,7 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
 
     // Firestoreに保存するデータ
     final questionData = {
-      'questionSetRef': questionSetRef,
+      'questionSetId': widget.questionSetId,
       'questionText': _questionTextController.text.trim(),
       'questionType': _selectedQuestionType,
       'examDate': _selectedExamDate != null ? Timestamp.fromDate(_selectedExamDate!) : null,
@@ -476,11 +478,14 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
       await questionDocRef.set(questionData);
       // フォルダの aggregatedQuestionTags を更新（既存タグと重複せず追加）
       if (_questionTags.isNotEmpty) {
-        await widget.folderRef.update({
+        await FirebaseFirestore.instance
+            .collection('folders')
+            .doc(widget.folderId)
+            .update({
           'aggregatedQuestionTags': FieldValue.arrayUnion(_questionTags),
         });
       }
-      await updateQuestionCounts(widget.folderRef, widget.questionSetRef);
+      await updateQuestionCounts(widget.folderId, widget.questionSetId);
 
       _clearFields();
       ScaffoldMessenger.of(context).showSnackBar(
@@ -569,7 +574,7 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
                 onPressed: () async {
                   Navigator.pop(context);
                   ImportQuestionsService service = ImportQuestionsService();
-                  await service.pickFileAndImport(context, widget.folderRef, widget.questionSetRef);
+                  await service.pickFileAndImport(context, widget.folderId, widget.questionSetId);
                 },
                 child: const Text('ファイルを選択'),
               ),

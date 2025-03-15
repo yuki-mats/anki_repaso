@@ -2,7 +2,7 @@ name: repaso
 description: "A new Flutter project."
 
 publish_to: 'none'
-version: 2.1.2+1
+version: 2.3.0+1
 
 environment:
   sdk: ^3.5.3
@@ -28,7 +28,7 @@ dependencies:
   path_drawing: ^1.0.1
   url_launcher: ^6.3.1
   dotted_border: ^2.1.0
-  firebase_storage: ^12.4.0
+  firebase_storage: ^12.4.4
   image_picker: ^1.1.2
   image: ^4.3.0
   image_cropper: ^8.1.0
@@ -43,7 +43,7 @@ flutter_native_splash:
   # ロード画面の背景色
   color: "#1E5CFF"
   # 表示する画像。assets/new_logo.png が対象です。
-  image: assets/splash/splash.v4.png
+  image: assets/splash/splash.v3.png
   # 対象プラットフォーム（不要なプラットフォームは false にしてください）
   android: true
   android_gravity: center

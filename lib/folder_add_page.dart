@@ -1,6 +1,7 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:repaso/widgets/add_page_widgets/name_imput.dart';
 import 'utils/app_colors.dart';
 
 class FolderAddPage extends StatefulWidget {
@@ -12,21 +13,17 @@ class FolderAddPage extends StatefulWidget {
 
 class _FolderAddPageState extends State<FolderAddPage> {
   bool _isButtonEnabled = false;
-  final TextEditingController _folderNameController = TextEditingController();
-
-  // ★★ UIでフォーカス制御を行うため、FocusNodeを追加
+  final TextEditingController _nameController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
 
   @override
   void initState() {
     super.initState();
-
-    // 入力文字が1文字以上になったらボタンを有効化する既存ロジック
-    _folderNameController.addListener(() {
-      updateButtonState(_folderNameController.text.isNotEmpty);
+    _nameController.addListener(() {
+      setState(() {
+        _isButtonEnabled = _nameController.text.isNotEmpty;
+      });
     });
-
-    // フォーカス状態が変化したらUIを再描画
     _focusNode.addListener(() {
       setState(() {});
     });
@@ -34,47 +31,41 @@ class _FolderAddPageState extends State<FolderAddPage> {
 
   @override
   void dispose() {
-    _folderNameController.dispose();
+    _nameController.dispose();
     _focusNode.dispose();
     super.dispose();
   }
 
-  void updateButtonState(bool isEnabled) {
-    setState(() {
-      _isButtonEnabled = isEnabled;
-    });
-  }
-
-  // フォルダ追加処理（既存の機能そのまま）
   Future<void> _addFolder() async {
-    final folderName = _folderNameController.text.trim();
+    final folderName = _nameController.text.trim();
     final user = FirebaseAuth.instance.currentUser;
-
     if (user != null) {
       try {
         final userId = user.uid;
         final userRef =
         FirebaseFirestore.instance.collection('users').doc(userId);
 
-        // 1. フォルダドキュメントを追加
         final folderRef = await FirebaseFirestore.instance
             .collection('folders')
             .add({
           'name': folderName,
-          'tags': [],
-          'createdByRef': userRef,
-          'updatedByRef': userRef,
           'isDeleted': false,
           'isPublic': false,
+          'isOfficial': false,
+          'aggregatedQuestionTags': [],
+          'licenseName': '',
+          'createdById': userId,
+          'createdByRef': userRef,
           'questionCount': 0,
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         });
 
-        // 2. permissions サブコレクションにオーナー権限を付与
         await folderRef.collection('permissions').doc(userId).set({
+          'userId': userId,
           'userRef': userRef,
           'role': 'owner',
+          'isHidden': false,
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         });
@@ -99,72 +90,22 @@ class _FolderAddPageState extends State<FolderAddPage> {
 
   @override
   Widget build(BuildContext context) {
-    // フォーカス中かどうか
-    final bool hasFocus = _focusNode.hasFocus;
-    // 入力中かどうか
-    final bool hasText = _folderNameController.text.isNotEmpty;
-
     return Scaffold(
       backgroundColor: AppColors.gray50,
-      appBar: AppBar(
-        title: const Text('フォルダの追加'),
-      ),
+      appBar: AppBar(title: const Text('フォルダの追加')),
       body: Padding(
         padding: const EdgeInsets.all(24.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 16),
-
-            // ★★ FolderEditPage と同様に、Containerで括る＆枠線を透明にする
-            Container(
-              alignment: Alignment.center,
-              height: 64, // 適宜レイアウトに合わせて固定
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: Colors.transparent, // フォーカス時/非フォーカス時ともに無色
-                  width: 2.0,
-                ),
-              ),
-              child: TextField(
-                focusNode: _focusNode,
-                controller: _folderNameController,
-                autofocus: true,
-                minLines: 1,
-                maxLines: 1,
-                style: const TextStyle(height: 1.5),
-
-                // Iビームカーソルの色（必要なら設定）
-                cursorColor: AppColors.blue600,
-
-                decoration: InputDecoration(
-                  // 中身を白色に
-                  filled: true,
-                  fillColor: Colors.white,
-
-                  // フォーカス or テキストがあればラベル表示、それ以外はnull
-                  labelText: (hasFocus || hasText) ? 'フォルダ名' : null,
-
-                  // フォーカス中で未入力なら「例）製造基礎」、未フォーカスで未入力なら「フォルダ名」
-                  hintText: (!hasFocus && !hasText)
-                      ? 'フォルダ名'
-                      : (hasFocus && !hasText)
-                      ? '例）製造基礎'
-                      : null,
-
-                  floatingLabelBehavior: FloatingLabelBehavior.auto,
-                  floatingLabelStyle: const TextStyle(color: AppColors.blue600),
-
-                  // 枠線は全て消す
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                ),
-              ),
+            // NameInput ウィジェットを利用（labelTextなどは必要に応じて変更）
+            NameInput(
+              controller: _nameController,
+              focusNode: _focusNode,
+              labelText: 'フォルダ名',
+              hintText: '例）製造基礎',
             ),
-
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
@@ -177,18 +118,11 @@ class _FolderAddPageState extends State<FolderAddPage> {
                     borderRadius: BorderRadius.circular(32),
                   ),
                 ),
-                // 上記ロジックで _isButtonEnabled が true のときのみ押下可能
-                onPressed: _isButtonEnabled
-                    ? () async {
-                  await _addFolder();
-                }
-                    : null,
+                onPressed: _isButtonEnabled ? _addFolder : null,
                 child: Text(
                   '保存',
                   style: TextStyle(
-                    color: _isButtonEnabled
-                        ? Colors.white
-                        : Colors.black54,
+                    color: _isButtonEnabled ? Colors.white : Colors.black54,
                   ),
                 ),
               ),

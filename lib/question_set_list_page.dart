@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:repaso/question_set_add_page.dart';
 import 'package:repaso/question_set_edit_page.dart';
 import 'package:repaso/services/question_count.dart';
+import 'package:repaso/widgets/list_page_widgets/memory_level_progress_bar.dart';
+import 'package:repaso/widgets/answer_page_widgets/question_rate_display.dart';
+import 'package:repaso/widgets/list_page_widgets/rounded_icon_box.dart';
 import 'utils/app_colors.dart';
 import 'learning_analytics_page.dart';
 import 'question_add_page.dart';
@@ -12,8 +15,13 @@ import 'question_list_page.dart';
 
 class QuestionSetsListPage extends StatefulWidget {
   final DocumentSnapshot folder;
+  final String folderPermission; // 追加
 
-  QuestionSetsListPage({Key? key, required this.folder}) : super(key: key);
+  QuestionSetsListPage({
+    Key? key,
+    required this.folder,
+    required this.folderPermission, // 追加
+  }) : super(key: key);
 
   @override
   _QuestionSetListPageState createState() => _QuestionSetListPageState();
@@ -25,7 +33,7 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => QuestionSetsAddPage(folderRef: folder.reference),
+        builder: (context) => QuestionSetsAddPage(folderId: folder.id),
       ),
     );
   }
@@ -91,8 +99,8 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
       context,
       MaterialPageRoute(
         builder: (context) => QuestionAddPage(
-          folderRef: folderRef,
-          questionSetRef: questionSetRef,
+          folderId: folderRef.id,
+          questionSetId: questionSetRef.id,
         ),
       ),
     );
@@ -139,35 +147,17 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
       context,
       MaterialPageRoute(
         builder: (context) => AnswerPage(
-          folderRef: folderRef,
-          questionSetRef: questionSetRef,
+          // folderId と questionSetId を渡す
+          folderId: folderRef.id,
+          questionSetId: questionSetRef.id,
           questionSetName: questionSetName,
         ),
       ),
     );
   }
   void showQuestionSetOptionsModal(BuildContext context, DocumentSnapshot folder, DocumentSnapshot questionSet) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('ログインしてください。')),
-      );
-      return;
-    }
-
-    // ユーザーの権限を確認
-    final permissionSnapshot = await folder.reference
-        .collection('permissions')
-        .where('userRef', isEqualTo: FirebaseFirestore.instance.collection('users').doc(user.uid))
-        .get();
-
-    bool isViewer = false;
-    if (permissionSnapshot.docs.isNotEmpty) {
-      final role = permissionSnapshot.docs.first['role'];
-      if (role == 'viewer') {
-        isViewer = true;
-      }
-    }
+    // FolderListPageから渡されたfolderPermissionを利用
+    bool isViewer = widget.folderPermission == 'viewer';
 
     showModalBottomSheet(
       isScrollControlled: true,
@@ -183,22 +173,17 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
         return Padding(
           padding: const EdgeInsets.all(16.0),
           child: Container(
-            height: 420, // 増加した高さ
+            height: 420,
             child: Column(
               children: [
                 ListTile(
-                  leading: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: AppColors.blue200,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(
-                      Icons.quiz_outlined,
-                      size: 22,
-                      color: AppColors.blue500,
-                    ),
+                  leading: const RoundedIconBox(
+                    icon: Icons.quiz_outlined,
+                    iconColor: AppColors.blue600,
+                    backgroundColor: AppColors.blue100,
+                    borderRadius: 8,
+                    size: 34,
+                    iconSize: 22,
                   ),
                   title: Text(
                     questionSet['name'],
@@ -207,9 +192,9 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                     maxLines: 2,
                   ),
                 ),
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 const Divider(height: 1, color: AppColors.gray100),
-                SizedBox(height: 16),
+                const SizedBox(height: 16),
                 ListTile(
                   leading: Container(
                     width: 40,
@@ -226,7 +211,7 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                     navigateToQuestionListPage(context, folder, questionSet);
                   },
                 ),
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 ListTile(
                   leading: Container(
                     width: 40,
@@ -243,146 +228,148 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                     navigateToLearningAnalyticsPage(context, questionSet);
                   },
                 ),
-                SizedBox(height: 8),
-                ListTile(
-                  leading: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: AppColors.gray100,
-                      borderRadius: BorderRadius.circular(100),
-                    ),
-                    child: const Icon(Icons.add, size: 22, color: AppColors.gray600),
-                  ),
-                  title: const Text('問題の追加', style: TextStyle(fontSize: 16)),
-                  onTap: () {
-                    Navigator.of(context).pop();
-                    if (isViewer) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('編集権限がありません。')),
-                      );
-                      return;
-                    }
-                    navigateToQuestionAddPage(context, folder.reference, questionSet.reference);
-                  },
-                ),
-                SizedBox(height: 8),
-                ListTile(
-                  leading: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: AppColors.gray100,
-                      borderRadius: BorderRadius.circular(100),
-                    ),
-                    child: const Icon(Icons.edit_outlined, size: 22, color: AppColors.gray600),
-                  ),
-                  title: const Text('名前を変更', style: TextStyle(fontSize: 16)),
-                  onTap: () {
-                    Navigator.of(context).pop();
-                    if (isViewer) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('編集権限がありません。')),
-                      );
-                      return;
-                    }
-                    navigateToQuestionSetsEditPage(context, folder, questionSet);
-                  },
-                ),
-                SizedBox(height: 8),
-                ListTile(
-                  leading: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: AppColors.gray100,
-                      borderRadius: BorderRadius.circular(100),
-                    ),
-                    child: const Icon(Icons.delete_outline, size: 22, color: AppColors.gray600),
-                  ),
-                  title: const Text('削除する', style: TextStyle(fontSize: 16)),
-                  onTap: () async {
-                    Navigator.of(context).pop();
-                    if (isViewer) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('削除権限がありません。')),
-                      );
-                      return;
-                    }
-
-                    // 確認ダイアログを表示
-                    bool? confirmDelete = await showDialog<bool>(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        backgroundColor: Colors.white,
-                        title: const Text(
-                          '本当に削除しますか？',
-                          style: TextStyle(color: Colors.black87, fontSize: 18),
-                        ),
-                        content: const Text('問題集の配下の問題も削除されます。この操作は取り消しできません。'),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, false),
-                            child: const Text('戻る', style: TextStyle(color: Colors.black87)),
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, true),
-                            child: const Text('削除', style: TextStyle(color: Colors.red)),
-                          ),
-                        ],
+                const SizedBox(height: 8),
+                // 問題の追加（編集権限がない場合は無効化）
+                Tooltip(
+                  message: isViewer ? '編集権限がありません。' : '',
+                  child: ListTile(
+                    enabled: !isViewer,
+                    leading: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: AppColors.gray100,
+                        borderRadius: BorderRadius.circular(100),
                       ),
-                    );
+                      child: const Icon(Icons.add, size: 22, color: AppColors.gray600),
+                    ),
+                    title: const Text('問題の追加', style: TextStyle(fontSize: 16)),
+                    onTap: isViewer
+                        ? null
+                        : () {
+                      Navigator.of(context).pop();
+                      navigateToQuestionAddPage(context, folder.reference, questionSet.reference);
+                    },
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // 名前を変更（編集権限がない場合は無効化）
+                Tooltip(
+                  message: isViewer ? '編集権限がありません。' : '',
+                  child: ListTile(
+                    enabled: !isViewer,
+                    leading: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: AppColors.gray100,
+                        borderRadius: BorderRadius.circular(100),
+                      ),
+                      child: const Icon(Icons.edit_outlined, size: 22, color: AppColors.gray600),
+                    ),
+                    title: const Text('名前を変更', style: TextStyle(fontSize: 16)),
+                    onTap: isViewer
+                        ? null
+                        : () {
+                      Navigator.of(context).pop();
+                      navigateToQuestionSetsEditPage(context, folder, questionSet);
+                    },
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // 削除する（削除権限がない場合は無効化）
+                Tooltip(
+                  message: isViewer ? '削除権限がありません。' : '',
+                  child: ListTile(
+                    enabled: !isViewer,
+                    leading: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: AppColors.gray100,
+                        borderRadius: BorderRadius.circular(100),
+                      ),
+                      child: const Icon(Icons.delete_outline, size: 22, color: AppColors.gray600),
+                    ),
+                    title: const Text('削除する', style: TextStyle(fontSize: 16)),
+                    onTap: isViewer
+                        ? null
+                        : () async {
+                      Navigator.of(context).pop();
+                      // 確認ダイアログを表示
+                      bool? confirmDelete = await showDialog<bool>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          backgroundColor: Colors.white,
+                          title: const Text(
+                            '本当に削除しますか？',
+                            style: TextStyle(color: Colors.black87, fontSize: 18),
+                          ),
+                          content: const Text('問題集の配下の問題も削除されます。この操作は取り消しできません。'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text('戻る', style: TextStyle(color: Colors.black87)),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              child: const Text('削除', style: TextStyle(color: Colors.red)),
+                            ),
+                          ],
+                        ),
+                      );
 
-                    if (confirmDelete == true) {
-                      FirebaseFirestore firestore = FirebaseFirestore.instance;
-                      WriteBatch batch = firestore.batch();
-                      final deletedAt = FieldValue.serverTimestamp();
+                      if (confirmDelete == true) {
+                        FirebaseFirestore firestore = FirebaseFirestore.instance;
+                        WriteBatch batch = firestore.batch();
+                        final deletedAt = FieldValue.serverTimestamp();
 
-                      // ① 質問集自体をソフトデリート
-                      batch.update(questionSet.reference, {
-                        'isDeleted': true,
-                        'deletedAt': deletedAt,
-                      });
-
-                      // ② 配下の質問を取得してソフトデリート
-                      QuerySnapshot questionSnapshot = await firestore
-                          .collection("questions")
-                          .where("questionSetRef", isEqualTo: questionSet.reference)
-                          .get();
-                      for (var question in questionSnapshot.docs) {
-                        batch.update(question.reference, {
+                        // 質問集自体をソフトデリート
+                        batch.update(questionSet.reference, {
                           'isDeleted': true,
                           'deletedAt': deletedAt,
                         });
+
+                        // 配下の質問を取得してソフトデリート
+                        QuerySnapshot questionSnapshot = await firestore
+                            .collection("questions")
+                            .where("questionSetRef", isEqualTo: questionSet.reference)
+                            .get();
+                        for (var question in questionSnapshot.docs) {
+                          batch.update(question.reference, {
+                            'isDeleted': true,
+                            'deletedAt': deletedAt,
+                          });
+                        }
+
+                        // バッチ更新を実行
+                        await batch.commit();
+
+                        // 上位フォルダの質問数を再計算して更新
+                        await updateQuestionCounts(folder.id, questionSet.id);
+
+                        // folderSetUserStats の memoryLevels から対象の質問エントリーを削除
+                        Map<String, dynamic> deletionMap = {};
+                        for (var question in questionSnapshot.docs) {
+                          deletionMap["memoryLevels.${question.id}"] = FieldValue.delete();
+                        }
+                        if (deletionMap.isNotEmpty) {
+                          await widget.folder.reference
+                              .collection('folderSetUserStats')
+                              .doc(FirebaseAuth.instance.currentUser!.uid)
+                              .update(deletionMap);
+                        }
+
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('問題集と配下の問題が削除されました。')),
+                        );
+                        Navigator.of(context).pop(true);
                       }
-
-                      // ③ バッチ更新を実行
-                      await batch.commit();
-
-                      // ④ 上位フォルダの質問数を再計算して更新する
-                      await updateQuestionCounts(widget.folder.reference, questionSet.reference);
-
-                      // ⑤ folderSetUserStats の memoryLevels から削除対象の質問IDのエントリーを削除する
-                      Map<String, dynamic> deletionMap = {};
-                      for (var question in questionSnapshot.docs) {
-                        deletionMap["memoryLevels.${question.id}"] = FieldValue.delete();
-                      }
-                      if (deletionMap.isNotEmpty) {
-                        await widget.folder.reference
-                            .collection('folderSetUserStats')
-                            .doc(FirebaseAuth.instance.currentUser!.uid)
-                            .update(deletionMap);
-                      }
-
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('問題集と配下の問題が削除されました。')),
-                      );
-                      Navigator.of(context).pop(true);
-                    }
-                  },
+                    },
+                  ),
                 ),
               ],
             ),
@@ -391,7 +378,6 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
       },
     );
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -415,7 +401,7 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
         child: StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance
               .collection("questionSets")
-              .where("folderRef", isEqualTo: widget.folder.reference)
+              .where("folderId", isEqualTo: widget.folder.id)
               .where("isDeleted", isEqualTo: false)  // 追加: 削除フラグがfalseのもののみ表示
               .snapshots(),
           builder: (context, snapshot) {
@@ -457,7 +443,7 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                       .doc(FirebaseAuth.instance.currentUser?.uid)
                       .snapshots(),
                   builder: (context, userStatsSnapshot) {
-                    Map<String, dynamic> memoryLevels = {
+                    Map<String, int> memoryLevels = {
                       'again': 0,
                       'hard': 0,
                       'good': 0,
@@ -474,9 +460,23 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                       });
                     }
 
-                    final totalAnswered = memoryLevels.values.reduce((a, b) => a + b);
-                    final unanswered = questionCount - totalAnswered;
-                    final sortedMemoryLevels = ['again', 'hard', 'good', 'easy', 'unanswered'];
+                    // **正答数の計算 (hard, good, easy の合計)**
+                    final correctAnswers = (memoryLevels['easy'] ?? 0) +
+                        (memoryLevels['good'] ?? 0) +
+                        (memoryLevels['hard'] ?? 0);
+
+                    final totalAnswers = (memoryLevels['easy'] ?? 0) +
+                        (memoryLevels['good'] ?? 0) +
+                        (memoryLevels['hard'] ?? 0) +
+                        (memoryLevels['again'] ?? 0);
+
+                    // **未回答数の計算**
+                    final unanswered = (questionCount > correctAnswers)
+                        ? (questionCount - correctAnswers)
+                        : 0;
+
+                    // 未回答を memoryLevels に追加
+                    memoryLevels['unanswered'] = unanswered;
 
                     return Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
@@ -498,25 +498,17 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                               children: [
                                 Row(
                                   children: [
-                                    Container(
-                                      width: 28, // 背景のサイズ
-                                      height: 28,
-                                      decoration: BoxDecoration(
-                                        color: AppColors.blue100, // 青い背景色
-                                        borderRadius: BorderRadius.circular(8), // 丸みを持たせる
-                                      ),
-                                      child: Icon(
-                                        Icons.quiz_outlined,
-                                        size: 16,
-                                        color: AppColors.blue600,
-                                      ),
+                                    RoundedIconBox(
+                                      icon: Icons.quiz_outlined, // アイコン
+                                      iconColor: widget.folder['isPublic'] ? Colors.orange : AppColors.blue600, // 公開フォルダならオレンジ
+                                      backgroundColor: widget.folder['isPublic'] ? Colors.orange.withOpacity(0.2) : AppColors.blue100, // 公開フォルダなら薄いオレンジ背景
                                     ),
                                     const SizedBox(width: 12),
                                     Expanded(
                                       child: Text(
                                         questionSetData['name'],
                                         style: const TextStyle(
-                                          fontSize: 16,
+                                          fontSize: 14,
                                           fontWeight: FontWeight.bold,
                                           color: AppColors.gray700,
                                         ),
@@ -525,108 +517,25 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                                       ),
                                     ),
                                     IconButton(
-                                      icon: const Icon(Icons.more_vert_rounded, color: Colors.grey),
+                                      icon: const Icon(Icons.more_horiz_rounded, color: Colors.grey),
                                       onPressed: () {
                                         showQuestionSetOptionsModal(context, widget.folder, questionSet);
                                       },
                                     ),
                                   ],
                                 ),
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 16.0),
-                                  child: Builder(
-                                    builder: (context) {
-                                      // 回答済み問題数が 0 の場合は正答率 0 とする
-                                      double correctRate = totalAnswered > 0
-                                          ? (((totalAnswered - memoryLevels['again']!) / totalAnswered) * 100)
-                                          : 0;
-                                      // 小数点第一位で四捨五入
-                                      double roundedRate = (correctRate * 10).round() / 10;
-                                      // 値が整数の場合は小数点以下を省略
-                                      String correctRateStr = roundedRate == 0
-                                          ? '0'
-                                          : (roundedRate % 1 == 0 ? roundedRate.toStringAsFixed(0) : roundedRate.toStringAsFixed(1));
-                                      return Row(
-                                        mainAxisAlignment: MainAxisAlignment.end,
-                                        crossAxisAlignment: CrossAxisAlignment.center,
-                                        children: [
-                                          // 正答率部分（固定幅コンテナ内で左寄せ）
-                                          Container(
-                                            width: 90, // 必要に応じて調整してください
-                                            alignment: Alignment.centerLeft,
-                                            child: Text.rich(
-                                              TextSpan(
-                                                children: [
-                                                  TextSpan(
-                                                    text: '正答率',
-                                                    style: const TextStyle(fontSize: 10, color: Colors.black87),
-                                                  ),
-                                                  TextSpan(
-                                                    text: ' : ',
-                                                    style: const TextStyle(fontSize: 10, color: Colors.black87),
-                                                  ),
-                                                  TextSpan(
-                                                    text: correctRateStr,
-                                                    style: const TextStyle(fontSize: 12, color: Colors.black87),
-                                                  ),
-                                                  TextSpan(
-                                                    text: ' %',
-                                                    style: const TextStyle(fontSize: 10, color: Colors.black87),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
-                                          // 「/」部分を固定表示
-                                          const Text(
-                                            ' / ',
-                                            style: TextStyle(fontSize: 12, color: Colors.black87),
-                                          ),
-                                          // 問題数部分（固定幅コンテナ内で右寄せ）
-                                          Container(
-                                            width: 50, // 必要に応じて調整してください
-                                            alignment: Alignment.centerRight,
-                                            child: Text.rich(
-                                              TextSpan(
-                                                children: [
-                                                  TextSpan(
-                                                    text: '$questionCount',
-                                                    style: const TextStyle(fontSize: 12, color: Colors.black87),
-                                                  ),
-                                                  TextSpan(
-                                                    text: ' 問',
-                                                    style: const TextStyle(fontSize: 10, color: Colors.black87),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 4),
-                                        ],
-                                      );
-                                    },
-                                  ),
+                                QuestionRateDisplay(
+                                  top: correctAnswers,
+                                  bottom: totalAnswers,
+                                  memoryLevels: memoryLevels,
+                                  count: questionCount,
+                                  countSuffix: ' 問',
                                 ),
                                 const SizedBox(height: 2),
+                                // **メモリーレベルのプログレスバー**
                                 Padding(
                                   padding: const EdgeInsets.only(right: 16.0),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(2.0),
-                                    child: Row(
-                                      children: sortedMemoryLevels.map((level) {
-                                        int flexValue = level == 'unanswered' ? unanswered : memoryLevels[level] as int;
-                                        return Expanded(
-                                          flex: flexValue,
-                                          child: DecoratedBox(
-                                            decoration: BoxDecoration(
-                                              gradient: _getGradientForLevel(level), // グラデーションを取得
-                                            ),
-                                            child: Container(height: 8), // 高さを指定
-                                          ),
-                                        );
-                                      }).toList(),
-                                    ),
-                                  ),
+                                  child: MemoryLevelProgressBar(memoryValues: memoryLevels),
                                 ),
                               ],
                             ),
@@ -656,46 +565,5 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
-  }
-}
-
-Gradient _getGradientForLevel(String level) {
-  switch (level) {
-    case 'unanswered':
-      return LinearGradient(
-        colors: [Colors.grey[300]!, Colors.grey[300]!],
-        begin: Alignment.centerLeft,
-        end: Alignment.centerRight,
-      );
-    case 'easy':
-      return LinearGradient(
-        colors: [Colors.blue[300]!, Colors.blue[300]!],
-        begin: Alignment.centerLeft,
-        end: Alignment.centerRight,
-      );
-    case 'good':
-      return LinearGradient(
-        colors: [Colors.green[300]!, Colors.green[300]!],
-        begin: Alignment.centerLeft,
-        end: Alignment.centerRight,
-      );
-    case 'hard':
-      return LinearGradient(
-        colors: [Colors.orange[300]!, Colors.orange[300]!],
-        begin: Alignment.centerLeft,
-        end: Alignment.centerRight,
-      );
-    case 'again':
-      return LinearGradient(
-        colors: [Colors.red[300]!, Colors.red[300]!],
-        begin: Alignment.centerLeft,
-        end: Alignment.centerRight,
-      );
-    default:
-      return LinearGradient(
-        colors: [Colors.grey, Colors.grey],
-        begin: Alignment.centerLeft,
-        end: Alignment.centerRight,
-      );
   }
 }

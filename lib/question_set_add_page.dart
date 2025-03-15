@@ -2,12 +2,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:repaso/utils/app_colors.dart';
+import 'package:repaso/widgets/add_page_widgets/name_imput.dart';
 import 'question_add_page.dart';
 
 class QuestionSetsAddPage extends StatefulWidget {
-  final DocumentReference folderRef;
+  final String folderId; // DocumentReference ではなく String に変更
 
-  const QuestionSetsAddPage({Key? key, required this.folderRef}) : super(key: key);
+  const QuestionSetsAddPage({Key? key, required this.folderId}) : super(key: key);
 
   @override
   _QuestionSetsAddPageState createState() => _QuestionSetsAddPageState();
@@ -17,20 +18,17 @@ class _QuestionSetsAddPageState extends State<QuestionSetsAddPage> {
   bool _isButtonEnabled = false;
   bool _isLoading = false; // ローディング状態の管理
   final TextEditingController _questionSetNameController = TextEditingController();
-
-  // ★★ UIでフォーカス状態を扱うため、FocusNodeを追加
-  final FocusNode _focusNode = FocusNode();
+  final FocusNode _focusNode = FocusNode(); // NameInputで使用するFocusNode
 
   @override
   void initState() {
     super.initState();
-
-    // 入力があればボタンを有効にするロジック（既存）
+    // 入力があればボタンを有効にするロジック
     _questionSetNameController.addListener(() {
       updateButtonState(_questionSetNameController.text.isNotEmpty);
     });
 
-    // フォーカス状態が変わればUI再描画
+    // FocusNodeの変化に合わせてUI再描画
     _focusNode.addListener(() {
       setState(() {});
     });
@@ -52,7 +50,7 @@ class _QuestionSetsAddPageState extends State<QuestionSetsAddPage> {
   Future<void> _addQuestionSet() async {
     final user = FirebaseAuth.instance.currentUser;
     setState(() {
-      _isLoading = true; // ローディング開始
+      _isLoading = true;
     });
 
     if (user == null) {
@@ -60,7 +58,7 @@ class _QuestionSetsAddPageState extends State<QuestionSetsAddPage> {
         const SnackBar(content: Text('ログインしていません。')),
       );
       setState(() {
-        _isLoading = false; // ローディング終了
+        _isLoading = false;
       });
       return;
     }
@@ -68,28 +66,27 @@ class _QuestionSetsAddPageState extends State<QuestionSetsAddPage> {
     try {
       final questionSetName = _questionSetNameController.text;
       final userId = user.uid;
-      final userRef = FirebaseFirestore.instance.collection('users').doc(userId);
 
       // Firestoreに問題集を追加
       final questionSet = await FirebaseFirestore.instance
           .collection('questionSets')
           .add({
         'name': questionSetName,
-        'folderRef': widget.folderRef,
+        'folderId': widget.folderId, // folderId (String) を保存
         'questionCount': 0,
         'isDeleted': false,
-        'createdByRef': userRef,
-        'updatedByRef': userRef,
+        'createdById': userId,
+        'updatedId': userId,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
-      // 新規作成後、問題追加画面へ遷移
+      // 作成後、問題追加画面へ遷移
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           builder: (context) => QuestionAddPage(
-            folderRef: widget.folderRef,
-            questionSetRef: questionSet,
+            folderId: widget.folderId, // String を渡すように変更
+            questionSetId: questionSet.id,
           ),
         ),
       );
@@ -99,18 +96,13 @@ class _QuestionSetsAddPageState extends State<QuestionSetsAddPage> {
       );
     } finally {
       setState(() {
-        _isLoading = false; // ローディング終了
+        _isLoading = false;
       });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // フォーカス中かどうか
-    final bool hasFocus = _focusNode.hasFocus;
-    // テキスト入力があるかどうか
-    final bool hasText = _questionSetNameController.text.isNotEmpty;
-
     return Scaffold(
       backgroundColor: AppColors.gray50,
       appBar: AppBar(
@@ -122,64 +114,20 @@ class _QuestionSetsAddPageState extends State<QuestionSetsAddPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 16),
-
-            // ★★ 既存のTextFieldをContainerで包んで、枠線を透明に
-            Container(
-              alignment: Alignment.center,
-              height: 64, // 高さは必要に応じて調整可
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: Colors.transparent, // フォーカス時/非フォーカス時でも無色
-                  width: 2.0,
-                ),
-              ),
-              child: TextField(
-                focusNode: _focusNode,
-                controller: _questionSetNameController,
-                autofocus: true,
-                minLines: 1,
-                maxLines: 1,
-                style: const TextStyle(height: 1.5),
-                // もしカーソル色を変えたい場合はここで指定
-                cursorColor: AppColors.blue500,
-
-                decoration: InputDecoration(
-                  // 背景を白に塗る
-                  filled: true,
-                  fillColor: Colors.white,
-
-                  // フォーカス時 or テキストあり の場合のみラベル表示
-                  labelText: (hasFocus || hasText) ? '問題集名' : null,
-
-                  // フォーカス時かつ未入力 => 例）製造基礎
-                  // 未フォーカスかつ未入力 => 問題集名
-                  hintText: (!hasFocus && !hasText)
-                      ? '問題集名'
-                      : (hasFocus && !hasText)
-                      ? '例）製造基礎'
-                      : null,
-
-                  floatingLabelBehavior: FloatingLabelBehavior.auto,
-                  floatingLabelStyle: const TextStyle(color: AppColors.blue500),
-
-                  // 枠線は消す
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                ),
-              ),
+            // 共通ウィジェットNameInputを利用
+            NameInput(
+              controller: _questionSetNameController,
+              focusNode: _focusNode,
+              labelText: '問題集名',
+              hintText: '例）製造基礎',
             ),
-
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
               height: 48,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor:
-                  _isButtonEnabled ? AppColors.blue500 : Colors.grey,
+                  backgroundColor: _isButtonEnabled ? AppColors.blue500 : Colors.grey,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(32),
                   ),

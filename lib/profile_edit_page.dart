@@ -2,10 +2,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:image/image.dart' as img; // 画像圧縮用ライブラリ
-import 'dart:io';
-import 'dart:typed_data';
 import 'utils/app_colors.dart';
 
 class ProfileEditPage extends StatefulWidget {
@@ -15,16 +11,16 @@ class ProfileEditPage extends StatefulWidget {
 
 class _ProfileEditPageState extends State<ProfileEditPage> {
   String? userId;
-  String profileImageUrl = 'https://firebasestorage.googleapis.com/v0/b/repaso-rbaqy4.appspot.com/o/profile_images%2FIcons.school.v3.png?alt=media&token=2fe984d6-b755-439e-a81e-afb8b707f495';
+  // Firestore上のプロフィール画像URLまたはデフォルト値
+  String profileImageUrl =
+      'https://firebasestorage.googleapis.com/v0/b/repaso-rbaqy4.appspot.com/o/profile_images%2FIcons.school.v3.png?alt=media&token=2fe984d6-b755-439e-a81e-afb8b707f495';
   String name = '未設定';
   bool isDataLoaded = false;
-  bool isCompressing = false; // 圧縮中フラグ
-  bool isUploading = false; // アップロード状態を管理
   late TextEditingController _nameController;
   late final FocusNode _focusNode;
-  File? _selectedImageFile;
+  // 端末からの画像選択ではなく、公式アイコンURLを保持
+  String? _selectedIconUrl;
   bool _isButtonEnabled = false;
-
 
   @override
   void initState() {
@@ -33,21 +29,21 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     _focusNode = FocusNode();
     _fetchUserData();
 
-    // 🔹 ページ遷移後にテキストフィールドへ自動フォーカス
+    // ページ遷移後にテキストフィールドへ自動フォーカス
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusNode.requestFocus();
     });
 
-    // 🔹 入力の変更を監視し、ボタンの有効状態を更新
+    // 入力の変更を監視し、保存ボタンの有効状態を更新
     _nameController.addListener(() {
       final currentText = _nameController.text.trim();
-      final initialText = name.trim();
       setState(() {
-        _isButtonEnabled = currentText.isNotEmpty && currentText != initialText;
+        // 入力が空でなければ有効（公式アイコンが選択されている場合も有効）
+        _isButtonEnabled = currentText.isNotEmpty || _selectedIconUrl != null;
       });
     });
 
-    // 🔹 フォーカス状態を監視し、UIを更新
+    // フォーカス状態を監視し、UIを更新
     _focusNode.addListener(() {
       setState(() {});
     });
@@ -56,12 +52,10 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
   Future<void> _fetchUserData() async {
     try {
       final user = FirebaseAuth.instance.currentUser;
-
       if (user != null) {
         userId = user.uid;
-
-        final doc = await FirebaseFirestore.instance.collection('users').doc(userId).get();
-
+        final doc =
+        await FirebaseFirestore.instance.collection('users').doc(userId).get();
         if (doc.exists) {
           final data = doc.data();
           setState(() {
@@ -87,142 +81,74 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     }
   }
 
-  Future<void> _pickImage() async {
-    try {
-      final picker = ImagePicker();
-
-      setState(() {
-        isCompressing = true; // 画像選択前からロードを表示
-      });
-
-      final pickedFile = await picker.pickImage(source: ImageSource.gallery);
-
-      if (pickedFile != null) {
-        print('画像が選択されました: ${pickedFile.path}');
-
-        // 圧縮処理を実行
-        File compressedFile = await _compressImage(File(pickedFile.path));
-
-        setState(() {
-          _selectedImageFile = compressedFile; // 圧縮した画像をセット
-          isCompressing = false; // 圧縮終了後にロードを非表示
-          _isButtonEnabled = true; //　画像が変更されたため、ボタンを有効化
-        });
-
-        print('圧縮された画像をセットしました: ${compressedFile.path}');
-      } else {
-        print('画像の選択がキャンセルされました');
-        setState(() {
-          isCompressing = false; // キャンセル時もロードを非表示
-        });
-      }
-    } catch (e) {
-      print('画像選択中にエラーが発生しました: $e');
-      setState(() {
-        isCompressing = false; // エラー時もロードを非表示
-      });
+  /// Firebase Storageの official_icon_images フォルダ内の全アイコンURLを取得
+  Future<List<String>> _fetchOfficialIcons() async {
+    final storageRef =
+    FirebaseStorage.instance.ref().child('official_icon_images');
+    final result = await storageRef.listAll();
+    List<String> urls = [];
+    for (var item in result.items) {
+      final url = await item.getDownloadURL();
+      urls.add(url);
     }
+    return urls;
   }
 
-  Future<File> _compressImage(File file) async {
-    try {
-      final originalImage = file.readAsBytesSync();
-      img.Image? decodedImage = img.decodeImage(originalImage);
-
-      if (decodedImage == null) {
-        throw Exception('サポートされていない画像形式です');
-      }
-
-      // 一度PNG形式に変換
-      final tempDir = Directory.systemTemp;
-      final pngFile = File('${tempDir.path}/converted_${DateTime.now().millisecondsSinceEpoch}.png')
-        ..writeAsBytesSync(img.encodePng(decodedImage));
-
-      print('PNG形式に変換しました: ${pngFile.path}');
-      _checkFileFormat(pngFile, expectedFormat: 'PNG');
-
-      // 40%の品質で圧縮
-      final compressedImage = img.encodeJpg(img.decodeImage(pngFile.readAsBytesSync())!, quality: 10);
-      final compressedFile = File('${tempDir.path}/compressed_${DateTime.now().millisecondsSinceEpoch}.jpg')
-        ..writeAsBytesSync(compressedImage);
-
-      print('圧縮後の画像サイズ: ${compressedFile.lengthSync()} bytes');
-      _checkFileFormat(compressedFile, expectedFormat: 'JPG');
-
-      return compressedFile;
-    } catch (e) {
-      print('画像圧縮中にエラーが発生しました: $e');
-      rethrow;
-    }
-  }
-
-  void _checkFileFormat(File file, {required String expectedFormat}) {
-    final Uint8List bytes = file.readAsBytesSync();
-    String format;
-
-    if (bytes.sublist(0, 4).toString() == '[137, 80, 78, 71]') {
-      format = 'PNG';
-    } else if (bytes.sublist(0, 3).toString() == '[255, 216, 255]') {
-      format = 'JPG';
-    } else {
-      format = 'UNKNOWN';
-    }
-
-    print('ファイル形式確認: $format');
-    if (format != expectedFormat) {
-      throw Exception('ファイル形式が期待と異なります: 期待=$expectedFormat, 実際=$format');
-    }
+  /// ユーザーがタップすると、すぐにモーダルが表示され、内部でアイコン一覧が非同期で読み込まれる
+  Future<void> _selectOfficialIcon() async {
+    await showModalBottomSheet(
+      context: context,
+      isDismissible: false,
+      enableDrag: false,
+      // 角を丸くする
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(8),
+          topRight: Radius.circular(8),
+        ),
+      ),
+      builder: (context) {
+        return _IconSelectionModal(
+          onIconSelected: (iconUrl) {
+            setState(() {
+              _selectedIconUrl = iconUrl;
+              _isButtonEnabled = true;
+            });
+            Navigator.of(context).pop();
+          },
+          fetchIcons: _fetchOfficialIcons,
+        );
+      },
+    );
   }
 
   Future<void> _saveProfile() async {
     try {
       String? downloadUrl;
-
-      // プロフィール画像のアップロード
-      if (_selectedImageFile != null && userId != null) {
-        // ユニークなファイル名を生成
-        final uniqueFileName = '${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-
-        // Firebase Storageのprofile_imagesフォルダに保存
-        final storageRef = FirebaseStorage.instance.ref().child('profile_images/$uniqueFileName');
-        print('圧縮された画像をアップロード開始: ${_selectedImageFile!.path}');
-
-        final uploadTask = storageRef.putFile(_selectedImageFile!);
-
-        // アップロード進行状況をログ
-        uploadTask.snapshotEvents.listen((TaskSnapshot snapshot) {
-          print('アップロード状況: ${snapshot.state}');
-        });
-
-        // アップロード完了を待つ
-        final snapshot = await uploadTask;
-
-        if (snapshot.state == TaskState.success) {
-          downloadUrl = await snapshot.ref.getDownloadURL();
-          print('アップロード成功: $downloadUrl');
-        } else {
-          throw Exception('アップロードに失敗しました: ${snapshot.state}');
-        }
+      // 公式アイコンが選択されていればそのURLを使用
+      if (_selectedIconUrl != null) {
+        downloadUrl = _selectedIconUrl!;
       }
-
       // Firestoreに最新の情報を保存
       print('Firestoreにプロフィール情報を保存します');
       final Map<String, dynamic> updateData = {
         'name': name, // ユーザー名を常に更新
         'updatedAt': FieldValue.serverTimestamp(),
       };
-
       if (downloadUrl != null) {
         updateData['profileImageUrl'] = downloadUrl; // プロフィール画像URLを更新
       }
-
-      await FirebaseFirestore.instance.collection('users').doc(userId).update(updateData);
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .update(updateData);
       print('Firestoreへの保存成功');
 
       // UIを更新
       setState(() {
         if (downloadUrl != null) {
-          profileImageUrl = downloadUrl!;
+          profileImageUrl = downloadUrl;
+          _selectedIconUrl = null; // 選択状態をリセット
         }
       });
 
@@ -232,9 +158,6 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
       Navigator.pop(context, true); // trueを返してMyPageでリロード
     } catch (e) {
       print('エラーの詳細: ${e.runtimeType} - ${e.toString()}');
-      if (e is FirebaseException) {
-        print('エラーコード: ${e.code}');
-      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('エラーが発生しました: ${e.toString()}')),
       );
@@ -263,8 +186,8 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
             _buildProfileImageSection(),
             SizedBox(height: 20),
             _buildUsernameField(),
-            const SizedBox(height: 24), // 🔹 余白を追加
-            _buildSaveButton(), // 🔹 保存ボタンを配置
+            const SizedBox(height: 24),
+            _buildSaveButton(),
             Spacer(),
           ],
         ),
@@ -273,14 +196,15 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     );
   }
 
-  /// 🔹 保存ボタン
+  /// 保存ボタン
   Widget _buildSaveButton() {
     return SizedBox(
       width: double.infinity,
       height: 48,
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
-          backgroundColor: _isButtonEnabled ? AppColors.blue600 : Colors.grey,
+          backgroundColor:
+          _isButtonEnabled ? AppColors.blue600 : Colors.grey,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8),
           ),
@@ -296,31 +220,16 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     );
   }
 
-
+  /// プロフィール画像表示部（タップで公式アイコン選択モーダルを起動）
   Widget _buildProfileImageSection() {
     return Center(
       child: GestureDetector(
-        onTap: _pickImage, // 全体をタップで画像選択処理を起動
-        child: Stack(
-          alignment: Alignment.center, // ローディングを中央に配置
-          children: [
-            CircleAvatar(
-              radius: 50,
-              backgroundImage: _selectedImageFile != null
-                  ? FileImage(_selectedImageFile!)
-                  : NetworkImage(profileImageUrl) as ImageProvider,
-            ),
-            if (isCompressing) // 圧縮中のみインジケーターを表示
-              Positioned.fill(
-                child: CircleAvatar(
-                  child: Center(
-                    child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    ),
-                  ),
-                ),
-              ),
-          ],
+        onTap: _selectOfficialIcon,
+        child: CircleAvatar(
+          radius: 50,
+          backgroundImage: (_selectedIconUrl != null)
+              ? NetworkImage(_selectedIconUrl!)
+              : NetworkImage(profileImageUrl),
         ),
       ),
     );
@@ -342,7 +251,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
         ),
       ),
       child: TextField(
-        focusNode: _focusNode, // 🔹 フォーカス管理
+        focusNode: _focusNode,
         controller: _nameController,
         minLines: 1,
         maxLines: 1,
@@ -368,6 +277,8 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
         onChanged: (value) {
           setState(() {
             name = value;
+            _isButtonEnabled =
+                value.trim().isNotEmpty || _selectedIconUrl != null;
           });
         },
       ),
@@ -375,4 +286,90 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
   }
 }
 
+/// モーダル内で公式アイコンを非同期で取得し、読み込み中はローディングインジケーターを表示、取得完了後はグリッドで表示
+class _IconSelectionModal extends StatefulWidget {
+  final Future<List<String>> Function() fetchIcons;
+  final Function(String) onIconSelected;
+  const _IconSelectionModal({
+    required this.fetchIcons,
+    required this.onIconSelected,
+  });
 
+  @override
+  _IconSelectionModalState createState() => _IconSelectionModalState();
+}
+
+class _IconSelectionModalState extends State<_IconSelectionModal> {
+  late Future<List<String>> _iconFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _iconFuture = widget.fetchIcons();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.white,
+      padding: EdgeInsets.all(16.0),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'アイコンを選択',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 12),
+          FutureBuilder<List<String>>(
+            future: _iconFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                // アイコン取得中はローディングインジケーターを表示
+                return Container(
+                  height: 300,
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(AppColors.blue600),
+                    ),
+                  ),
+                );
+              }
+              if (snapshot.hasError) {
+                return Container(
+                  height: 300,
+                  child: Center(child: Text('アイコンの取得に失敗しました')),
+                );
+              }
+              final iconUrls = snapshot.data!;
+              return Container(
+                height: 300,
+                child: GridView.builder(
+                  shrinkWrap: true,
+                  physics: AlwaysScrollableScrollPhysics(),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    crossAxisSpacing: 8.0,
+                    mainAxisSpacing: 8.0,
+                  ),
+                  itemCount: iconUrls.length,
+                  itemBuilder: (context, index) {
+                    return GestureDetector(
+                      onTap: () {
+                        widget.onIconSelected(iconUrls[index]);
+                      },
+                      child: CircleAvatar(
+                        backgroundImage: NetworkImage(iconUrls[index]),
+                        radius: 30,
+                      ),
+                    );
+                  },
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}

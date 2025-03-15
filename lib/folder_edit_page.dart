@@ -1,14 +1,16 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:repaso/widgets/add_page_widgets/name_imput.dart';
 import 'utils/app_colors.dart';
 
 class FolderEditPage extends StatefulWidget {
-  final DocumentReference folderRef;
+  final String folderId;
   final String initialFolderName;
 
   const FolderEditPage({
     Key? key,
-    required this.folderRef,
+    required this.folderId,
     required this.initialFolderName,
   }) : super(key: key);
 
@@ -19,8 +21,6 @@ class FolderEditPage extends StatefulWidget {
 class _FolderEditPageState extends State<FolderEditPage> {
   bool _isButtonEnabled = false;
   final TextEditingController _folderNameController = TextEditingController();
-
-  // フォーカス状態を管理するための FocusNode
   final FocusNode _focusNode = FocusNode();
 
   @override
@@ -30,17 +30,13 @@ class _FolderEditPageState extends State<FolderEditPage> {
     // 初期値を設定
     _folderNameController.text = widget.initialFolderName;
 
-    // 入力文字の変化を監視 → ボタン有効/無効の更新
+    // 入力の変化を監視し、ボタンの有効・無効を更新
     _folderNameController.addListener(() {
       final currentText = _folderNameController.text.trim();
       final initialText = widget.initialFolderName.trim();
-
-      // 元の値と同じか空文字の場合はボタンを無効化
-      // 元の値と異なる & 空でない場合のみ有効化
       updateButtonState(currentText.isNotEmpty && currentText != initialText);
     });
 
-    // フォーカス状態の変化を監視 → 画面再描画
     _focusNode.addListener(() {
       setState(() {});
     });
@@ -63,19 +59,28 @@ class _FolderEditPageState extends State<FolderEditPage> {
     final folderName = _folderNameController.text.trim();
     if (folderName.isEmpty) return;
 
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ユーザー情報を取得できません')),
+      );
+      return;
+    }
+
+    final String currentUserId = user.uid;
+
     try {
-      await widget.folderRef.update({
+      await FirebaseFirestore.instance.collection('folders').doc(widget.folderId).update({
         'name': folderName,
         'updatedAt': FieldValue.serverTimestamp(),
-        'updatedByRef':
-        FirebaseFirestore.instance.collection('users').doc('currentUserId'),
+        'updatedById': currentUserId, // IDのみで管理
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('フォルダ名が更新されました')),
       );
 
-      Navigator.of(context).pop(true); // 更新完了後、前の画面に戻る
+      Navigator.of(context).pop(true);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('更新に失敗しました: $e')),
@@ -85,11 +90,6 @@ class _FolderEditPageState extends State<FolderEditPage> {
 
   @override
   Widget build(BuildContext context) {
-    // 今のフォーカス状態
-    final bool hasFocus = _focusNode.hasFocus;
-    // テキスト入力の有無
-    final bool hasText = _folderNameController.text.isNotEmpty;
-
     return Scaffold(
       backgroundColor: AppColors.gray50,
       appBar: AppBar(
@@ -101,55 +101,12 @@ class _FolderEditPageState extends State<FolderEditPage> {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             const SizedBox(height: 16),
-            // ★★ Containerで括り、枠線を透明にして同じサイズ・形状を再現
-            Container(
-              alignment: Alignment.center,
-              height: 64,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
-                // フォーカス時・非フォーカス時ともに無色の枠線
-                border: Border.all(
-                  color: Colors.transparent,
-                  width: 2.0,
-                ),
-              ),
-              child: TextField(
-                // フォーカス管理
-                focusNode: _focusNode,
-                controller: _folderNameController,
-                autofocus: true,
-                minLines: 1,
-                maxLines: 1,
-                style: const TextStyle(height: 1.5),
-                cursorColor: AppColors.blue600,
-
-                // 本来の外枠を消し、内部のラベルやヒントだけ使う
-                decoration: InputDecoration(
-                  // 中身は白色背景
-                  filled: true,
-                  fillColor: Colors.white,
-
-                  // ラベル・ヒントの表示ロジック（フォーカスや入力状況による切り替え）
-                  labelText: (hasFocus || hasText) ? 'フォルダ名' : null,
-                  hintText: (!hasFocus && !hasText)
-                      ? 'フォルダ名'
-                      : (hasFocus && !hasText)
-                      ? '例）製造基礎'
-                      : null,
-                  floatingLabelBehavior: FloatingLabelBehavior.auto,
-
-                  // ラベル文字色は既存のまま
-                  floatingLabelStyle: const TextStyle(
-                    color: AppColors.blue600,
-                  ),
-
-                  // ★★ 枠線は全てなしに（透明化）
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                ),
-              ),
+            // NameInput ウィジェットを利用
+            NameInput(
+              controller: _folderNameController,
+              focusNode: _focusNode,
+              labelText: 'フォルダ名',
+              hintText: '例）製造基礎',
             ),
             const SizedBox(height: 24),
             SizedBox(
@@ -160,16 +117,14 @@ class _FolderEditPageState extends State<FolderEditPage> {
                   backgroundColor:
                   _isButtonEnabled ? AppColors.blue600 : Colors.grey,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(32),
                   ),
                 ),
                 onPressed: _isButtonEnabled ? _updateFolder : null,
                 child: Text(
                   '保存',
                   style: TextStyle(
-                    color: _isButtonEnabled
-                        ? Colors.white
-                        : Colors.black54,
+                    color: _isButtonEnabled ? Colors.white : Colors.black54,
                   ),
                 ),
               ),

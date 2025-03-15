@@ -53,7 +53,6 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
     });
   }
 
-
   Future<void> fetchFoldersAndQuestionSets() async {
     try {
       // 削除されていないフォルダのみ取得
@@ -87,10 +86,11 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
         expandedStateInit[folderId] = false;
 
         // 削除されていない問題集のみ取得
+        // ※ここで、現在のデータモデルに沿い「folderId」フィールドを用いて取得する
         final questionSetsSnapshot = await FirebaseFirestore.instance
             .collection('questionSets')
-            .where('folderRef', isEqualTo: folder.reference)
-            .where('isDeleted', isEqualTo: false) // 🔹 削除されていないものだけ取得
+            .where('folderId', isEqualTo: folderId)
+            .where('isDeleted', isEqualTo: false) // 削除されていないものだけ取得
             .get();
 
         final questionSets = questionSetsSnapshot.docs.map((doc) {
@@ -123,12 +123,10 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
         expandedState = expandedStateInit;
         isLoading = false;
       });
-
     } catch (e) {
       print("Error fetching data: $e");
     }
   }
-
 
   bool? _calculateFolderSelection(List<String> questionSetIds) {
     if (questionSetIds.isEmpty) {
@@ -208,12 +206,14 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
         ),
       ),
       body: isLoading
-          ? const Center(child: CircularProgressIndicator(
-        valueColor: AlwaysStoppedAnimation<Color>(AppColors.blue500),
-      ))
+          ? const Center(
+        child: CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation<Color>(AppColors.blue500),
+        ),
+      )
           : Column(
         children: [
-          SizedBox(height: 16,),
+          const SizedBox(height: 16),
           Expanded(
             child: Theme(
               data: Theme.of(context).copyWith(
@@ -264,7 +264,7 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
                       });
                       print("Folder $folderId expansion changed to: $isExpanded");
                     },
-                    children: folderInfo['questionSets'].map<Widget>((questionSet) {
+                    children: (folderInfo['questionSets'] as List).map<Widget>((questionSet) {
                       return Padding(
                         padding: const EdgeInsets.only(left: 24.0),
                         child: Material(

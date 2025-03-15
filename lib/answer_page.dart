@@ -5,25 +5,25 @@ import 'package:flutter/material.dart';
 import 'package:repaso/question_add_page.dart';
 import 'package:repaso/review_answers_page.dart';
 import 'package:repaso/services/answer_service.dart';
-import 'package:repaso/widgets/memory_level_buttons.dart';
-import 'package:repaso/services/no_questions_widget.dart';
+import 'package:repaso/widgets/answer_page_widgets/no_questions_widget.dart';
 import 'package:repaso/widgets/image_preview_widget.dart';
-import 'package:repaso/widgets/choice_widgets.dart';
+import 'package:repaso/widgets/answer_page_widgets/answer_page_common.dart';
 import 'package:repaso/widgets/info_dialog.dart';
+import 'package:repaso/memo_list_page.dart';
 import 'utils/app_colors.dart';
 import 'completion_summary_page.dart';
 
 
 class AnswerPage extends StatefulWidget {
-  final DocumentReference folderRef;  //問題が無い場合は新規作成画面に遷移するために必要。
-  final DocumentReference questionSetRef;
+  final String folderId;
+  final String questionSetId;
   final String questionSetName;
 
 
   const AnswerPage({
     Key? key,
-    required this.folderRef,
-    required this.questionSetRef,
+    required this.folderId,
+    required this.questionSetId,
     required this.questionSetName,
   }) : super(key: key);
 
@@ -61,7 +61,7 @@ class _AnswerPageState extends State<AnswerPage> {
 
   Future<void> _loadQuestionsWithStats() async {
     final result = await fetchQuestionsWithStats(
-      widget.questionSetRef,
+      FirebaseFirestore.instance.collection('questionSets').doc(widget.questionSetId),
       FirebaseAuth.instance.currentUser!.uid,
     );
 
@@ -88,13 +88,16 @@ class _AnswerPageState extends State<AnswerPage> {
   Future<List<Map<String, dynamic>>> fetchQuestionsWithStats(
       DocumentReference questionSetRef, String userId) async {
     try {
-      // 問題を10問取得
+
+      // 全ての問題を取得
       QuerySnapshot questionSnapshot = await FirebaseFirestore.instance
           .collection('questions')
-          .where('questionSetRef', isEqualTo: questionSetRef)
+          .where('questionSetId', isEqualTo: questionSetRef.id)
           .where('isDeleted', isEqualTo: false)
-          .limit(10)
           .get();
+
+      // 取得した問題リストをランダムに並び替え
+      questionSnapshot.docs.shuffle(Random());
 
       List<DocumentReference> questionRefs =
       questionSnapshot.docs.map((doc) => doc.reference).toList();
@@ -131,6 +134,7 @@ class _AnswerPageState extends State<AnswerPage> {
         _questionsWithStats.add({
           'questionId': questionSnapshot.docs[i].id,
           ...questionData,
+          'isOfficialQuestion': questionData['isOfficialQuestion'] ?? false,
           'isFlagged': statData['isFlagged'] ?? false,
           'attemptCount': statData['attemptCount'] ?? 0,
           'correctCount': statData['correctCount'] ?? 0,
@@ -310,6 +314,20 @@ class _AnswerPageState extends State<AnswerPage> {
     );
   }
 
+  /// メモ一覧シートを表示する関数
+  void _showMemoListSheet(String questionId, String questionSetId) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        fullscreenDialog: true, // 下からスライドするページ遷移
+        builder: (context) => MemoListPage(
+          questionId: questionId,
+          questionSetId: questionSetId,
+        ),
+      ),
+    );
+  }
+
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -336,8 +354,9 @@ class _AnswerPageState extends State<AnswerPage> {
         onPressed: () => Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => QuestionAddPage(
-              folderRef: widget.folderRef,
-              questionSetRef: widget.questionSetRef,
+              //widget.folderIdを持ちてReferenceを渡す
+              folderId: widget.folderId,
+              questionSetId: widget.questionSetId,
             ),
           ),
         ),
@@ -358,7 +377,7 @@ class _AnswerPageState extends State<AnswerPage> {
               child: Column(
                 children: [
                   Padding(
-                    padding: const EdgeInsets.only(top: 16.0, left: 16.0, right: 16.0),
+                    padding: const EdgeInsets.only(top: 16.0,),
                     child: Column(
                       children: [
                         Container(
@@ -390,7 +409,7 @@ class _AnswerPageState extends State<AnswerPage> {
                                       thumbVisibility: true, // スクロール可能なときに常に表示
                                       child: SingleChildScrollView(
                                         controller: _scrollController, // スクロールを制御
-                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0), // 余白を統一
+                                        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 0), // 余白を統一
                                         child: Column(
                                           crossAxisAlignment: CrossAxisAlignment.center,
                                           mainAxisAlignment: MainAxisAlignment.spaceBetween, // 自動調整
@@ -428,129 +447,25 @@ class _AnswerPageState extends State<AnswerPage> {
                                     ),
                                   ),
                                 const SizedBox(height: 8),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Column(
-                                      children: [
-                                        const Text(
-                                          '正答率',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.grey,
-                                          ),
-                                        ),
-                                        Text(
-                                          '${_questionsWithStats[_currentQuestionIndex]['correctRate']?.toStringAsFixed(0) ?? '-'}%',
-                                          style: const TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.grey,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 8),
-                                      ],
-                                    ),
-                                    Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        // ヒントアイコン（hintTextが存在すれば表示）
-                                        if (_questionsWithStats[_currentQuestionIndex]['hintText']
-                                            ?.toString()
-                                            .trim()
-                                            .isNotEmpty ??
-                                            false)
-                                          IconButton(
-                                            style: IconButton.styleFrom(
-                                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                            ),
-                                            visualDensity: VisualDensity.compact,
-                                            padding: EdgeInsets.all(0),
-                                            constraints: const BoxConstraints(
-                                              minWidth: 26,
-                                              minHeight: 26,
-                                            ),
-                                            icon: const Icon(
-                                              Icons.lightbulb_outline,
-                                              size: 22,
-                                              color: Colors.grey,
-                                            ),
-                                            onPressed: _showHintDialog,
-                                          ),
-
-                                        // 解説アイコン（_footerButtonTypeがnullでない or フラッシュカードの答えが開示された場合に表示）
-                                        if ((_footerButtonType != null || _flashCardHasBeenRevealed) &&
-                                            (_questionsWithStats[_currentQuestionIndex]['explanationText']
-                                                ?.toString()
-                                                .trim()
-                                                .isNotEmpty ??
-                                                false))
-                                          Padding(
-                                            padding: const EdgeInsets.only(left: 8.0), // ヒントアイコンとの間隔を追加
-                                            child: IconButton(
-                                              style: IconButton.styleFrom(
-                                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                              ),
-                                              visualDensity: VisualDensity.compact,
-                                              padding: EdgeInsets.all(0),
-                                              constraints: const BoxConstraints(
-                                                minWidth: 26,
-                                                minHeight: 26,
-                                              ),
-                                              icon: const Icon(
-                                                Icons.description_outlined,
-                                                size: 22,
-                                                color: Colors.grey,
-                                              ),
-                                              onPressed: _showExplanationDialog,
-                                            ),
-                                          ),
-
-                                        const SizedBox(width: 8),
-
-                                        // メモアイコン
-                                        IconButton(
-                                          style: IconButton.styleFrom(
-                                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                          ),
-                                          visualDensity: VisualDensity.compact,
-                                          padding: EdgeInsets.zero,
-                                          constraints: const BoxConstraints(
-                                            minWidth: 26,
-                                            minHeight: 26,
-                                          ),
-                                          icon: const Icon(
-                                            Icons.edit_note_outlined,
-                                            size: 26,
-                                            color: Colors.grey,
-                                          ),
-                                          onPressed: () {},
-                                        ),
-
-                                        const SizedBox(width: 8),
-
-                                        // フラグ（ブックマーク）アイコン
-                                        IconButton(
-                                          style: IconButton.styleFrom(
-                                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                          ),
-                                          visualDensity: VisualDensity.compact,
-                                          padding: EdgeInsets.zero,
-                                          constraints: const BoxConstraints(
-                                            minWidth: 0,
-                                            minHeight: 0,
-                                          ),
-                                          icon: Icon(
-                                            _questionsWithStats[_currentQuestionIndex]['isFlagged'] == true
-                                                ? Icons.bookmark
-                                                : Icons.bookmark_outline,
-                                            size: 22,
-                                            color: Colors.grey,
-                                          ),
-                                          onPressed: _toggleFlag,
-                                        ),
-                                      ],
-                                    ),
-                                  ],
+                                Builder(
+                                  builder: (context) {
+                                    final question = _questionsWithStats[_currentQuestionIndex];
+                                    return CommonQuestionFooter(
+                                      correctRate: question['correctRate'],
+                                      hintText: question['hintText'],
+                                      explanationText: question['explanationText'],
+                                      footerButtonType: _footerButtonType,
+                                      flashCardHasBeenRevealed: _flashCardHasBeenRevealed,
+                                      isFlagged: question['isFlagged'] == true,
+                                      isOfficialQuestion: question['isOfficialQuestion'] == true,
+                                      onShowHintDialog: _showHintDialog,
+                                      onShowExplanationDialog: _showExplanationDialog,
+                                      onToggleFlag: _toggleFlag,
+                                      onMemoPressed: () {
+                                        _showMemoListSheet(question['questionId'], widget.questionSetId);
+                                      },
+                                    );
+                                  },
                                 ),
                               ],
                             ),
@@ -619,8 +534,7 @@ class _AnswerPageState extends State<AnswerPage> {
       bottomNavigationBar: _questionsWithStats.isNotEmpty
           ? buildFooterButtons(
         questionType: _questionsWithStats[
-        _currentQuestionIndex.clamp(0, _questionsWithStats.length - 1)
-        ]['questionType'],
+        _currentQuestionIndex.clamp(0, _questionsWithStats.length - 1)]['questionType'],
         isAnswerCorrect: _isAnswerCorrect,
         // flash_cardの場合は、一度回答が開示されていればフッターを常に表示する
         flashCardAnswerShown: _flashCardHasBeenRevealed,
@@ -638,12 +552,12 @@ class _AnswerPageState extends State<AnswerPage> {
           _answerResults.last['memoryLevel'] = 'again';
           saveAnswer(
             questionId: _questionsWithStats[_currentQuestionIndex]['questionId'],
+            questionSetId: widget.questionSetId,
+            folderId: widget.folderId,
             isAnswerCorrect: _isAnswerCorrect!,
             answeredAt: _answeredAt!,
             nextStartedAt: nextStartedAt,
             memoryLevel: _answerResults.last['memoryLevel'],
-            questionSetRef: _questionsWithStats[_currentQuestionIndex]['questionSetRef'],
-            folderRef: _questionsWithStats[_currentQuestionIndex]['folderRef'],
             selectedAnswer: _selectedAnswer ?? '',
             correctChoiceText: _questionsWithStats[_currentQuestionIndex]['correctChoiceText'],
             startedAt: _startedAt,
@@ -659,12 +573,12 @@ class _AnswerPageState extends State<AnswerPage> {
           _answerResults.last['memoryLevel'] = memoryLevel;
           saveAnswer(
             questionId: _questionsWithStats[_currentQuestionIndex]['questionId'],
+            questionSetId: widget.questionSetId,
+            folderId: widget.folderId,
             isAnswerCorrect: isAnswerCorrect,
             answeredAt: _answeredAt!,
             nextStartedAt: nextStartedAt,
             memoryLevel: memoryLevel,
-            questionSetRef: _questionsWithStats[_currentQuestionIndex]['questionSetRef'],
-            folderRef: _questionsWithStats[_currentQuestionIndex]['folderRef'],
             selectedAnswer: _selectedAnswer ?? '',
             correctChoiceText: _questionsWithStats[_currentQuestionIndex]['correctChoiceText'],
             startedAt: _startedAt,

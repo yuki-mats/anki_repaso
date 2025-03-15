@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:repaso/utils/app_colors.dart';
 import 'package:repaso/main.dart';
+import 'package:repaso/widgets/list_page_widgets/rounded_icon_box.dart';
 
 class OfficialListPage extends StatefulWidget {
   const OfficialListPage({Key? key}) : super(key: key);
@@ -30,7 +31,7 @@ class _OfficialListPageState extends State<OfficialListPage> {
     });
   }
 
-  // Firestore から isPublic が true のフォルダを取得
+  // Firestore から isPublic が true かつ isDeleted が false のフォルダを取得
   Future<void> _fetchPublicFolders() async {
     setState(() {
       _isLoading = true;
@@ -40,11 +41,15 @@ class _OfficialListPageState extends State<OfficialListPage> {
       final querySnapshot = await FirebaseFirestore.instance
           .collection('folders')
           .where('isPublic', isEqualTo: true)
+          .where('isDeleted', isEqualTo: false)
           .get();
 
       setState(() {
         _folders = querySnapshot.docs
-            .map((doc) => {...doc.data(), 'id': doc.id}) // ID を含めて格納
+            .map((doc) => {
+          ...doc.data(),
+          'id': doc.id, // ドキュメントIDを追加
+        })
             .toList();
       });
     } catch (e) {
@@ -59,7 +64,6 @@ class _OfficialListPageState extends State<OfficialListPage> {
   Future<void> _addViewerToFolder(String folderId) async {
     try {
       final user = FirebaseAuth.instance.currentUser;
-
       if (user != null) {
         final userId = user.uid;
 
@@ -70,7 +74,9 @@ class _OfficialListPageState extends State<OfficialListPage> {
           builder: (context) {
             return Dialog(
               backgroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
               child: Padding(
                 padding: const EdgeInsets.all(24.0),
                 child: Column(
@@ -89,12 +95,14 @@ class _OfficialListPageState extends State<OfficialListPage> {
         // 1秒待機
         await Future.delayed(const Duration(seconds: 1));
 
-        // `permissions` サブコレクションにユーザーの権限を追加
-        final folderRef = FirebaseFirestore.instance.collection('folders').doc(folderId);
+        // permissions サブコレクションにユーザーの権限を追加
+        final folderRef =
+        FirebaseFirestore.instance.collection('folders').doc(folderId);
         final permissionRef = folderRef.collection('permissions').doc(userId);
 
         await permissionRef.set({
-          'userRef': FirebaseFirestore.instance.collection('users').doc(userId),
+          'userRef':
+          FirebaseFirestore.instance.collection('users').doc(userId),
           'role': 'viewer',
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
@@ -117,10 +125,9 @@ class _OfficialListPageState extends State<OfficialListPage> {
           Navigator.pushAndRemoveUntil(
             context,
             MaterialPageRoute(builder: (context) => const MainPage()),
-                (Route<dynamic> route) => false,  // 既存のページスタックをすべて削除
+                (Route<dynamic> route) => false,
           );
         }
-
       } else {
         throw Exception('ユーザーがログインしていません');
       }
@@ -144,21 +151,22 @@ class _OfficialListPageState extends State<OfficialListPage> {
             borderRadius: BorderRadius.all(Radius.circular(8)),
           ),
           backgroundColor: Colors.white,
-          title: Text('ホームに追加しますか？', style: const TextStyle(fontSize: 16)),
+          title: const Text('ホームに追加しますか？', style: TextStyle(fontSize: 16)),
           content: Text('「$folderName」をホームに追加します。'),
           actions: [
             OutlinedButton(
               onPressed: () => Navigator.pop(context),
               style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: Colors.grey), // 灰色の外枠
+                side: const BorderSide(color: Colors.grey),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(4),
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 4),
               ),
               child: const Text(
                 '閉じる',
-                style: TextStyle(color: Colors.grey), // テキスト色を灰色に
+                style: TextStyle(color: Colors.grey),
               ),
             ),
             ElevatedButton(
@@ -167,15 +175,18 @@ class _OfficialListPageState extends State<OfficialListPage> {
                 await _addViewerToFolder(folderId); // viewer を追加
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.blue500, // ボタンの背景色を青色に
-                foregroundColor: Colors.white, // テキスト色を白に
+                backgroundColor: AppColors.blue500,
+                foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(4),
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 4),
               ),
-              child: const Text('追加する',
-                style: TextStyle(fontWeight: FontWeight.bold),),
+              child: const Text(
+                '追加する',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
             ),
           ],
         );
@@ -203,8 +214,12 @@ class _OfficialListPageState extends State<OfficialListPage> {
               sheetSearchKeyword = keyword.toLowerCase();
               filteredList = _originalList.where((item) {
                 return item.name.toLowerCase().contains(sheetSearchKeyword) ||
-                    item.furigana.toLowerCase().contains(sheetSearchKeyword) ||
-                    item.katakana.toLowerCase().contains(sheetSearchKeyword);
+                    item.furigana
+                        .toLowerCase()
+                        .contains(sheetSearchKeyword) ||
+                    item.katakana
+                        .toLowerCase()
+                        .contains(sheetSearchKeyword);
               }).toList();
             });
           }
@@ -238,9 +253,9 @@ class _OfficialListPageState extends State<OfficialListPage> {
                         onTap: () {
                           Navigator.pop(context); // モーダルを閉じる
                           setState(() {
-                            _selectedLicenseName = item.name; // 選択した資格名を設定
+                            _selectedLicenseName = item.name;
                           });
-                          _searchFoldersByLicense(item.name); // 資格名で検索
+                          _searchFoldersByLicense(item.name);
                         },
                       );
                     },
@@ -264,17 +279,18 @@ class _OfficialListPageState extends State<OfficialListPage> {
       final querySnapshot = await FirebaseFirestore.instance
           .collection('folders')
           .where('isPublic', isEqualTo: true)
+          .where('isDeleted', isEqualTo: false)
           .where('licenseName', isEqualTo: licenseName)
           .get();
 
       setState(() {
         _folders = querySnapshot.docs.map((doc) {
-          final data = doc.data() as Map<String, dynamic>;  // 明示的な型キャスト
+          final data = doc.data() as Map<String, dynamic>;
           return {
-            'id': doc.id,  // Firestore ドキュメントIDの追加
-            'name': data['name'] ?? '名前なし',  // null対策
-            'licenseName': data['licenseName'] ?? '資格名なし',  // null対策
-            'isPublic': data['isPublic'] ?? false,  // 必要なら boolean のデフォルト値も設定
+            'id': doc.id,
+            'name': data['name'] ?? '名前なし',
+            'licenseName': data['licenseName'] ?? '資格名なし',
+            'isPublic': data['isPublic'] ?? false,
           };
         }).toList();
         print('検索結果: $_folders');
@@ -291,17 +307,21 @@ class _OfficialListPageState extends State<OfficialListPage> {
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.gray50,
       appBar: AppBar(
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1.0),
+          child: Container(color: AppColors.gray100, height: 1.0),
+        ),
         title: Padding(
           padding: const EdgeInsets.only(left: 4.0, right: 4.0),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('公式問題'),
+              const Text('公式問題'),
               IconButton(
                 icon: Icon(
                   _selectedLicenseName.isNotEmpty ? Icons.clear : Icons.search,
@@ -309,88 +329,139 @@ class _OfficialListPageState extends State<OfficialListPage> {
                 ),
                 onPressed: () {
                   if (_selectedLicenseName.isNotEmpty) {
-                    _clearSearchResults();  // 検索結果をクリア
+                    _clearSearchResults(); // 検索結果をクリア
                   }
-                  _showSearchSheet();  // 検索シートを表示
+                  _showSearchSheet(); // 検索シートを表示
                 },
               ),
             ],
           ),
         ),
       ),
-
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _folders.isEmpty
-          ? const Center(child: Text('該当するフォルダがありません'))
-          : ListView.builder(
-        itemCount: _folders.length,
-        itemBuilder: (context, index) {
-          final folder = _folders[index];
-          return Padding(
-            padding: const EdgeInsets.only(left: 16.0, right: 24.0),
-            child: Column(
-              children: [
-                GestureDetector(
-                  onTap: () => _showAddViewerModal(
-                    folder['id'], // フォルダID
-                    folder['name'] ?? '名前なし', // フォルダ名
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 4.0, bottom: 4.0),
-                    child: Container(
-                      decoration: const BoxDecoration(
-                        color: Colors.white,
+      body: Column(
+        children: [
+          Container(
+            color: AppColors.gray50,
+            height: 12, // **背景色付きの余白**
+          ),
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _folders.isEmpty
+                ? const Center(child: Text('該当するフォルダがありません'))
+                : ListView.builder(
+              itemCount: _folders.length,
+              itemBuilder: (context, index) {
+                final folder = _folders[index];
+                return Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16.0, vertical: 2.0),
+                  child: Card(
+                    color: Colors.white,
+                    elevation: 0.5,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8.0),
+                    ),
+                    child: InkWell(
+                      onTap: () => _showAddViewerModal(
+                        folder['id'],
+                        folder['name'] ?? '名前なし',
                       ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          const Padding(
-                            padding: EdgeInsets.only(left: 16.0, right: 8.0),
-                            child: SizedBox(
-                              width: 40,
-                              child: Icon(
-                                Icons.folder,
-                                size: 28,
-                                color: Colors.amber,
-                              ),
-                            ),
-                          ),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                      borderRadius: BorderRadius.circular(8.0),
+                      child: Padding(
+                        padding: const EdgeInsets.only(
+                            top: 18.0, bottom: 16.0, left: 16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // タイトル行
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
-                                SizedBox(
-                                  height: 40,
-                                  child: Container(
-                                    alignment: Alignment.centerLeft,
-                                    child: Text(
-                                      folder['licenseName'] ?? '名前なし',
-                                      style: const TextStyle(fontSize: 16),
-                                      overflow: TextOverflow.ellipsis,
-                                      maxLines: 1,
-                                    ),
-                                  ),
+                                RoundedIconBox(
+                                  icon: Icons.folder_outlined, // フォルダアイコン
+                                  iconColor: Colors.orange, // アイコンの色
+                                  backgroundColor: Colors.orange.withOpacity(0.2), // 薄いオレンジ色の背景// アイコンサイズ
                                 ),
-                                Text(
-                                  folder['name'] ?? '資格名なし',
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.grey,
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                    children: [
+                                      // フォルダ名
+                                      Text(
+                                        folder['name'] ?? '資格名なし',
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.gray700,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                        maxLines: 1,
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
                             ),
-                          ),
-                        ],
+                            const SizedBox(height: 4),
+                            // 資格名
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: Padding(
+                                padding: const EdgeInsets.only(top: 8.0, right: 16.0),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    // #（灰色にする）
+                                    Text(
+                                      '# ',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: AppColors.gray500,
+                                      ),
+                                    ),
+                                    // 資格名
+                                    Text(
+                                      folder['licenseName'] ?? '名前なし',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: AppColors.gray700,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                      maxLines: 1,
+                                    ),
+                                    const SizedBox(width: 6), // 資格名と問題数の間に適度なスペース
+                                    // 問題数（デフォルトで0を表示）
+                                    Text(
+                                      '　${folder['questionCount'] ?? 0}',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: AppColors.gray700,
+                                      ),
+                                    ),
+                                    Text(
+                                      ' 問',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: AppColors.gray700,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                );
+              },
             ),
-          );
-        },
+          ),
+        ],
       ),
     );
   }
@@ -398,9 +469,9 @@ class _OfficialListPageState extends State<OfficialListPage> {
 
 // サンプル資格データ
 final List<LicenseItem> _originalList = [
-  LicenseItem(name: '液化石油ガス設備士', furigana: 'えきかせきゆがすせつびし', katakana: 'エキカセキユガスセツビシ'),
-  LicenseItem(name: 'エネルギー管理士', furigana: 'えねるぎーかんりし', katakana: 'エネルギーカンリシ'),
-  LicenseItem(name: 'ガス主任技術者', furigana: 'がすしゅにんぎじゅつしゃ', katakana: 'ガスシュニンギジュツシャ'),
+  LicenseItem(name: '液化石油ガス設備士試験', furigana: 'えきかせきゆがすせつびし', katakana: 'エキカセキユガスセツビシ'),
+  LicenseItem(name: 'エネルギー管理士試験', furigana: 'えねるぎーかんりし', katakana: 'エネルギーカンリシ'),
+  LicenseItem(name: 'ガス主任技術者試験', furigana: 'がすしゅにんぎじゅつしゃ', katakana: 'ガスシュニンギジュツシャ'),
 ];
 
 class LicenseItem {

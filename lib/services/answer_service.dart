@@ -1,4 +1,3 @@
-// lib/common/answer_service.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -54,15 +53,15 @@ List<Color> getProgressColors({
   return colors;
 }
 
-/// 回答内容・統計情報を Firestore に保存する共通処理
+/// 回答内容・統計情報を Firestore に保存する共通処理（IDベースで更新）
 Future<void> saveAnswer({
   required String questionId,
+  required String questionSetId,
+  required String folderId,
   required bool isAnswerCorrect,
   required DateTime answeredAt,
   DateTime? nextStartedAt,
   required String memoryLevel,
-  required DocumentReference questionSetRef,
-  DocumentReference? folderRef,
   required String selectedAnswer,
   required String correctChoiceText,
   DateTime? startedAt,
@@ -71,28 +70,23 @@ Future<void> saveAnswer({
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) throw Exception('User not logged in');
     final userId = user.uid;
-    final questionRef = FirebaseFirestore.instance.collection('questions').doc(questionId);
-    final questionUserStatsRef = questionRef.collection('questionUserStats').doc(userId);
-    final questionSetUserStatsRef = questionSetRef.collection('questionSetUserStats').doc(userId);
+    // 質問ドキュメントは questionId を用いて取得
+    final DocumentReference questionRef =
+    FirebaseFirestore.instance.collection('questions').doc(questionId);
 
-    final answerTime = (startedAt != null)
-        ? answeredAt.difference(startedAt).inMilliseconds
-        : 0;
-    final postAnswerTime = nextStartedAt != null
-        ? nextStartedAt.difference(answeredAt).inMilliseconds
-        : 0;
-
-    // answerHistories に保存
+    // answerHistories に保存（Reference の代わりにIDを保存）
     await FirebaseFirestore.instance.collection('answerHistories').add({
-      'userRef': FirebaseFirestore.instance.collection('users').doc(userId),
-      'questionRef': questionRef,
-      'questionSetRef': questionSetRef,
-      if (folderRef != null) 'folderRef': folderRef,
+      'userId': userId,
+      'questionId': questionId,
       'startedAt': startedAt,
       'answeredAt': answeredAt,
       'nextStartedAt': nextStartedAt,
-      'answerTime': answerTime,
-      'postAnswerTime': postAnswerTime,
+      'answerTime': (startedAt != null)
+          ? answeredAt.difference(startedAt).inMilliseconds
+          : 0,
+      'postAnswerTime': (nextStartedAt != null)
+          ? nextStartedAt.difference(answeredAt).inMilliseconds
+          : 0,
       'isCorrect': isAnswerCorrect,
       'selectedChoice': selectedAnswer,
       'correctChoice': correctChoiceText,
@@ -101,15 +95,23 @@ Future<void> saveAnswer({
     });
 
     // questionUserStats の更新
+    final DocumentReference questionUserStatsRef =
+    questionRef.collection('questionUserStats').doc(userId);
     await questionUserStatsRef.set({
-      'userRef': FirebaseFirestore.instance.collection('users').doc(userId),
+      'userId': userId,
       'memoryLevel': memoryLevel,
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
-    // questionSetUserStats の更新
+    // questionSetUserStats の更新（questionSetsコレクション内のドキュメントは、IDをもとに更新）
+    final DocumentReference questionSetUserStatsRef =
+    FirebaseFirestore.instance
+        .collection('questionSets')
+        .doc(questionSetId)
+        .collection('questionSetUserStats')
+        .doc(userId);
     await questionSetUserStatsRef.set({
-      'userRef': FirebaseFirestore.instance.collection('users').doc(userId),
+      'userId': userId,
       'memoryLevels': {
         questionId: memoryLevel,
       },
@@ -117,20 +119,23 @@ Future<void> saveAnswer({
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
-    // folderSetUserStats の更新（folderRef がある場合）
-    if (folderRef != null) {
-      final folderSetUserStatsRef = folderRef.collection('folderSetUserStats').doc(userId);
-      await folderSetUserStatsRef.set({
-        'userRef': FirebaseFirestore.instance.collection('users').doc(userId),
-        'memoryLevels': {
-          questionId: memoryLevel,
-        },
-        'lastStudiedAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-    }
+    // folderSetUserStats の更新（foldersコレクション内のドキュメントは、IDをもとに更新）
+    final DocumentReference folderSetUserStatsRef =
+    FirebaseFirestore.instance
+        .collection('folders')
+        .doc(folderId)
+        .collection('folderSetUserStats')
+        .doc(userId);
+    await folderSetUserStatsRef.set({
+      'userId': userId,
+      'memoryLevels': {
+        questionId: memoryLevel,
+      },
+      'lastStudiedAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
 
-    // 統計情報の更新
+    // 統計情報の更新処理
     await updateStatsUsingAggregation(
       questionId: questionId,
       questionRef: questionRef,
@@ -141,7 +146,7 @@ Future<void> saveAnswer({
   }
 }
 
-/// 統計情報の更新処理（_updateStatsUsingAggregation の共通処理版）
+/// 統計情報の更新処理（更新対象は質問ドキュメントのサブコレクション）
 Future<void> updateStatsUsingAggregation({
   required String questionId,
   required DocumentReference questionRef,
@@ -151,8 +156,10 @@ Future<void> updateStatsUsingAggregation({
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) throw Exception('User not logged in');
     final now = DateTime.now();
-    final userRef = FirebaseFirestore.instance.collection('users').doc(userId);
-    final historiesRef = FirebaseFirestore.instance.collection('answerHistories');
+    // userIdのみで管理するので、userRefはIDを使わない
+    final String userIdStr = userId;
+    final historiesRef =
+    FirebaseFirestore.instance.collection('answerHistories');
 
     int calculateIsoWeekNumber(DateTime date) {
       final firstDayOfYear = DateTime(date.year, 1, 1);
@@ -166,9 +173,10 @@ Future<void> updateStatsUsingAggregation({
     final weekKey = '${now.year}-W${isoWeekNumber.toString().padLeft(2, '0')}';
     final monthKey = DateFormat('yyyy-MM').format(now);
 
+    // query では、userId や questionId の一致でフィルタする
     final attemptQuery = historiesRef
-        .where('userRef', isEqualTo: userRef)
-        .where('questionRef', isEqualTo: questionRef);
+        .where('userId', isEqualTo: userIdStr)
+        .where('questionId', isEqualTo: questionId);
 
     final attemptCountSnapshot = await attemptQuery.count().get();
     final attemptCount = attemptCountSnapshot.count ?? 0;
@@ -176,12 +184,13 @@ Future<void> updateStatsUsingAggregation({
     final correctCount = correctCountSnapshot.count ?? 0;
     final correctRate = attemptCount > 0 ? (correctCount / attemptCount) : 0;
 
-    final questionUserStatsRef = questionRef.collection('questionUserStats').doc(userId);
+    final DocumentReference questionUserStatsRef =
+    questionRef.collection('questionUserStats').doc(userIdStr);
     await FirebaseFirestore.instance.runTransaction((transaction) async {
       final questionUserStatsDoc = await transaction.get(questionUserStatsRef);
       if (!questionUserStatsDoc.exists) {
         transaction.set(questionUserStatsRef, {
-          'userRef': userRef,
+          'userId': userIdStr,
           'attemptCount': attemptCount,
           'correctCount': correctCount,
           'correctRate': correctRate,
@@ -198,11 +207,11 @@ Future<void> updateStatsUsingAggregation({
       }
     });
 
-    // 以下、日/週/月ごとの統計更新処理（_aggregateStats, _updateStat を利用）
+    // 日/週/月ごとの統計更新処理
     Future<Map<String, dynamic>> aggregateStats(DateTime start, DateTime end) async {
       final query = historiesRef
-          .where('userRef', isEqualTo: userRef)
-          .where('questionRef', isEqualTo: questionRef)
+          .where('userId', isEqualTo: userIdStr)
+          .where('questionId', isEqualTo: questionId)
           .where('answeredAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
           .where('answeredAt', isLessThanOrEqualTo: Timestamp.fromDate(end));
       final aggregateQuerySnapshot = await query.aggregate(
@@ -238,13 +247,13 @@ Future<void> updateStatsUsingAggregation({
     final monthlyStats = await aggregateStats(monthStart, monthEnd);
 
     Future<void> updateStat(String collectionName, String key, Map<String, dynamic> stats, Map<String, dynamic> additionalFields) async {
-      final questionUserStatsRef = questionRef.collection('questionUserStats').doc(userId);
-      final statDocRef = questionUserStatsRef.collection(collectionName).doc(key);
+      final DocumentReference questionUserStatsRef = questionRef.collection('questionUserStats').doc(userIdStr);
+      final DocumentReference statDocRef = questionUserStatsRef.collection(collectionName).doc(key);
       await FirebaseFirestore.instance.runTransaction((transaction) async {
         final questionUserStatsDoc = await transaction.get(questionUserStatsRef);
         if (!questionUserStatsDoc.exists) {
           transaction.set(questionUserStatsRef, {
-            'userRef': userRef,
+            'userId': userIdStr,
             'createdAt': FieldValue.serverTimestamp(),
             'updatedAt': FieldValue.serverTimestamp(),
           });
@@ -277,5 +286,113 @@ Future<void> updateStatsUsingAggregation({
     });
   } catch (e) {
     print('Error updating stats using aggregation queries: $e');
+  }
+}
+
+Future<void> updateStudySetStats({
+  required String studySetId,
+  required String userId,
+  required List<Map<String, dynamic>> answerResults,
+  required DateTime sessionStart,
+  required DateTime sessionEnd,
+}) async {
+  try {
+    final firestore = FirebaseFirestore.instance;
+    // StudySet ドキュメントの参照（ユーザー配下）
+    final studySetRef = firestore
+        .collection('users')
+        .doc(userId)
+        .collection('studySets')
+        .doc(studySetId);
+
+    // 現在保存されている累積統計情報を取得
+    DocumentSnapshot studySetSnapshot = await studySetRef.get();
+    Map<String, dynamic> currentData =
+    studySetSnapshot.exists ? studySetSnapshot.data() as Map<String, dynamic> : {};
+    // 既存の memoryLevelStats（なければ初期値）
+    Map<String, int> currentMemoryLevelStats = currentData['memoryLevelStats'] != null
+        ? Map<String, int>.from(currentData['memoryLevelStats'])
+        : {'again': 0, 'hard': 0, 'good': 0, 'easy': 0};
+    int currentTotalAttemptCount = currentData['totalAttemptCount'] ?? 0;
+    int currentStudyStreakCount = currentData['studyStreakCount'] ?? 0;
+    String? lastStudiedDate = currentData['lastStudiedDate'];
+
+    // 今回のセッション結果から統計を計算
+    int sessionAttemptCount = answerResults.length;
+    int sessionCorrectCount =
+        answerResults.where((result) => result['isCorrect'] == true).length;
+    double sessionCorrectRate =
+    sessionAttemptCount > 0 ? (sessionCorrectCount / sessionAttemptCount * 100) : 0.0;
+
+    // セッションごとの memoryLevel のカウント（対象: 'again', 'hard', 'good', 'easy'）
+    Map<String, int> sessionMemoryLevelStats = {'again': 0, 'hard': 0, 'good': 0, 'easy': 0};
+    for (var result in answerResults) {
+      String level = result['memoryLevel'] ?? '';
+      if (sessionMemoryLevelStats.containsKey(level)) {
+        sessionMemoryLevelStats[level] = sessionMemoryLevelStats[level]! + 1;
+      }
+    }
+
+    // 累積統計に今回分を加算
+    Map<String, int> newAggregatedMemoryLevelStats = {};
+    for (String level in ['again', 'hard', 'good', 'easy']) {
+      newAggregatedMemoryLevelStats[level] =
+          currentMemoryLevelStats[level]! + sessionMemoryLevelStats[level]!;
+    }
+    int newTotalAttemptCount = currentTotalAttemptCount + sessionAttemptCount;
+    // 新たな memoryLevelRatios を算出（%）
+    Map<String, double> newMemoryLevelRatios = {};
+    newAggregatedMemoryLevelStats.forEach((level, count) {
+      newMemoryLevelRatios[level] =
+      newTotalAttemptCount > 0 ? (count / newTotalAttemptCount * 100) : 0.0;
+    });
+
+    // セッションの学習時間（秒）
+    int sessionStudyDuration = sessionEnd.difference(sessionStart).inSeconds;
+
+    // 日付文字列（YYYY-MM-DD）
+    String todayStr = DateFormat('yyyy-MM-dd').format(sessionEnd);
+    // 学習継続日数更新用：昨日の日付
+    String yesterdayStr = DateFormat('yyyy-MM-dd')
+        .format(sessionEnd.subtract(const Duration(days: 1)));
+
+    // 学習継続日数の更新：前回の最終学習日が昨日なら連続日数を+1、そうでなければ1にリセット
+    int newStudyStreakCount;
+    if (lastStudiedDate != null && lastStudiedDate == yesterdayStr) {
+      newStudyStreakCount = currentStudyStreakCount + 1;
+    } else {
+      newStudyStreakCount = 1;
+    }
+
+    // StudySet ドキュメントの更新（累積統計情報）
+    await studySetRef.update({
+      'memoryLevelStats': newAggregatedMemoryLevelStats,
+      'memoryLevelRatios': newMemoryLevelRatios,
+      'totalAttemptCount': newTotalAttemptCount,
+      'studyStreakCount': newStudyStreakCount,
+      'lastStudiedDate': todayStr,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+
+    // サブコレクション studySetDailyStats の更新（当日の統計）
+    final dailyStatsRef = studySetRef.collection('studySetDailyStats').doc(todayStr);
+    await dailyStatsRef.set({
+      'isStudied': true,
+      'studyDuration': sessionStudyDuration,
+      'correctRate': sessionCorrectRate,
+      'attemptCount': sessionAttemptCount,
+      'again': sessionMemoryLevelStats['again'],
+      'hard': sessionMemoryLevelStats['hard'],
+      'good': sessionMemoryLevelStats['good'],
+      'easy': sessionMemoryLevelStats['easy'],
+      'date': todayStr,
+      'dateTimestamp': Timestamp.fromDate(DateTime.parse(todayStr)),
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    print('StudySet の累積統計情報を更新しました。');
+  } catch (e) {
+    print('StudySet 統計情報更新エラー: $e');
   }
 }

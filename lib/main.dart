@@ -7,6 +7,7 @@ import 'package:repaso/home_page.dart';
 import 'package:repaso/lobby_page.dart';
 import 'package:repaso/official_list_page.dart';
 import 'package:repaso/utils/update_checker.dart';
+import 'forum_page.dart';
 import 'utils/app_colors.dart';
 import 'firebase_options.dart';
 import 'my_page.dart';
@@ -51,9 +52,14 @@ class MyApp extends StatelessWidget {
           surfaceTintColor: Colors.white,
           titleTextStyle: TextStyle(
             color: AppColors.gray900,
-            fontSize: 18,
+            fontSize: 16,
             fontWeight: FontWeight.bold,
           ),
+          iconTheme: IconThemeData(
+            size: 18,
+            color: AppColors.gray900, // アイコンの色
+          ),
+          toolbarHeight: 50,
         ),
         scaffoldBackgroundColor: Colors.white,
         bottomNavigationBarTheme: const BottomNavigationBarThemeData(
@@ -119,6 +125,7 @@ class _MainPageState extends State<MainPage> {
   final List<Widget> _pages = [
     FolderListPage(title: 'ホーム'),
     OfficialListPage(),
+    ForumPage(),
     MyPage(),
   ];
 
@@ -158,6 +165,11 @@ class _MainPageState extends State<MainPage> {
             BottomNavigationBarItem(
               icon: Icon(Icons.search_rounded),
               label: '公式問題',
+              backgroundColor: Colors.white,
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.forum_outlined),
+              label: 'フォーラム',
               backgroundColor: Colors.white,
             ),
             BottomNavigationBarItem(

@@ -3,13 +3,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:repaso/completion_summary_page.dart';
+import 'package:repaso/memo_list_page.dart';
 import 'package:repaso/review_answers_page.dart';
 import 'package:repaso/utils/app_colors.dart';
 import 'package:repaso/widgets/image_preview_widget.dart';
 import 'package:repaso/widgets/info_dialog.dart';
-import 'package:repaso/widgets/memory_level_buttons.dart';
-import 'package:repaso/services/no_questions_widget.dart';
-import 'package:repaso/widgets/choice_widgets.dart'; // ここに TrueFalseWidget, SingleChoiceWidget, FlashCardWidget などが含まれる
+import 'package:repaso/widgets/answer_page_widgets/answer_page_common.dart'; // ここに TrueFalseWidget, SingleChoiceWidget, FlashCardWidget などが含まれる
 import 'package:repaso/services/answer_service.dart';
 
 class StudySetAnswerPage extends StatefulWidget {
@@ -87,6 +86,9 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
       final String selectedOrder = studySetData['selectedQuestionOrder'] ?? 'random';
       final int numberOfQuestions = studySetData['numberOfQuestions'] ?? 10;
 
+      print('StudySet ID: ${widget.studySetId}');
+      print('Selected questionSetIds: $questionSetIds');
+
       // questionSet の名前および folderRef を取得
       final Map<String, String> questionSetNames = {};
       final Map<String, DocumentReference> questionSetFolderRefs = {};
@@ -110,13 +112,14 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
         _defaultQuestionSetName = questionSetNames[questionSetIds.first];
       }
 
-      // 対象の questions を取得（各 questionSet の参照を元に検索）
+      // 対象の questions を取得（questionSetId を元に検索）
       final questionSnapshots = await FirebaseFirestore.instance
           .collection('questions')
-          .where('questionSetRef', whereIn: questionSetIds.map((id) =>
-          FirebaseFirestore.instance.collection('questionSets').doc(id)))
+          .where('questionSetId', whereIn: questionSetIds)
           .where('isDeleted', isEqualTo: false)
           .get();
+
+      print('Fetched ${questionSnapshots.docs.length} questions');
 
       // 各 question ごとにユーザー統計（questionUserStats）を取得し、フィルタ処理
       final filteredQuestions = await Future.wait(questionSnapshots.docs.map((doc) async {
@@ -138,15 +141,17 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
           'memoryLevelRatios': {},
         };
 
-        // 正答率を計算
+        // 正答率を計算（パーセンテージに変換）
         final int attemptCount = statData['attemptCount'] ?? 0;
         final int correctCount = statData['correctCount'] ?? 0;
-        final double computedCorrectRate = attemptCount > 0 ? correctCount / attemptCount : 0.0;
+        final double computedCorrectRate = attemptCount > 0 ? (correctCount / attemptCount * 100) : 0.0;
         statData['correctRate'] = computedCorrectRate;
 
-        // 正答率フィルタ
+        // 正答率フィルタ（correctRateStart, correctRateEnd を含む）
         if (correctRateStart != null && correctRateEnd != null) {
+          // computedCorrectRate が correctRateStart 以上かつ correctRateEnd 以下ならOK（境界値も含む）
           if (computedCorrectRate < correctRateStart || computedCorrectRate > correctRateEnd) {
+            print('Filtered out by correctRate range: ${doc.id} (computedCorrectRate: $computedCorrectRate)');
             return null;
           }
         }
@@ -157,8 +162,8 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
         }
 
         // questionSetName と folderRef を追加
-        final DocumentReference questionSetRef = questionData['questionSetRef'] as DocumentReference;
-        final String questionSetId = questionSetRef.id;
+        // ここでは questionSetId を questionData から直接取得する
+        final String questionSetId = questionData['questionSetId'] as String;
         final folderRef = questionSetFolderRefs[questionSetId];
 
         return {
@@ -166,12 +171,14 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
           ...questionData,
           'statsData': statData,
           'questionSetName': questionSetNames[questionSetId] ?? 'Unknown',
-          'questionSetRef': questionSetRef,
+          'questionSetId': questionSetId, // 明示的に追加済み
+          'folderId': folderRef != null ? folderRef.id : '', // folderRef が存在すればその id、なければ空文字を設定
           'folderRef': folderRef,
         };
       }));
 
-      // null を除去
+
+        // null を除去
       var validQuestions = filteredQuestions.whereType<Map<String, dynamic>>().toList();
 
       // 出題順のソート
@@ -190,6 +197,8 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
           return aRate.compareTo(bRate);
         });
       }
+
+      print('Final selected questions: ${validQuestions.take(numberOfQuestions).toList()}');
 
       setState(() {
         _questionsWithStats = validQuestions.take(numberOfQuestions).toList();
@@ -287,9 +296,22 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
   }
 
   /// 完了画面へ遷移
-  void _navigateToCompletionSummaryPage() {
+  Future<void> _navigateToCompletionSummaryPage() async {
     final totalQuestions = _questionsWithStats.length;
     final correctAnswers = _answerResults.where((result) => result['isCorrect'] == true).length;
+
+    // セッション終了時刻として現在時刻を設定
+    final sessionEnd = DateTime.now();
+    // 学習セッション開始時刻は _startedAt（null でなければ）
+    if (_startedAt != null) {
+      await updateStudySetStats(
+      studySetId: widget.studySetId,
+      userId: FirebaseAuth.instance.currentUser!.uid,
+      answerResults: _answerResults,
+      sessionStart: _startedAt!,
+      sessionEnd: sessionEnd,
+      );
+    }
 
     Navigator.pushReplacement(
       context,
@@ -386,6 +408,28 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
           'あと${_questionsWithStats.length - _currentQuestionIndex}問',
           style: const TextStyle(color: AppColors.gray700),
         ),
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () async {
+            // 現在のユーザーID
+            final userId = FirebaseAuth.instance.currentUser?.uid;
+            if (userId != null && _startedAt != null) {
+              // セッション終了時刻として現在時刻を設定
+              final sessionEnd = DateTime.now();
+              await updateStudySetStats(
+                studySetId: widget.studySetId,
+                userId: userId,
+                answerResults: _answerResults,
+                sessionStart: _startedAt!,
+                sessionEnd: sessionEnd,
+              );
+            }
+            // 画面を閉じる
+            if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+            }
+          },
+        ),
       ),
       body: _isLoading
           ? Center(
@@ -394,15 +438,10 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
         ),
       )
           : _questionsWithStats.isEmpty
-          ? buildNoQuestionsWidget(
-        context: context,
-        message: '問題がありません',
-        subMessage: '最初の問題を作成しよう',
-        buttonMessage: '作成する',
-        onPressed: () {
-          // 必要に応じて作成画面へ遷移
-        },
-      )
+          ? // テキストで対象の問題がありませんでした。と表示。buildNoQuestionsWidgetは使用しない。
+          Center(
+            child: Text('対象の問題がありませんでした。'),
+          )
           : Column(
         children: [
           // 進捗バー
@@ -419,16 +458,14 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
               child: Column(
                 children: [
                   Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16.0, vertical: 16.0),
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
                     child: Column(
                       children: [
                         Container(
                           width: double.infinity,
                           height: MediaQuery.of(context).size.height * 0.48,
                           child: Padding(
-                            padding: const EdgeInsets.only(
-                                top: 12.0, left: 12.0, right: 12.0),
+                            padding: const EdgeInsets.only(top: 12.0),
                             child: Column(
                               children: [
                                 Align(
@@ -437,9 +474,7 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
                                     padding:
                                     const EdgeInsets.only(right: 16.0),
                                     child: Text(
-                                      _questionsWithStats[_currentQuestionIndex]
-                                      ['questionSetName'] ??
-                                          '',
+                                      _questionsWithStats[_currentQuestionIndex]['questionSetName'] ?? '',
                                       style: const TextStyle(
                                         fontSize: 12,
                                         color: Colors.grey,
@@ -454,7 +489,7 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
                                     thumbVisibility: true,
                                     child: SingleChildScrollView(
                                       controller: _scrollController,
-                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                                      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 0),
                                       child: Column(
                                         crossAxisAlignment:
                                         CrossAxisAlignment.center,
@@ -491,127 +526,37 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
                                   ),
                                 ),
                                 const SizedBox(height: 8),
-                                Row(
-                                  mainAxisAlignment:
-                                  MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Column(
-                                      children: [
-                                        const Text(
-                                          '正答率',
-                                          style: TextStyle(fontSize: 12, color: Colors.grey),
-                                        ),
-                                        Builder(builder: (context) {
-                                          // 現在の質問の statsData から correctRate を取得
-                                          final statsData = _questionsWithStats[_currentQuestionIndex]['statsData'] as Map<String, dynamic>? ?? {};
-                                          final double correctRate = statsData['correctRate'] ?? 0.0;
+                                Builder(
+                                  builder: (context) {
+                                    final question = _questionsWithStats[_currentQuestionIndex];
+                                    final statsData = question['statsData'] as Map<String, dynamic>? ?? {};
+                                    final double correctRate = statsData['correctRate'] ?? 0.0;
 
-                                          return Text(
-                                            '${(correctRate * 100).toStringAsFixed(0)}%', // パーセンテージ表示
-                                            style: const TextStyle(fontSize: 12, color: Colors.grey),
-                                          );
-                                        }),
-                                        const SizedBox(height: 8),
-                                      ],
-                                    ),
-
-                                    Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        if (_questionsWithStats[_currentQuestionIndex]['hintText']
-                                            ?.toString()
-                                            .trim()
-                                            .isNotEmpty ?? false)
-                                          IconButton(
-                                            style: IconButton.styleFrom(
-                                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                            ),
-                                            visualDensity: VisualDensity.compact,
-                                            padding: EdgeInsets.all(0),
-                                            constraints: const BoxConstraints(
-                                              minWidth: 26,
-                                              minHeight: 26,
-                                            ),
-                                            icon: const Icon(
-                                              Icons.lightbulb_outline,
-                                              size: 22,
-                                              color: Colors.grey,
-                                            ),
-                                            onPressed: _showHintDialog,
-                                          ),
-                                        if (((_footerButtonType != null) || _flashCardHasBeenRevealed) && (_questionsWithStats[_currentQuestionIndex]['explanationText']
-                                                ?.toString()
-                                                .trim()
-                                                .isNotEmpty ??
-                                                false))
-                                          Padding(
-                                            padding:
-                                            const EdgeInsets.only(
-                                                left: 8.0),
-                                            child: IconButton(
-                                              style: IconButton.styleFrom(
-                                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                              ),
-                                              visualDensity: VisualDensity.compact,
-                                              padding: EdgeInsets.all(0),
-                                              constraints: const BoxConstraints(
-                                                minWidth: 26,
-                                                minHeight: 26,
-                                              ),
-                                              icon: const Icon(
-                                                Icons.description_outlined,
-                                                size: 22,
-                                                color: Colors.grey,
-                                              ),
-                                              onPressed:
-                                              _showExplanationDialog,
+                                    return CommonQuestionFooter(
+                                      correctRate: correctRate,
+                                      hintText: question['hintText'],
+                                      explanationText: question['explanationText'],
+                                      footerButtonType: _footerButtonType,
+                                      flashCardHasBeenRevealed: _flashCardHasBeenRevealed,
+                                      isFlagged: question['statsData']['isFlagged'] == true,
+                                      isOfficialQuestion: question['isOfficialQuestion'] == true,
+                                      onShowHintDialog: _showHintDialog,
+                                      onShowExplanationDialog: _showExplanationDialog,
+                                      onToggleFlag: _toggleFlag,
+                                      onMemoPressed: () {
+                                        final currentQuestion = _questionsWithStats[_currentQuestionIndex];
+                                        Navigator.of(context).push(
+                                          MaterialPageRoute(
+                                            fullscreenDialog: true, // 下からスライドするページ遷移
+                                            builder: (context) => MemoListPage(
+                                              questionId: currentQuestion['questionId'],
+                                              questionSetId: currentQuestion['questionSetId'],
                                             ),
                                           ),
-                                        const SizedBox(width: 8),
-                                        IconButton(
-                                          style: IconButton.styleFrom(
-                                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                          ),
-                                          visualDensity: VisualDensity.compact,
-                                          padding: EdgeInsets.all(0),
-                                          constraints: const BoxConstraints(
-                                            minWidth: 26,
-                                            minHeight: 26,
-                                          ),
-                                          icon: const Icon(
-                                            Icons.edit_note_outlined,
-                                            size: 26,
-                                            color: Colors.grey,
-                                          ),
-                                          onPressed: () {},
-                                        ),
-                                        const SizedBox(width: 8),
-                                        IconButton(
-                                          style: IconButton.styleFrom(
-                                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                          ),
-                                          visualDensity: VisualDensity.compact,
-                                          padding: EdgeInsets.all(0),
-                                          constraints: const BoxConstraints(
-                                            minWidth: 26,
-                                            minHeight: 26,
-                                          ),
-                                          icon: Icon(
-                                            _questionsWithStats[
-                                            _currentQuestionIndex]
-                                            ['statsData']
-                                            ['isFlagged'] ==
-                                                true
-                                                ? Icons.bookmark
-                                                : Icons.bookmark_outline,
-                                            size: 22,
-                                            color: Colors.grey,
-                                          ),
-                                          onPressed: _toggleFlag,
-                                        ),
-                                      ],
-                                    ),
-                                  ],
+                                        );
+                                      },
+                                    );
+                                  },
                                 ),
                               ],
                             ),
@@ -620,13 +565,11 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
                       ],
                     ),
                   ),
-                  // 回答ウィジェット部分
                   Container(
                     padding:
                     const EdgeInsets.symmetric(horizontal: 16.0),
                     child: Builder(builder: (context) {
-                      final currentQuestion =
-                      _questionsWithStats[_currentQuestionIndex];
+                      final currentQuestion = _questionsWithStats[_currentQuestionIndex];
                       final questionType = currentQuestion['questionType'];
                       if (questionType == 'true_false') {
                         return TrueFalseWidget(
@@ -668,12 +611,8 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
                                   _answerResults.add({
                                     'index': _currentQuestionIndex + 1,
                                     'questionId': currentQuestionId,
-                                    'questionText': currentQuestion[
-                                    'questionText'] ??
-                                        '質問内容不明',
-                                    'correctAnswer': currentQuestion[
-                                    'correctChoiceText'] ??
-                                        '正解不明',
+                                    'questionText': currentQuestion['questionText'] ?? '質問内容不明',
+                                    'correctAnswer': currentQuestion['correctChoiceText'] ?? '正解不明',
                                     'isCorrect': null,
                                   });
                                 }
@@ -714,12 +653,12 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
           _answerResults.last['memoryLevel'] = 'again';
           saveAnswer(
             questionId: _questionsWithStats[_currentQuestionIndex]['questionId'],
+            questionSetId:_questionsWithStats[_currentQuestionIndex]['questionSetId'],
+            folderId: _questionsWithStats[_currentQuestionIndex]['folderId'],
             isAnswerCorrect: _isAnswerCorrect!,
             answeredAt: _answeredAt!,
             nextStartedAt: nextStartedAt,
             memoryLevel: _answerResults.last['memoryLevel'],
-            questionSetRef: _questionsWithStats[_currentQuestionIndex]['questionSetRef'],
-            folderRef: _questionsWithStats[_currentQuestionIndex]['folderRef'],
             selectedAnswer: _selectedAnswer ?? '',
             correctChoiceText: _questionsWithStats[_currentQuestionIndex]['correctChoiceText'],
             startedAt: _startedAt,
@@ -735,12 +674,12 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
           _answerResults.last['memoryLevel'] = memoryLevel;
           saveAnswer(
             questionId: _questionsWithStats[_currentQuestionIndex]['questionId'],
+            questionSetId: _questionsWithStats[_currentQuestionIndex]['questionSetId'],
+            folderId: _questionsWithStats[_currentQuestionIndex]['folderId'],
             isAnswerCorrect: isAnswerCorrect,
             answeredAt: _answeredAt!,
             nextStartedAt: nextStartedAt,
             memoryLevel: memoryLevel,
-            questionSetRef: _questionsWithStats[_currentQuestionIndex]['questionSetRef'],
-            folderRef: _questionsWithStats[_currentQuestionIndex]['folderRef'],
             selectedAnswer: _selectedAnswer ?? '',
             correctChoiceText: _questionsWithStats[_currentQuestionIndex]['correctChoiceText'],
             startedAt: _startedAt,

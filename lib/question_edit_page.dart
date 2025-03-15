@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:repaso/utils/app_colors.dart';
 import 'package:repaso/services/question_count.dart';
 import 'package:image/image.dart' as img;
-import 'package:repaso/widgets/question_widgets.dart';
+import 'package:repaso/widgets/add_page_widgets/question_widgets.dart';
 
 class QuestionEditPage extends StatefulWidget {
   final DocumentSnapshot question; // 編集する問題のドキュメント
@@ -322,7 +322,7 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
       await widget.question.reference.update(deletionData);
       final questionSetRef = widget.question['questionSetRef'] as DocumentReference;
       final folderRef = await _getFolderRef(questionSetRef);
-      await updateQuestionCounts(folderRef, questionSetRef);
+      await updateQuestionCounts(folderRef.id, questionSetRef.id);
       final currentUserId = FirebaseAuth.instance.currentUser!.uid;
       await questionSetRef
           .collection('questionSetUserStats')
