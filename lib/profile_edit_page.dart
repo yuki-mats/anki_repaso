@@ -348,7 +348,7 @@ class _IconSelectionModalState extends State<_IconSelectionModal> {
                   shrinkWrap: true,
                   physics: AlwaysScrollableScrollPhysics(),
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3,
+                    crossAxisCount: 4,
                     crossAxisSpacing: 8.0,
                     mainAxisSpacing: 8.0,
                   ),

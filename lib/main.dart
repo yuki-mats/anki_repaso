@@ -169,7 +169,7 @@ class _MainPageState extends State<MainPage> {
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.forum_outlined),
-              label: 'フォーラム',
+              label: 'コミュニティ',
               backgroundColor: Colors.white,
             ),
             BottomNavigationBarItem(
