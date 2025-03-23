@@ -1,7 +1,9 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:repaso/sign_up_page.dart';
+// iOS向けのパッケージはWebでは利用しないので条件分岐します
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'utils/app_colors.dart';
 import 'main.dart';
@@ -17,12 +19,12 @@ class _LoginPageState extends State<LoginPage> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  // モバイル用GoogleSignInインスタンス（Webは使用しません）
   final GoogleSignIn _googleSignIn = GoogleSignIn();
-  bool _isPasswordVisible = false; // パスワード表示状態を管理
+  bool _isPasswordVisible = false;
 
   String email = "";
   String password = "";
-
 
   @override
   void dispose() {
@@ -39,19 +41,19 @@ class _LoginPageState extends State<LoginPage> {
       builder: (context) {
         return Dialog(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8.0), // 角を丸く
+            borderRadius: BorderRadius.circular(8.0),
           ),
           backgroundColor: Colors.white,
           child: SizedBox(
-            width: MediaQuery.of(context).size.width * 0.85, // 横幅を80%に設定
+            width: MediaQuery.of(context).size.width * 0.85,
             child: Padding(
-              padding: const EdgeInsets.all(16.0), // 内側の余白
+              padding: const EdgeInsets.all(16.0),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const Text(
                     '以下のメールアドレスに\nパスワードリセットメールを送信します',
-                    textAlign: TextAlign.center, // 中央揃え
+                    textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 16),
@@ -61,7 +63,7 @@ class _LoginPageState extends State<LoginPage> {
                       labelText: 'メールアドレス',
                       labelStyle: const TextStyle(fontSize: 14),
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8.0), // 角を丸く
+                        borderRadius: BorderRadius.circular(8.0),
                       ),
                       contentPadding: const EdgeInsets.symmetric(
                         vertical: 12.0,
@@ -69,14 +71,14 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 32), // フィールドとボタン間の余白
+                  const SizedBox(height: 32),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.blue500, // ボタンの背景色
-                          foregroundColor: Colors.white, // ボタンのテキスト色
+                          backgroundColor: AppColors.blue500,
+                          foregroundColor: Colors.white,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(8.0),
                           ),
@@ -86,7 +88,7 @@ class _LoginPageState extends State<LoginPage> {
                           final email = resetEmailController.text.trim();
                           if (email.isNotEmpty) {
                             await _sendPasswordResetEmail(email);
-                            Navigator.of(context).pop(); // ダイアログを閉じる
+                            Navigator.of(context).pop();
                           } else {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(content: Text('メールアドレスを入力してください。')),
@@ -98,7 +100,7 @@ class _LoginPageState extends State<LoginPage> {
                           style: TextStyle(fontSize: 16),
                         ),
                       ),
-                      const SizedBox(height: 12), // ボタン間の余白
+                      const SizedBox(height: 12),
                       OutlinedButton(
                         style: OutlinedButton.styleFrom(
                           shape: RoundedRectangleBorder(
@@ -108,7 +110,7 @@ class _LoginPageState extends State<LoginPage> {
                           padding: const EdgeInsets.symmetric(vertical: 12.0),
                         ),
                         onPressed: () {
-                          Navigator.of(context).pop(); // ダイアログを閉じる
+                          Navigator.of(context).pop();
                         },
                         child: const Text(
                           'キャンセル',
@@ -125,7 +127,6 @@ class _LoginPageState extends State<LoginPage> {
       },
     );
   }
-
 
   Future<void> _sendPasswordResetEmail(String email) async {
     try {
@@ -147,61 +148,87 @@ class _LoginPageState extends State<LoginPage> {
       );
     }
   }
+
   Future<void> _signInWithApple() async {
     try {
-      final result = await SignInWithApple.getAppleIDCredential(
-        scopes: [
-          AppleIDAuthorizationScopes.email,
-          AppleIDAuthorizationScopes.fullName,
-        ],
-      );
-      final oauthProvider = OAuthProvider('apple.com');
-      final credential = oauthProvider.credential(
-        idToken: result.identityToken,
-        accessToken: result.authorizationCode,
-      );
-      await FirebaseAuth.instance.signInWithCredential(credential);
-
-      // トラッキング許可リクエストを追加
-      await requestTrackingPermission();
-
-      // サインイン成功後にMainPageに遷移
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const MainPage(),
-        ),
-      );
+      if (kIsWeb) {
+        // Webの場合はFirebaseのOAuthProviderを利用
+        final OAuthProvider appleProvider = OAuthProvider('apple.com');
+        appleProvider.addScope('email');
+        appleProvider.addScope('name');
+        final UserCredential userCredential =
+        await FirebaseAuth.instance.signInWithPopup(appleProvider);
+        // tracking permission等の処理が必要なら追加
+        await requestTrackingPermission();
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const MainPage(),
+          ),
+        );
+      } else {
+        // モバイルの場合（既存の実装）
+        final result = await SignInWithApple.getAppleIDCredential(
+          scopes: [
+            AppleIDAuthorizationScopes.email,
+            AppleIDAuthorizationScopes.fullName,
+          ],
+        );
+        final oauthProvider = OAuthProvider('apple.com');
+        final credential = oauthProvider.credential(
+          idToken: result.identityToken,
+          accessToken: result.authorizationCode,
+        );
+        await FirebaseAuth.instance.signInWithCredential(credential);
+        await requestTrackingPermission();
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const MainPage(),
+          ),
+        );
+      }
     } catch (e) {
-      // エラー処理
       print('Apple Sign-In Error: $e');
     }
   }
 
-
   Future<void> _signInWithGoogle() async {
     try {
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-      if (googleUser == null) return;
-
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-      final AuthCredential credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
-      await _auth.signInWithCredential(credential);
-
-      // トラッキング許可リクエストを追加
-      await requestTrackingPermission();
-
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const MainPage(),
-        ),
-            (Route<dynamic> route) => false,
-      );
+      if (kIsWeb) {
+        // Webの場合はGoogleAuthProviderを利用してsignInWithPopup
+        final GoogleAuthProvider googleProvider = GoogleAuthProvider();
+        googleProvider.setCustomParameters({'prompt': 'select_account'});
+        final UserCredential userCredential =
+        await FirebaseAuth.instance.signInWithPopup(googleProvider);
+        await requestTrackingPermission();
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const MainPage(),
+          ),
+              (Route<dynamic> route) => false,
+        );
+      } else {
+        // モバイルの場合は従来のgoogle_sign_inパッケージを利用
+        final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+        if (googleUser == null) return;
+        final GoogleSignInAuthentication googleAuth =
+        await googleUser.authentication;
+        final AuthCredential credential = GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
+        );
+        await _auth.signInWithCredential(credential);
+        await requestTrackingPermission();
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const MainPage(),
+          ),
+              (Route<dynamic> route) => false,
+        );
+      }
     } catch (e) {
       print("Error during Google Sign In: $e");
     }
@@ -212,11 +239,9 @@ class _LoginPageState extends State<LoginPage> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        //テキストの表示を設定
-        title: const Text('ログイン',
-            style: TextStyle(
-                color: Colors.black,
-                fontSize: 24,)
+        title: const Text(
+          'ログイン',
+          style: TextStyle(color: Colors.black, fontSize: 24),
         ),
         backgroundColor: Colors.white,
         elevation: 0,
@@ -233,8 +258,15 @@ class _LoginPageState extends State<LoginPage> {
                   height: 48,
                   width: double.infinity,
                   child: OutlinedButton.icon(
-                    icon: const Icon(Icons.g_mobiledata_sharp, color: Colors.black, size: 44),
-                    label: const Text('Googleでログイン', style: TextStyle(color: Colors.black, fontSize: 18)),
+                    icon: const Icon(
+                      Icons.g_mobiledata_sharp,
+                      color: Colors.black,
+                      size: 44,
+                    ),
+                    label: const Text(
+                      'Googleでログイン',
+                      style: TextStyle(color: Colors.black, fontSize: 18),
+                    ),
                     onPressed: _signInWithGoogle,
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: Colors.grey),
@@ -249,12 +281,16 @@ class _LoginPageState extends State<LoginPage> {
                   height: 48,
                   width: double.infinity,
                   child: OutlinedButton.icon(
-                    icon: const Icon(Icons.apple, color: Colors.black, size: 32),
-                    label: const Text('Appleでログイン', style: TextStyle(color: Colors.black, fontSize: 18)),
-                    onPressed: () {
-                      // Apple login process
-                      _signInWithApple();
-                    },
+                    icon: const Icon(
+                      Icons.apple,
+                      color: Colors.black,
+                      size: 32,
+                    ),
+                    label: const Text(
+                      'Appleでログイン',
+                      style: TextStyle(color: Colors.black, fontSize: 18),
+                    ),
+                    onPressed: _signInWithApple,
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: Colors.grey),
                       shape: RoundedRectangleBorder(
@@ -295,7 +331,7 @@ class _LoginPageState extends State<LoginPage> {
                 const SizedBox(height: 16),
                 TextField(
                   controller: _passwordController,
-                  obscureText: !_isPasswordVisible, // フラグに基づいて表示・非表示を切り替える
+                  obscureText: !_isPasswordVisible,
                   onChanged: (value) {
                     setState(() {
                       password = value;
@@ -311,27 +347,21 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                     suffixIcon: IconButton(
                       icon: Icon(
-                        _isPasswordVisible
-                            ? Icons.visibility // 表示中
-                            : Icons.visibility_off, // 非表示中
+                        _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
                       ),
                       onPressed: () {
                         setState(() {
-                          _isPasswordVisible = !_isPasswordVisible; // 表示状態を切り替える
+                          _isPasswordVisible = !_isPasswordVisible;
                         });
                       },
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 8),
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
-                    onPressed: () async{
-                      // Handle forgotten password
-                      _showPasswordResetDialog();
-                    },
+                    onPressed: _showPasswordResetDialog,
                     child: const Text(
                       'パスワードを忘れた',
                       style: TextStyle(color: AppColors.blue600),
@@ -344,24 +374,23 @@ class _LoginPageState extends State<LoginPage> {
                   child: ElevatedButton(
                     onPressed: () async {
                       try {
-                        UserCredential userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+                        UserCredential userCredential = await FirebaseAuth.instance
+                            .signInWithEmailAndPassword(
                           email: email,
                           password: password,
                         );
 
                         User? user = userCredential.user;
                         if (user != null) {
-                          // メールアドレスが未確認の場合
                           if (!user.emailVerified) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('メールアドレスが確認されていません。確認してください。')),
+                              const SnackBar(
+                                  content: Text('メールアドレスが確認されていません。確認してください。')),
                             );
-                            await FirebaseAuth.instance.signOut(); // サインアウト
-                            return; // 処理を終了
+                            await FirebaseAuth.instance.signOut();
+                            return;
                           }
                           await requestTrackingPermission();
-
-                          // 確認済みの場合はホーム画面に遷移
                           Navigator.pushAndRemoveUntil(
                             context,
                             MaterialPageRoute(
