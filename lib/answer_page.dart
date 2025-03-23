@@ -88,8 +88,7 @@ class _AnswerPageState extends State<AnswerPage> {
   Future<List<Map<String, dynamic>>> fetchQuestionsWithStats(
       DocumentReference questionSetRef, String userId) async {
     try {
-
-      // 全ての問題を取得
+      // `questionSetId` に紐づく問題を取得
       QuerySnapshot questionSnapshot = await FirebaseFirestore.instance
           .collection('questions')
           .where('questionSetId', isEqualTo: questionSetRef.id)
@@ -97,43 +96,29 @@ class _AnswerPageState extends State<AnswerPage> {
           .get();
 
       // 取得した問題リストをランダムに並び替え
-      questionSnapshot.docs.shuffle(Random());
+      List<QueryDocumentSnapshot> shuffledQuestions = questionSnapshot.docs..shuffle(Random());
 
-      List<DocumentReference> questionRefs =
-      questionSnapshot.docs.map((doc) => doc.reference).toList();
+      // 各 `question` の `DocumentReference` をリスト化
+      List<DocumentReference> questionRefs = shuffledQuestions.map((doc) => doc.reference).toList();
 
-      // 並列で questionUserStats を取得
+      // `questionUserStats` を並列取得
       List<Future<DocumentSnapshot?>> statFutures = questionRefs.map((ref) {
-        return ref
-            .collection('questionUserStats')
-            .doc(userId)
-            .get()
-            .then((doc) => doc.exists ? doc : null);
+        return ref.collection('questionUserStats').doc(userId).get().then(
+              (doc) => doc.exists ? doc : null,
+        );
       }).toList();
-
       List<DocumentSnapshot?> statSnapshots = await Future.wait(statFutures);
 
-      // データを結合して返却
-      List<Map<String, dynamic>> _questionsWithStats = [];
+      // データを統合
+      List<Map<String, dynamic>> questionsWithStats = [];
       for (int i = 0; i < questionRefs.length; i++) {
-        final questionData =
-        questionSnapshot.docs[i].data() as Map<String, dynamic>;
-        final statData =
-            statSnapshots[i]?.data() as Map<String, dynamic>? ?? {};
+        final questionData = shuffledQuestions[i].data() as Map<String, dynamic>;
+        final statData = statSnapshots[i]?.data() as Map<String, dynamic>? ?? {};
 
-        // 画像URLを取得（null の場合は空リスト）
-        List<String> questionImageUrls =
-        List<String>.from(questionData['questionImageUrls'] ?? []);
-        List<String> correctChoiceImageUrls =
-        List<String>.from(questionData['correctChoiceImageUrls'] ?? []);
-        List<String> explanationImageUrls =
-        List<String>.from(questionData['explanationImageUrls'] ?? []);
-        List<String> hintImageUrls =
-        List<String>.from(questionData['hintImageUrls'] ?? []);
-
-        _questionsWithStats.add({
-          'questionId': questionSnapshot.docs[i].id,
+        questionsWithStats.add({
+          'questionId': shuffledQuestions[i].id,
           ...questionData,
+          'examSource': questionData['examSource'] ?? '', // 🔹 `examSource` を追加
           'isOfficialQuestion': questionData['isOfficialQuestion'] ?? false,
           'isFlagged': statData['isFlagged'] ?? false,
           'attemptCount': statData['attemptCount'] ?? 0,
@@ -146,19 +131,22 @@ class _AnswerPageState extends State<AnswerPage> {
           'totalStudyTime': statData['totalStudyTime'] ?? 0,
           'memoryLevelStats': statData['memoryLevelStats'] ?? {},
           'memoryLevelRatios': statData['memoryLevelRatios'] ?? {},
-          'questionImageUrls': questionImageUrls,
-          'correctChoiceImageUrls': correctChoiceImageUrls,
-          'explanationImageUrls': explanationImageUrls,
-          'hintImageUrls': hintImageUrls,
+          'questionImageUrls': List<String>.from(questionData['questionImageUrls'] ?? []),
+          'correctChoiceImageUrls': List<String>.from(questionData['correctChoiceImageUrls'] ?? []),
+          'explanationImageUrls': List<String>.from(questionData['explanationImageUrls'] ?? []),
+          'hintImageUrls': List<String>.from(questionData['hintImageUrls'] ?? []),
+          'memoCount': questionData['memoCount'] ?? 0,
         });
       }
-      print(_questionsWithStats);
-      return _questionsWithStats;
+
+      print(questionsWithStats);
+      return questionsWithStats;
     } catch (e) {
       print('Error fetching questions and stats: $e');
       return [];
     }
   }
+
 
   void _handleAnswerSelection(BuildContext context, String selectedChoice) {
     final correctChoiceText =
@@ -438,6 +426,29 @@ class _AnswerPageState extends State<AnswerPage> {
                                                   const SizedBox(height: 8), // 固定間隔
                                                   if (displayImageUrls.isNotEmpty)
                                                     ImagePreviewWidget(imageUrls: displayImageUrls),
+                                                  const SizedBox(height: 8), // 固定間隔
+                                                  if (_questionsWithStats.isNotEmpty)
+                                                    Builder(
+                                                      builder: (context) {
+                                                        final examSource = _questionsWithStats[_currentQuestionIndex]['examSource'];
+                                                        if (examSource != null && examSource.isNotEmpty) {
+                                                          return Align(
+                                                            alignment: Alignment.topRight,
+                                                            child: Padding(
+                                                              padding: const EdgeInsets.only(right: 16.0),
+                                                              child: Text(
+                                                                '出典：$examSource', // 🔹「出典：」を追加
+                                                                style: const TextStyle(
+                                                                  fontSize: 11,
+                                                                  color: Colors.grey,
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          );
+                                                        }
+                                                        return const SizedBox.shrink(); // 🔹 examSource が空なら何も表示しない
+                                                      },
+                                                    ),
                                                 ],
                                               );
                                             }),
@@ -458,6 +469,7 @@ class _AnswerPageState extends State<AnswerPage> {
                                       flashCardHasBeenRevealed: _flashCardHasBeenRevealed,
                                       isFlagged: question['isFlagged'] == true,
                                       isOfficialQuestion: question['isOfficialQuestion'] == true,
+                                      memoCount: question['memoCount'],
                                       onShowHintDialog: _showHintDialog,
                                       onShowExplanationDialog: _showExplanationDialog,
                                       onToggleFlag: _toggleFlag,

@@ -101,8 +101,8 @@ class _OfficialListPageState extends State<OfficialListPage> {
         final permissionRef = folderRef.collection('permissions').doc(userId);
 
         await permissionRef.set({
-          'userRef':
-          FirebaseFirestore.instance.collection('users').doc(userId),
+          'userId': userId,
+          'userRef': FirebaseFirestore.instance.collection('users').doc(userId),
           'role': 'viewer',
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),

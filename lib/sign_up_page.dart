@@ -51,9 +51,7 @@ class SignUpPageState extends State<SignUpPage> {
         FirebaseFirestore.instance.collection('users').doc(user.uid);
 
         await userRef.set({
-          'name': user.email ?? 'Google User', // メールアドレスが取得できない場合のフォールバック
-          'email': user.email,
-          'createdQuestions': [],
+          'name': '未設定', // メールアドレスが取得できない場合のフォールバック
           'joinedGroups': [],
           'createdAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true)); // 既存データがある場合はマージ
@@ -99,9 +97,7 @@ class SignUpPageState extends State<SignUpPage> {
         FirebaseFirestore.instance.collection('users').doc(user.uid);
 
         await userRef.set({
-          'name': credential.givenName ?? 'Apple User',
-          'email': credential.email ?? '',
-          'createdQuestions': [],
+          'name': '未設定',
           'joinedGroups': [],
           'createdAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
@@ -167,9 +163,7 @@ class SignUpPageState extends State<SignUpPage> {
       if (user != null) {
         // Firestoreに新規ユーザーを追加
         await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-          'name': _emailController.text, // ユーザー名としてメールアドレスを使用
-          'email': _emailController.text,
-          'createdQuestions': [],
+          'name': '未設定', // ユーザー名としてメールアドレスを使用
           'joinedGroups': [],
           'createdAt': FieldValue.serverTimestamp(),
         });

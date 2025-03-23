@@ -960,6 +960,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                 Row(
                   children: [
                     AvailableLikesWidget(),
+                    const SizedBox(width: 16),
                     Icon(
                       Icons.notifications_none_outlined,
                       color: AppColors.gray700,
@@ -1048,7 +1049,6 @@ class AvailableLikesWidget extends StatelessWidget {
           decoration: BoxDecoration(
             color: Colors.white, // 背景色を白に
             borderRadius: BorderRadius.circular(20),
-
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,

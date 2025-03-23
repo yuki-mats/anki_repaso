@@ -13,6 +13,7 @@ class CommonQuestionFooter extends StatelessWidget {
   final VoidCallback? onShowExplanationDialog;
   final VoidCallback? onToggleFlag;
   final VoidCallback? onMemoPressed;
+  final int? memoCount; // memoCountプロパティ
 
   const CommonQuestionFooter({
     Key? key,
@@ -27,6 +28,7 @@ class CommonQuestionFooter extends StatelessWidget {
     this.onShowExplanationDialog,
     this.onToggleFlag,
     this.onMemoPressed,
+    this.memoCount,
   }) : super(key: key);
 
   /// 丸いボタンを作成するヘルパーメソッド
@@ -51,15 +53,60 @@ class CommonQuestionFooter extends StatelessWidget {
     );
   }
 
+  /// 説明アイコン（バッジなし）
+  Widget _buildExplanationIcon() {
+    return _buildRoundedIconButton(
+      icon: Icons.description_outlined,
+      onPressed: onShowExplanationDialog,
+    );
+  }
+
+  /// メモアイコンに memoCount のバッジを重ねるウィジェット
+  Widget _buildMemoIconWithBadge() {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        _buildRoundedIconButton(
+          icon: Icons.edit_note_outlined,
+          onPressed: onMemoPressed,
+        ),
+        if (memoCount != null && memoCount! > 0)
+          Positioned(
+            right: -2,
+            bottom: -2,
+            child: Container(
+              padding: const EdgeInsets.all(2),
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.red,
+              ),
+              constraints: const BoxConstraints(
+                minWidth: 16,
+                minHeight: 16,
+              ),
+              child: Text(
+                memoCount.toString(),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // ヒントや解説の有無のチェック
     final hasHint = hintText?.trim().isNotEmpty ?? false;
     final hasExplanation = explanationText?.trim().isNotEmpty ?? false;
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
+        // 正答率表示部分
         Column(
           children: [
             const Text(
@@ -88,27 +135,17 @@ class CommonQuestionFooter extends StatelessWidget {
                 icon: Icons.lightbulb_outline,
                 onPressed: onShowHintDialog,
               ),
-
-            // 解説アイコン（footerButtonTypeが非nullまたはフラッシュカードの答えが開示されているかつ解説テキストが存在する場合）
+            // 説明アイコン（footerButtonType が非null またはフラッシュカードの答えが開示されており、かつ解説テキストが存在する場合）
             if ((footerButtonType != null || flashCardHasBeenRevealed) && hasExplanation)
               Padding(
                 padding: const EdgeInsets.only(left: 8.0),
-                child: _buildRoundedIconButton(
-                  icon: Icons.description_outlined,
-                  onPressed: onShowExplanationDialog,
-                ),
+                child: _buildExplanationIcon(),
               ),
-
             const SizedBox(width: 8),
+            // メモアイコン＋バッジ（公式問題の場合）
             if (isOfficialQuestion)
-            // メモアイコン
-            _buildRoundedIconButton(
-              icon: Icons.edit_note_outlined,
-              onPressed: onMemoPressed,
-            ),
-
+              _buildMemoIconWithBadge(),
             const SizedBox(width: 8),
-
             // フラグ（ブックマーク）アイコン
             _buildRoundedIconButton(
               icon: isFlagged ? Icons.bookmark : Icons.bookmark_outline,

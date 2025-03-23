@@ -174,6 +174,7 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
           'questionSetId': questionSetId, // 明示的に追加済み
           'folderId': folderRef != null ? folderRef.id : '', // folderRef が存在すればその id、なければ空文字を設定
           'folderRef': folderRef,
+          'memoCount': questionData['memoCount'] ?? 0,
         };
       }));
 
@@ -506,6 +507,7 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
                                                     [])
                                                 : List<String>.from(currentQuestion['questionImageUrls'] ??
                                                     []);
+                                            final examSource = currentQuestion['examSource'] as String? ?? '';
                                             return Column(
                                               crossAxisAlignment: CrossAxisAlignment.center,
                                               children: [
@@ -514,6 +516,18 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
                                                   style: const TextStyle(fontSize: 13),
                                                   textAlign: TextAlign.start,
                                                 ),
+                                                const SizedBox(height: 8),
+                                                if (examSource.isNotEmpty)
+                                                  Align(
+                                                    alignment: Alignment.topRight,
+                                                    child: Padding(
+                                                      padding: const EdgeInsets.only(right: 16.0, top: 4.0),
+                                                      child: Text(
+                                                        '出典：$examSource',
+                                                        style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                                      ),
+                                                    ),
+                                                  ),
                                                 const SizedBox(height: 8),
                                                 if (displayImageUrls.isNotEmpty)
                                                   ImagePreviewWidget(imageUrls: displayImageUrls),
@@ -540,6 +554,7 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
                                       flashCardHasBeenRevealed: _flashCardHasBeenRevealed,
                                       isFlagged: question['statsData']['isFlagged'] == true,
                                       isOfficialQuestion: question['isOfficialQuestion'] == true,
+                                      memoCount: question['memoCount'],
                                       onShowHintDialog: _showHintDialog,
                                       onShowExplanationDialog: _showExplanationDialog,
                                       onToggleFlag: _toggleFlag,

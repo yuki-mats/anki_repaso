@@ -84,7 +84,22 @@ class _MemoAddPageState extends State<MemoAddPage> {
     };
 
     try {
+      // メモの追加
       await FirebaseFirestore.instance.collection('memos').add(memoData);
+
+      // countクエリを使用して、該当questionIdのメモ数を取得
+      final Query memosQuery = FirebaseFirestore.instance
+          .collection('memos')
+          .where('questionId', isEqualTo: widget.questionId);
+      final AggregateQuerySnapshot snapshot = await memosQuery.count().get();
+      final int? count = snapshot.count;
+
+      // 該当問題のmemoCountを更新
+      await FirebaseFirestore.instance
+          .collection('questions')
+          .doc(widget.questionId)
+          .update({'memoCount': count});
+
       _titleController.clear();
       _contentController.clear();
       setState(() {
@@ -101,6 +116,7 @@ class _MemoAddPageState extends State<MemoAddPage> {
       );
     }
   }
+
 
   @override
   void dispose() {

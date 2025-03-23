@@ -17,6 +17,8 @@ class MemoLikeButton extends StatefulWidget {
 }
 
 class _MemoLikeButtonState extends State<MemoLikeButton> {
+  bool _isProcessing = false; // 追加：処理中かどうかのフラグ
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -31,13 +33,17 @@ class _MemoLikeButtonState extends State<MemoLikeButton> {
           .snapshots(),
       builder: (context, snapshot) {
         bool isLiked = false;
-
         if (snapshot.hasData && snapshot.data!.exists) {
           isLiked = snapshot.data!.get('isActive') ?? false;
         }
 
         return GestureDetector(
-          onTap: () => _handleLike(user.uid, isLiked),
+          onTap: () {
+            // すでにいいね済みまたは処理中の場合は何もしない
+            if (!_isProcessing && !isLiked) {
+              _handleLike(user.uid, isLiked);
+            }
+          },
           child: Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
@@ -58,7 +64,10 @@ class _MemoLikeButtonState extends State<MemoLikeButton> {
 
   /// いいね処理：一度いいねしたら取り消せない仕様
   Future<void> _handleLike(String userId, bool isLiked) async {
-    if (isLiked) return; // すでにいいね済みなら何もしない
+    if (isLiked || _isProcessing) return;
+    setState(() {
+      _isProcessing = true;
+    });
 
     final firestore = FirebaseFirestore.instance;
     final memoLikesRef = firestore
@@ -71,51 +80,59 @@ class _MemoLikeButtonState extends State<MemoLikeButton> {
         .collection('users')
         .doc(widget.createdById)
         .collection('likesReceived')
-        .doc(); // 🔹 `auto-generate ID` で追加
+        .doc(); // 自動生成IDで追加
 
     final userRef = firestore.collection('users').doc(widget.createdById);
 
-    await firestore.runTransaction((transaction) async {
-      // メモのいいね登録
-      transaction.set(memoLikesRef, {
-        'fromUserId': userId,
-        'toUserId': widget.createdById,
-        'isActive': true,
-        'hasRewarded': false,
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
+    try {
+      await firestore.runTransaction((transaction) async {
+        // メモのいいね登録
+        transaction.set(memoLikesRef, {
+          'fromUserId': userId,
+          'toUserId': widget.createdById,
+          'isActive': true,
+          'hasRewarded': false,
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+
+        // ユーザーの受け取ったいいねに登録
+        transaction.set(userLikesReceivedRef, {
+          'fromUserId': userId,
+          'memoId': widget.memoId,
+          'replyId': '',
+          'createdAt': FieldValue.serverTimestamp(),
+          'isActive': true,
+        });
+
+        // count() 集約クエリを使用して likesReceived の総数を取得
+        final likesReceivedCountQuery = await firestore
+            .collection('users')
+            .doc(widget.createdById)
+            .collection('likesReceived')
+            .count()
+            .get();
+        final likesReceivedCount = likesReceivedCountQuery.count;
+
+        // ユーザー情報を更新
+        transaction.update(userRef, {
+          'totalLikesReceived': likesReceivedCount,
+          'availableLikes': likesReceivedCount,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+
+        // メモの likeCount を +1 更新
+        transaction.update(firestore.collection('memos').doc(widget.memoId), {
+          'likeCount': FieldValue.increment(1),
+        });
       });
-
-      // ユーザーの受け取ったいいねに登録
-      transaction.set(userLikesReceivedRef, {
-        'fromUserId': userId,
-        'memoId': widget.memoId,
-        'replyId': '',
-        'createdAt': FieldValue.serverTimestamp(),
-        'isActive': true,
+    } catch (e) {
+      // エラーハンドリング
+      print("Error in transaction: $e");
+    } finally {
+      setState(() {
+        _isProcessing = false;
       });
-
-      // 🔹 Firestore の `count()` を使用して `likesReceived` の総数を取得
-      final likesReceivedCountQuery = await firestore
-          .collection('users')
-          .doc(widget.createdById)
-          .collection('likesReceived')
-          .count()
-          .get();
-
-      final likesReceivedCount = likesReceivedCountQuery.count; // 🔹 `.count` で取得
-
-      // `totalLikesReceived` と `availableLikes` を更新
-      transaction.update(userRef, {
-        'totalLikesReceived': likesReceivedCount, // 🔹 総数と一致させる
-        'availableLikes': likesReceivedCount, // 🔹 `availableLikes` も `likesReceived` の数と一致させる
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-
-      // メモの `likeCount` を +1 更新
-      transaction.update(firestore.collection('memos').doc(widget.memoId), {
-        'likeCount': FieldValue.increment(1),
-      });
-    });
+    }
   }
 }

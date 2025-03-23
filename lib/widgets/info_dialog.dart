@@ -35,20 +35,22 @@ class InfoDialog extends StatelessWidget {
         title,
         style: titleTextStyle ?? const TextStyle(color: Colors.black, fontSize: 16),
       ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8.0),
-            child: Text(
-              content,
-              style: contentTextStyle ?? const TextStyle(color: Colors.black),
+      content: SingleChildScrollView(  // 🔹 SingleChildScrollView を追加
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8.0),
+              child: Text(
+                content,
+                style: contentTextStyle ?? const TextStyle(color: Colors.black),
+              ),
             ),
-          ),
-          if (imageUrls != null && imageUrls!.isNotEmpty)
-            _buildImageList(context, imageUrls!), // 🔹 画像リストを追加
-        ],
+            if (imageUrls != null && imageUrls!.isNotEmpty)
+              _buildImageList(context, imageUrls!), // 🔹 画像リストを追加
+          ],
+        ),
       ),
       actions: [
         TextButton(
