@@ -194,7 +194,7 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
       appBar: AppBar(
         title: const Text('問題集の選択'),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios),
+          icon: const Icon(Icons.arrow_back_ios, size: 20),
           onPressed: _onBackPressed,
         ),
         bottom: PreferredSize(

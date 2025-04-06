@@ -5,30 +5,33 @@ import 'package:repaso/set_number_of_questions_page.dart';
 import 'package:repaso/set_question_order_page.dart';
 import 'package:repaso/set_question_set_page.dart';
 import 'package:repaso/set_study_set_name_page.dart';
+import 'package:repaso/widgets/set_memory_level_page.dart'; // ← メモリレベル選択ページを利用
 
 class StudySet {
-  final String id; // ドキュメント ID を追加
+  final String id; // ドキュメント ID
   final String name;
   final List<String> questionSetIds;
   final int numberOfQuestions;
   final String selectedQuestionOrder;
   final RangeValues correctRateRange;
   final bool isFlagged;
+  final List<String> selectedMemoryLevels;
 
   StudySet({
-    required this.id, // ID をコンストラクタに追加
+    required this.id,
     required this.name,
     required this.questionSetIds,
     required this.numberOfQuestions,
     required this.selectedQuestionOrder,
     required this.correctRateRange,
     required this.isFlagged,
+    required this.selectedMemoryLevels,
   });
 
   // Firestoreデータから生成するファクトリコンストラクタ
   factory StudySet.fromFirestore(String id, Map<String, dynamic> data) {
     return StudySet(
-      id: id, // Firestore ドキュメント ID を設定
+      id: id,
       name: data['name'] as String,
       questionSetIds: List<String>.from(data['questionSetIds'] ?? []),
       numberOfQuestions: data['numberOfQuestions'] as int,
@@ -38,10 +41,13 @@ class StudySet {
         (data['correctRateRange']?['end'] ?? 100.0) as double,
       ),
       isFlagged: data['isFlagged'] as bool? ?? false,
+      selectedMemoryLevels: List<String>.from(
+        data['selectedMemoryLevels'] ?? ['again', 'hard', 'good', 'easy'],
+      ),
     );
   }
 
-  // Firestoreに保存するためのMap形式に変換
+  // Firestore に保存するためのMap形式に変換
   Map<String, dynamic> toFirestore() {
     return {
       'name': name,
@@ -53,6 +59,7 @@ class StudySet {
         'end': correctRateRange.end,
       },
       'isFlagged': isFlagged,
+      'selectedMemoryLevels': selectedMemoryLevels,
     };
   }
 }
@@ -80,7 +87,18 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
   late List<String> questionSetIds;
   late int? numberOfQuestions;
   late String? selectedQuestionOrder;
-  List<String> _cachedQuestionSetNames = []; // キャッシュされた問題集名
+  late List<String> _selectedMemoryLevels;
+
+  // メモリレベルのラベル（UI表示用）
+  final Map<String, String> _memoryLevelLabels = {
+    'again': 'もう一度',
+    'hard': '難しい',
+    'good': '普通',
+    'easy': '簡単',
+  };
+
+  // 問題集名のキャッシュ
+  List<String> _cachedQuestionSetNames = [];
 
   final Map<String, String> orderOptions = {
     "random": "ランダム",
@@ -99,52 +117,22 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
   @override
   void initState() {
     super.initState();
-    final studySet = widget.initialStudySet;
-    studySetName = studySet.name;
-    questionSetIds = studySet.questionSetIds;
-    numberOfQuestions = studySet.numberOfQuestions;
-    selectedQuestionOrder = studySet.selectedQuestionOrder;
-    _correctRateRange = studySet.correctRateRange;
-    _isFlagged = studySet.isFlagged;
-    _fetchAndCacheQuestionSetNames(); // 初回の名前取得
+    final s = widget.initialStudySet;
+    studySetName = s.name;
+    questionSetIds = s.questionSetIds;
+    numberOfQuestions = s.numberOfQuestions;
+    selectedQuestionOrder = s.selectedQuestionOrder;
+    _correctRateRange = s.correctRateRange;
+    _isFlagged = s.isFlagged;
+    _selectedMemoryLevels = List.from(s.selectedMemoryLevels);
+
+    // 問題集名を取得
+    _fetchAndCacheQuestionSetNames();
   }
 
   Future<void> _fetchAndCacheQuestionSetNames() async {
     _cachedQuestionSetNames = await _fetchQuestionSetNames(questionSetIds);
-    setState(() {}); // 名前取得後に再描画
-  }
-
-  Future<void> _updateStudySet() async {
-    if (studySetName == null || studySetName!.isEmpty || questionSetIds.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('セット名と問題集を入力してください。')),
-      );
-      return;
-    }
-
-    final updatedStudySet = StudySet(
-      id: widget.studySetId,
-      name: studySetName!,
-      questionSetIds: questionSetIds,
-      numberOfQuestions: numberOfQuestions!,
-      selectedQuestionOrder: selectedQuestionOrder!,
-      correctRateRange: _correctRateRange,
-      isFlagged: _isFlagged,
-    );
-
-    try {
-      final userRef = FirebaseFirestore.instance.collection('users').doc(widget.userId);
-      await userRef.collection('studySets').doc(widget.studySetId).update(updatedStudySet.toFirestore());
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('暗記セットが更新されました。')),
-      );
-      Navigator.of(context).pop(true);
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('更新中にエラーが発生しました: $e')),
-      );
-    }
+    setState(() {});
   }
 
   Future<List<String>> _fetchQuestionSetNames(List<String> ids) async {
@@ -169,6 +157,52 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
     }
   }
 
+  Future<void> _updateStudySet() async {
+    // バリデーション
+    if (studySetName == null ||
+        studySetName!.isEmpty ||
+        questionSetIds.isEmpty ||
+        numberOfQuestions == null ||
+        selectedQuestionOrder == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('セット名と問題集、出題数・出題順を入力してください。')),
+      );
+      return;
+    }
+
+    // 保存用データ作成
+    final updatedStudySet = StudySet(
+      id: widget.studySetId,
+      name: studySetName!,
+      questionSetIds: questionSetIds,
+      numberOfQuestions: numberOfQuestions!,
+      selectedQuestionOrder: selectedQuestionOrder!,
+      correctRateRange: _correctRateRange,
+      isFlagged: _isFlagged,
+      selectedMemoryLevels: _selectedMemoryLevels, // ← これが重要
+    );
+
+    try {
+      final userRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.userId);
+
+      // Firestore へ反映
+      await userRef
+          .collection('studySets')
+          .doc(widget.studySetId)
+          .update(updatedStudySet.toFirestore());
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('暗記セットが更新されました。')),
+      );
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('更新中にエラーが発生しました: $e')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -182,9 +216,9 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
         ),
         title: const Text('暗記セットの編集'),
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1.0), // 線の高さ
+          preferredSize: const Size.fromHeight(1.0),
           child: Container(
-            color: Colors.grey[300], // 薄いグレーの線
+            color: Colors.grey[300],
             height: 1.0,
           ),
         ),
@@ -192,27 +226,20 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
+          // セット名
           ListTile(
             title: Row(
               children: [
-                const Icon(
-                  Icons.create,
-                  size: 22,
-                  color: AppColors.gray600,
-                ),
+                const Icon(Icons.create, size: 22, color: AppColors.gray600),
                 const SizedBox(width: 6),
-                const SizedBox(
-                  width: 60,
-                  child: Text(
-                    "セット名",
-                    style: TextStyle(fontSize: 14),
-                  ),
-                ),
+                const SizedBox(width: 60, child: Text("セット名", style: TextStyle(fontSize: 14))),
                 Expanded(
                   child: Text(
-                    (studySetName?.trim().isEmpty ?? true) ? "入力してください。" : studySetName!,
+                    (studySetName?.trim().isEmpty ?? true)
+                        ? "入力してください。"
+                        : studySetName!,
                     style: const TextStyle(fontSize: 14),
-                    textAlign: TextAlign.end, // 右揃え
+                    textAlign: TextAlign.end,
                   ),
                 ),
               ],
@@ -221,73 +248,57 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
             onTap: () async {
               final name = await Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (context) => SetStudySetNamePage(
+                  builder: (_) => SetStudySetNamePage(
                     initialName: studySetName ?? "",
                   ),
                 ),
               );
               if (name != null && name is String) {
-                setState(() {
-                  studySetName = name;
-                });
+                setState(() => studySetName = name);
               }
             },
           ),
+          // 問題集
           ListTile(
             title: Row(
               children: [
-                const Icon(
-                  Icons.layers_rounded,
-                  size: 22,
-                  color: AppColors.gray600,
-                ),
+                const Icon(Icons.layers_rounded, size: 22, color: AppColors.gray600),
                 const SizedBox(width: 6),
-                const SizedBox(
-                  width: 50,
-                  child: Text(
-                    "問題集",
-                    style: TextStyle(fontSize: 14),
-                  ),
-                ),
+                const SizedBox(width: 50, child: Text("問題集", style: TextStyle(fontSize: 14))),
                 if (_cachedQuestionSetNames.isNotEmpty)
                   Expanded(
                     child: Text(
                       _cachedQuestionSetNames.join(', '),
                       style: const TextStyle(fontSize: 14),
-                      textAlign: TextAlign.end, // 右揃え
+                      textAlign: TextAlign.end,
                     ),
                   ),
-
               ],
             ),
             trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.gray600),
             onTap: () async {
               final result = await Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (context) => SetQuestionSetPage(
+                  builder: (_) => SetQuestionSetPage(
                     userId: widget.userId,
                     selectedQuestionSetIds: questionSetIds,
                   ),
                 ),
               );
-
               if (result != null && result is List<String>) {
+                // 削除済みを除外
                 List<String> validIds = [];
                 List<String> validNames = [];
-
                 for (var id in result) {
                   final doc = await FirebaseFirestore.instance
                       .collection('questionSets')
                       .doc(id)
                       .get();
-
-                  // 削除済みの問題集を除外
                   if (doc.exists && (doc.data()?['isDeleted'] ?? false) == false) {
                     validIds.add(id);
                     validNames.add(doc.data()?['name'] as String);
                   }
                 }
-
                 setState(() {
                   questionSetIds = validIds;
                   _cachedQuestionSetNames = validNames;
@@ -295,32 +306,23 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
               }
             },
           ),
+          // 正答率
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               ListTile(
                 title: Row(
                   children: [
-                    const Icon(
-                      Icons.percent,
-                      size: 22,
-                      color: AppColors.gray600,
-                    ),
+                    const Icon(Icons.percent, size: 22, color: AppColors.gray600),
                     const SizedBox(width: 6),
-                    const SizedBox(
-                      width: 80,
-                      child: Text(
-                        "正答率",
-                        style: TextStyle(fontSize: 14),
-                      ),
-                    ),
-                    Expanded( // 追加: `Expanded` で空白を作る
+                    const SizedBox(width: 80, child: Text("正答率", style: TextStyle(fontSize: 14))),
+                    Expanded(
                       child: Padding(
                         padding: const EdgeInsets.only(right: 16.0),
                         child: Text(
                           "${_correctRateRange.start.toInt()} 〜 ${_correctRateRange.end.toInt()}%",
                           style: const TextStyle(fontSize: 14),
-                          textAlign: TextAlign.end, // 右寄せ
+                          textAlign: TextAlign.end,
                         ),
                       ),
                     ),
@@ -336,46 +338,75 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
                   activeTrackColor: AppColors.blue500,
                   activeTickMarkColor: AppColors.blue500,
                 ),
-                child: SizedBox(
-                  child: RangeSlider(
-                    values: _correctRateRange,
-                    min: 0,
-                    max: 100,
-                    divisions: 10,
-                    labels: null,
-                    onChanged: (values) {
-                      setState(() {
-                        if ((values.end - values.start) >= 10) {
-                          _correctRateRange = RangeValues(
-                            (values.start / 10).round() * 10.0,
-                            (values.end / 10).round() * 10.0,
-                          );
-                        }
-                      });
-                    },
-                  ),
+                child: RangeSlider(
+                  values: _correctRateRange,
+                  min: 0,
+                  max: 100,
+                  divisions: 10,
+                  labels: null,
+                  onChanged: (values) {
+                    setState(() {
+                      if ((values.end - values.start) >= 10) {
+                        _correctRateRange = RangeValues(
+                          (values.start / 10).round() * 10.0,
+                          (values.end / 10).round() * 10.0,
+                        );
+                      }
+                    });
+                  },
                 ),
+              ),
+
+              // ▼ 記憶度
+              ListTile(
+                title: Row(
+                  children: [
+                    const Icon(Icons.memory, size: 22, color: AppColors.gray600),
+                    const SizedBox(width: 6),
+                    const SizedBox(width: 80, child: Text("記憶度", style: TextStyle(fontSize: 14))),
+                    Expanded(
+                      child: Text(
+                        _selectedMemoryLevels.length == 4
+                            ? "すべて"
+                            : _selectedMemoryLevels
+                            .map((e) => _memoryLevelLabels[e] ?? e)
+                            .join(', '),
+                        style: const TextStyle(fontSize: 14),
+                        textAlign: TextAlign.end,
+                      ),
+                    ),
+                  ],
+                ),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.gray600),
+                onTap: () async {
+                  final result = await Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => SetMemoryLevelPage(
+                        initialSelection: _selectedMemoryLevels,
+                      ),
+                    ),
+                  );
+                  if (result != null && result is List<String>) {
+                    setState(() {
+                      _selectedMemoryLevels = result;
+                    });
+                  }
+                },
               ),
             ],
           ),
+          // フラグあり
           ListTile(
             leading: const Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  Icons.bookmark,
-                  size: 22,
-                  color: AppColors.gray600,
-                ),
+                Icon(Icons.bookmark, size: 22, color: AppColors.gray600),
                 SizedBox(width: 6),
-                Text(
-                  "フラグあり",
-                  style: TextStyle(fontSize: 14),
-                ),
+                Text("フラグあり", style: TextStyle(fontSize: 14)),
               ],
             ),
             trailing: Transform.scale(
-              scale: 0.8, // スイッチの大きさを変更（1.0がデフォルト）
+              scale: 0.8,
               child: Switch(
                 value: _isFlagged,
                 activeColor: Colors.white,
@@ -395,25 +426,16 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
               });
             },
           ),
+          // 出題順
           ListTile(
             title: Row(
               children: [
                 const Padding(
                   padding: EdgeInsets.only(top: 4.0),
-                  child: Icon(
-                    Icons.sort,
-                    size: 22,
-                    color: AppColors.gray600,
-                  ),
+                  child: Icon(Icons.sort, size: 22, color: AppColors.gray600),
                 ),
                 const SizedBox(width: 6),
-                const SizedBox(
-                  width: 55,
-                  child: Text(
-                    "出題順",
-                    style: TextStyle(fontSize: 14),
-                  ),
-                ),
+                const SizedBox(width: 55, child: Text("出題順", style: TextStyle(fontSize: 14))),
                 if (selectedQuestionOrder != null)
                   Expanded(
                     child: Text(
@@ -426,37 +448,28 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
             ),
             trailing: const Icon(Icons.arrow_forward_ios, size: 18),
             onTap: () async {
-              final selectedOrder = await Navigator.push(
+              final selOrder = await Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => SetQuestionOrderPage(
+                  builder: (_) => SetQuestionOrderPage(
                     initialSelection: selectedQuestionOrder,
                   ),
                 ),
               );
-              if (selectedOrder != null && selectedOrder is String) {
+              if (selOrder != null && selOrder is String) {
                 setState(() {
-                  selectedQuestionOrder = selectedOrder;
+                  selectedQuestionOrder = selOrder;
                 });
               }
             },
           ),
+          // 最大
           ListTile(
             title: Row(
               children: [
-                const Icon(
-                  Icons.format_list_numbered,
-                  size: 22,
-                  color: AppColors.gray600,
-                ),
+                const Icon(Icons.format_list_numbered, size: 22, color: AppColors.gray600),
                 const SizedBox(width: 6),
-                const SizedBox(
-                  width: 55,
-                  child: Text(
-                    "最大",
-                    style: TextStyle(fontSize: 14),
-                  ),
-                ),
+                const SizedBox(width: 55, child: Text("最大", style: TextStyle(fontSize: 14))),
                 if (numberOfQuestions != null)
                   Expanded(
                     child: Text(
@@ -472,41 +485,44 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
               final selectedCount = await Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => SetNumberOfQuestionsPage(
+                  builder: (_) => SetNumberOfQuestionsPage(
                     initialSelection: numberOfQuestions,
                   ),
                 ),
               );
               if (selectedCount != null && selectedCount is int) {
-                setState(() {
-                  numberOfQuestions = selectedCount;
-                });
+                setState(() => numberOfQuestions = selectedCount);
               }
             },
           ),
         ],
       ),
       bottomNavigationBar: Padding(
-        padding: const EdgeInsets.only(left:16.0, right:16.0, bottom: 24.0),
+        padding: const EdgeInsets.only(left:16.0, right:16.0, bottom:24.0),
         child: Container(
           padding: const EdgeInsets.all(12.0),
           child: ElevatedButton(
-            onPressed: (questionSetIds.isNotEmpty && studySetName != null && studySetName!.isNotEmpty)
+            onPressed: (questionSetIds.isNotEmpty &&
+                studySetName != null &&
+                studySetName!.isNotEmpty &&
+                numberOfQuestions != null &&
+                selectedQuestionOrder != null)
                 ? _updateStudySet
-                : null, // 必要な条件を満たさない場合は無効化
+                : null,
             style: ElevatedButton.styleFrom(
-              backgroundColor: (questionSetIds.isNotEmpty && studySetName != null && studySetName!.isNotEmpty)
-                  ? AppColors.blue500 // 有効時の色
-                  : Colors.grey,      // 無効時の色
-              minimumSize: const Size.fromHeight(48), // ボタンの高さを設定
+              backgroundColor: (questionSetIds.isNotEmpty &&
+                  studySetName != null &&
+                  studySetName!.isNotEmpty &&
+                  numberOfQuestions != null &&
+                  selectedQuestionOrder != null)
+                  ? AppColors.blue500
+                  : Colors.grey,
+              minimumSize: const Size.fromHeight(48),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(32),
               ),
             ),
-            child: const Text(
-              '保存',
-              style: TextStyle(fontSize: 16, color: Colors.white),
-            ),
+            child: const Text('保存', style: TextStyle(fontSize: 16, color: Colors.white)),
           ),
         ),
       ),

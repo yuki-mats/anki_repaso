@@ -1,9 +1,7 @@
-import 'dart:convert';
 import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:csv/csv.dart';
 import 'package:excel/excel.dart' as excel;
 import 'package:flutter/material.dart';
 import 'question_count.dart';
@@ -18,13 +16,21 @@ class ImportQuestionsService {
       ) async {
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['csv', 'xls', 'xlsx'],
+      allowedExtensions: ['xlsx'], // xlsx のみ受け付ける
       withData: true,
     );
     if (result == null) return;
 
     PlatformFile file = result.files.first;
     final String? extension = file.extension?.toLowerCase();
+    if (extension != 'xlsx') {
+      print("Error: xlsxファイルのみ対応しています");
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('xlsxファイルのみ対応しています')),
+      );
+      return;
+    }
+
     final Uint8List? fileBytes = file.bytes;
     if (fileBytes == null) {
       print("Error: ファイルの読み込みに失敗しました");
@@ -36,81 +42,35 @@ class ImportQuestionsService {
 
     List<Map<String, dynamic>> questionsData = [];
     try {
-      if (extension == 'csv') {
-        print("Debug: CSVファイルを読み込み開始");
-
-        String csvContent = utf8.decode(fileBytes).trim();
-        if (csvContent.startsWith('\ufeff')) {
-          print("Debug: BOMを削除");
-          csvContent = csvContent.substring(1);
+      print("Debug: Excelファイルを読み込み開始");
+      var excelDoc = excel.Excel.decodeBytes(fileBytes);
+      if (excelDoc.tables.isEmpty) {
+        print("Error: Excelファイルが空です");
+        return;
+      }
+      // 対象のシートのみを処理する
+      List<String> requiredSheets = ["正誤問題", "択一式問題", "フラッシュカード式問題"];
+      for (String sheetName in requiredSheets) {
+        if (!excelDoc.tables.containsKey(sheetName)) {
+          print("Warning: シート '$sheetName' が存在しません。");
+          continue;
         }
-
-        List<List<dynamic>> rows =
-        const CsvToListConverter(eol: '\n').convert(csvContent);
-        if (rows.isEmpty) {
-          print("Error: CSVファイルが空です");
-          return;
-        }
-
-        List<String> header =
-        rows.first.map((h) => h.toString().trim()).toList();
-        print("Debug: 修正後のCSVヘッダー: $header");
-
-        for (int i = 1; i < rows.length; i++) {
-          List<dynamic> row = rows[i];
-
-          if (row.length != header.length) {
-            print(
-                "Warning: 列数不一致のためスキップ (行番号: $i, データ長: ${row.length}, ヘッダー長: ${header.length})");
-            continue;
-          }
-
-          Map<String, dynamic> data = {};
-          for (int j = 0; j < header.length; j++) {
-            data[header[j]] = row[j]?.toString()?.trim() ?? '';
-          }
-
-          if (!data.containsKey('questionText') ||
-              data['questionText']!.isEmpty) {
-            print("Warning: 問題文が空のためスキップ (行番号: $i)");
-            continue;
-          }
-
-          if (data.containsKey('examYear') && data['examYear']!.isNotEmpty) {
-            data['examYear'] = int.tryParse(data['examYear']!) ?? null;
-          } else {
-            data['examYear'] = null;
-          }
-
-          print("Debug: 読み込んだデータ (行番号: $i): $data");
-          questionsData.add(data);
-        }
-      } else if (extension == 'xls' || extension == 'xlsx') {
-        print("Debug: Excelファイルを読み込み開始");
-        var excelDoc = excel.Excel.decodeBytes(fileBytes);
-        if (excelDoc.tables.isEmpty) {
-          print("Error: Excelファイルが空です");
-          return;
-        }
-        // シートは最初のものを対象とする
-        String sheetName = excelDoc.tables.keys.first;
         var sheet = excelDoc.tables[sheetName];
         if (sheet == null || sheet.rows.isEmpty) {
-          print("Error: Excelシートが空です");
-          return;
+          print("Warning: シート '$sheetName' は空です。");
+          continue;
         }
         // 1行目をヘッダーとして取得
         List<String> header = sheet.rows.first.map((cell) {
           return cell?.value.toString().trim() ?? '';
         }).toList();
-        print("Debug: 修正後のExcelヘッダー: $header");
-
+        print("Debug: シート '$sheetName' のExcelヘッダー: $header");
         for (int i = 1; i < sheet.rows.length; i++) {
           List<excel.Data?> row = sheet.rows[i];
 
           if (row.length != header.length) {
             print(
-                "Warning: 列数不一致のためスキップ (行番号: $i, データ長: ${row.length}, ヘッダー長: ${header.length})");
+                "Warning: 列数不一致のためスキップ (シート: $sheetName, 行番号: ${i + 1}, データ長: ${row.length}, ヘッダー長: ${header.length})");
             continue;
           }
 
@@ -120,9 +80,8 @@ class ImportQuestionsService {
             data[header[j]] = cellValue.trim();
           }
 
-          if (!data.containsKey('questionText') ||
-              data['questionText'].isEmpty) {
-            print("Warning: 問題文が空のためスキップ (行番号: $i)");
+          if (!data.containsKey('questionText') || data['questionText'].isEmpty) {
+            print("Warning: 問題文が空のためスキップ (シート: $sheetName, 行番号: ${i + 1})");
             continue;
           }
 
@@ -132,15 +91,41 @@ class ImportQuestionsService {
             data['examYear'] = null;
           }
 
-          print("Debug: 読み込んだデータ (行番号: $i): $data");
+          // questionTags を「,」で分割して配列に変換
+          if (data.containsKey('questionTags') && data['questionTags'].isNotEmpty) {
+            data['questionTags'] =
+                data['questionTags'].split(',').map((e) => e.trim()).toList();
+          } else {
+            data['questionTags'] = [];
+          }
+
+          // シート名に応じた questionType の設定
+          if (sheetName == "正誤問題") {
+            data['questionType'] = 'true_false';
+            // 正誤問題の場合、正答に応じた誤答を自動設定
+            String correct = data['correctChoiceText'] ?? '';
+            if (correct == '正しい') {
+              data['incorrectChoice1Text'] = '間違い';
+            } else if (correct == '間違い') {
+              data['incorrectChoice1Text'] = '正しい';
+            } else {
+              data['incorrectChoice1Text'] = '';
+            }
+          } else if (sheetName == "択一式問題") {
+            data['questionType'] = 'single_choice';
+            // ※ 誤答の各選択肢はシートに存在する前提
+          } else if (sheetName == "フラッシュカード式問題") {
+            data['questionType'] = 'flash_card';
+          }
+
+          // importKey がない場合は空文字とする
+          if (!data.containsKey('importKey') || data['importKey'] == null) {
+            data['importKey'] = '';
+          }
+
+          print("Debug: 読み込んだデータ (シート: $sheetName, 行番号: ${i + 1}): $data");
           questionsData.add(data);
         }
-      } else {
-        print("Error: サポートされていないファイル形式 ($extension)");
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('サポートされていないファイル形式です')),
-        );
-        return;
       }
 
       if (questionsData.isEmpty) {
@@ -161,8 +146,6 @@ class ImportQuestionsService {
   }
 
   /// Firestore へ問題データをインポートする
-  ///
-  /// importKey が null または空欄の場合は重複チェックをせず、そのまま登録します。
   Future<void> _importQuestions(
       BuildContext context,
       String folderId,
@@ -183,35 +166,12 @@ class ImportQuestionsService {
 
     print("Debug: ${questionsData.length}件のデータをFirestoreにインポート");
 
-    Set<String> seenImportKeys = {};
-    // importKey が空欄の場合は重複チェック対象外とするため、既存キー取得は行うがチェックはしない
-    List<String> existingImportKeys = await _fetchExistingImportKeys(questionSetId);
-
-    int skippedFirestoreCount = 0;
-    int skippedFileCount = 0;
     int addedCount = 0;
 
     for (var data in questionsData) {
-      // importKey が null や "null" や空文字の場合は、空文字にする
-      String rawKey = data['importKey']?.toString() ?? '';
-      String importKey = (rawKey.trim().toLowerCase() == 'null' || rawKey.trim().isEmpty) ? '' : rawKey.trim();
-
-      // importKey が空でない場合のみ重複チェックを実施
-      if (importKey.isNotEmpty) {
-        if (existingImportKeys.contains(importKey)) {
-          print("Warning: Firestoreに既に存在するためスキップ (importKey: $importKey)");
-          skippedFirestoreCount++;
-          continue;
-        }
-        if (!seenImportKeys.add(importKey)) {
-          print("Warning: ファイル内で重複のためスキップ (importKey: $importKey)");
-          skippedFileCount++;
-          continue;
-        }
-      }
-
+      // importKey はフィールドとして保持（重複チェックは行わず、ドキュメントIDは自動生成）
       Map<String, dynamic> questionDoc = {
-        'questionSetId': questionSetId, // DocumentReference ではなくIDとして保存
+        'questionSetId': questionSetId, // IDとして保存
         'questionText': data['questionText'] ?? '',
         'questionType': data['questionType'] ?? 'single_choice',
         'correctChoiceText': data['correctChoiceText'] ?? '',
@@ -224,20 +184,15 @@ class ImportQuestionsService {
         'isOfficialQuestion': false,
         'isDeleted': false,
         'isFlagged': false,
-        'importKey': importKey,
+        'importKey': data['importKey'], // フィールドとして保持
+        'questionTags': data['questionTags'] ?? [],
         'createdById': user.uid,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       };
 
-      // importKey がある場合はその値をドキュメントIDとして利用、なければ自動生成
-      DocumentReference docRef;
-      if (importKey.isNotEmpty) {
-        docRef = questionsCol.doc(importKey);
-      } else {
-        docRef = questionsCol.doc();
-      }
-
+      // ドキュメントIDは常に自動生成する
+      DocumentReference docRef = questionsCol.doc();
       batch.set(docRef, questionDoc, SetOptions(merge: true));
       addedCount++;
     }
@@ -256,22 +211,6 @@ class ImportQuestionsService {
           const SnackBar(content: Text('問題のインポートに失敗しました')),
         );
       }
-    }
-  }
-
-  /// Firestore から、指定された問題セットの importKey を取得する
-  Future<List<String>> _fetchExistingImportKeys(String questionSetId) async {
-    try {
-      QuerySnapshot snapshot = await FirebaseFirestore.instance
-          .collection('questions')
-          .where('questionSetId', isEqualTo: questionSetId)
-          .where('importKey', isGreaterThan: '')
-          .get();
-
-      return snapshot.docs.map((doc) => doc['importKey'] as String).toList();
-    } catch (e) {
-      print("Error fetching existing importKeys: $e");
-      return [];
     }
   }
 }

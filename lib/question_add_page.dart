@@ -9,6 +9,7 @@ import 'package:file_picker/file_picker.dart';
 import 'dart:typed_data';
 import 'package:image/image.dart' as img;
 import 'package:repaso/widgets/add_page_widgets/question_widgets.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class QuestionAddPage extends StatefulWidget {
   final String folderId;
@@ -549,21 +550,31 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
               const Icon(Icons.upload_file, size: 48, color: Colors.teal),
               const SizedBox(height: 16),
               const Text(
-                '問題、答え、選択肢、メモ、URLを含んだCSVを\nインポートできます。\n構成は下記のサンプルをご参考ください',
+                '問題文、答え、選択肢、解説、ヒント等を含んだ\nXLSXをインポートできます。',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 14),
               ),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: () {
-                  // CSVサンプルを開く処理
+              const SizedBox(height: 12),
+              InkWell(
+                onTap: () async {
+                  const url = 'https://docs.google.com/spreadsheets/d/1615CKsezB_8KvybWLqlxhtAXkm1hFn-d-9oD9M_PbTY/edit?usp=sharing';
+                  if (await canLaunchUrl(Uri.parse(url))) {
+                    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('URLを開けませんでした')),
+                    );
+                  }
                 },
                 child: const Text(
-                  'CSVサンプル',
-                  style: TextStyle(color: Colors.blue),
+                  'XLSXサンプル',
+                  style: TextStyle(
+                    color: Colors.blue,
+                    decoration: TextDecoration.none, // 下線を非表示
+                  ),
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.blue500,

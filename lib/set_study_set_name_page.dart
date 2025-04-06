@@ -38,6 +38,12 @@ class _SetStudySetNamePageState extends State<SetStudySetNamePage> {
     return Scaffold(
       backgroundColor: AppColors.gray50,
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, size: 20),
+          onPressed: () {
+            Navigator.pop(context);
+          },
+        ),
         title: const Text('暗記セット名の編集'),
       ),
       body: Padding(

@@ -162,6 +162,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
       totalAttemptCount: 0,
       studyStreakCount: 0,
       lastStudiedDate: "",
+      selectedMemoryLevels: ['again', 'hard', 'good', 'easy'],
     );
 
     final result = await Navigator.push(
@@ -441,17 +442,22 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
     }
 
     final studySetId = studySetDoc.id;
+    final data = studySetDoc.data() as Map<String, dynamic>? ?? {};
+
     final initialStudySet = EditPage.StudySet(
       id: studySetDoc.id,
-      name: studySetDoc['name'] ?? '未設定',
-      questionSetIds: List<String>.from(studySetDoc['questionSetIds'] ?? []),
-      numberOfQuestions: studySetDoc['numberOfQuestions'] ?? 0,
-      selectedQuestionOrder: studySetDoc['selectedQuestionOrder'] ?? 'random',
+      name: data['name'] ?? '未設定',
+      questionSetIds: List<String>.from(data['questionSetIds'] ?? []),
+      numberOfQuestions: data['numberOfQuestions'] ?? 0,
+      selectedQuestionOrder: data['selectedQuestionOrder'] ?? 'random',
       correctRateRange: RangeValues(
-        (studySetDoc['correctRateRange']?['start'] ?? 0).toDouble(),
-        (studySetDoc['correctRateRange']?['end'] ?? 100).toDouble(),
+        (data['correctRateRange']?['start'] ?? 0).toDouble(),
+        (data['correctRateRange']?['end'] ?? 100).toDouble(),
       ),
-      isFlagged: studySetDoc['isFlagged'] ?? false,
+      isFlagged: data['isFlagged'] ?? false,
+      selectedMemoryLevels: data.containsKey('selectedMemoryLevels')
+          ? List<String>.from(data['selectedMemoryLevels'])
+          : ['again', 'hard', 'good', 'easy'],
     );
 
     showModalBottomSheet(

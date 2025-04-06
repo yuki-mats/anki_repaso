@@ -85,6 +85,8 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
       final bool flagFilterOn = studySetData['isFlagged'] ?? false;
       final String selectedOrder = studySetData['selectedQuestionOrder'] ?? 'random';
       final int numberOfQuestions = studySetData['numberOfQuestions'] ?? 10;
+      final List<String> selectedMemoryLevels =
+      List<String>.from(studySetData['selectedMemoryLevels'] ?? ['again', 'hard', 'good', 'easy']);
 
       print('StudySet ID: ${widget.studySetId}');
       print('Selected questionSetIds: $questionSetIds');
@@ -146,6 +148,11 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
         final int correctCount = statData['correctCount'] ?? 0;
         final double computedCorrectRate = attemptCount > 0 ? (correctCount / attemptCount * 100) : 0.0;
         statData['correctRate'] = computedCorrectRate;
+        final lastMemoryLevel = statData['memoryLevel'] as String?;
+        if (lastMemoryLevel != null && !selectedMemoryLevels.contains(lastMemoryLevel)) {
+          print('Filtered out by memoryLevel: ${doc.id} ($lastMemoryLevel)');
+          return null;
+        }
 
         // 正答率フィルタ（correctRateStart, correctRateEnd を含む）
         if (correctRateStart != null && correctRateEnd != null) {

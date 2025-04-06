@@ -6,6 +6,7 @@ import 'package:repaso/set_number_of_questions_page.dart';
 import 'package:repaso/set_question_order_page.dart';
 import 'package:repaso/set_question_set_page.dart';
 import 'package:repaso/set_study_set_name_page.dart';
+import 'package:repaso/widgets/set_memory_level_page.dart';
 
 /// StudySet モデル（StudySetEditPage に合わせた追加フィールド付き）
 class StudySet {
@@ -21,6 +22,8 @@ class StudySet {
   final int totalAttemptCount;
   final int studyStreakCount;
   final String lastStudiedDate;
+  final List<String> selectedMemoryLevels;
+  final Timestamp? createdAt;
 
   StudySet({
     required this.name,
@@ -34,6 +37,8 @@ class StudySet {
     required this.totalAttemptCount,
     required this.studyStreakCount,
     required this.lastStudiedDate,
+    required this.selectedMemoryLevels,
+    this.createdAt,
   });
 
   // Firestoreデータから生成するファクトリコンストラクタ（存在しない場合はデフォルト値を設定）
@@ -55,6 +60,8 @@ class StudySet {
       totalAttemptCount: data['totalAttemptCount'] ?? 0,
       studyStreakCount: data['studyStreakCount'] ?? 0,
       lastStudiedDate: data['lastStudiedDate'] ?? "",
+      selectedMemoryLevels: List<String>.from(data['selectedMemoryLevels'] ?? []),
+      createdAt: data['createdAt'],
     );
   }
 
@@ -71,12 +78,13 @@ class StudySet {
         'end': correctRateRange.end,
       },
       'isFlagged': isFlagged,
-      // 追加フィールドも保存
       'memoryLevelStats': memoryLevelStats,
       'memoryLevelRatios': memoryLevelRatios,
       'totalAttemptCount': totalAttemptCount,
       'studyStreakCount': studyStreakCount,
       'lastStudiedDate': lastStudiedDate,
+      'selectedMemoryLevels': selectedMemoryLevels,
+      'createdAt': FieldValue.serverTimestamp(),
     };
   }
 }
@@ -101,7 +109,13 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
   late int? numberOfQuestions;
   late String? selectedQuestionOrder;
   List<String> _cachedQuestionSetNames = [];
-
+  List<String> _selectedMemoryLevels = ['again', 'hard', 'good', 'easy'];
+  final Map<String, String> _memoryLevelLabels = {
+    'again': 'もう一度',
+    'hard': '難しい',
+    'good': '普通',
+    'easy': '簡単',
+  };
   final Map<String, String> orderOptions = {
     "random": "ランダム",
     "attemptsDescending": "試行回数が多い順",
@@ -198,6 +212,7 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
       totalAttemptCount: 0,
       studyStreakCount: 0,
       lastStudiedDate: "",
+      selectedMemoryLevels: _selectedMemoryLevels,
     );
 
     try {
@@ -220,6 +235,13 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('学習セットの追加'),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1.0),
+          child: Container(
+            color: Colors.grey[300],
+            height: 1.0,
+          ),
+        ),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16.0),
@@ -372,6 +394,44 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
                     },
                   ),
                 ),
+              ),
+              ListTile(
+                title: Row(
+                  children: [
+                    const Icon(Icons.memory, size: 22, color: AppColors.gray600),
+                    const SizedBox(width: 6),
+                    const SizedBox(
+                      width: 80,
+                      child: Text("記憶度", style: TextStyle(fontSize: 14)),
+                    ),
+                    Expanded(
+                      child: Text(
+                        _selectedMemoryLevels.length == 4
+                            ? "すべて"
+                            : _selectedMemoryLevels
+                            .map((e) => _memoryLevelLabels[e] ?? e)
+                            .join(', '),
+                        style: const TextStyle(fontSize: 14),
+                        textAlign: TextAlign.end,
+                      ),
+                    ),
+                  ],
+                ),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.gray600),
+                onTap: () async {
+                  final result = await Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => SetMemoryLevelPage(
+                        initialSelection: _selectedMemoryLevels,
+                      ),
+                    ),
+                  );
+                  if (result != null && result is List<String>) {
+                    setState(() {
+                      _selectedMemoryLevels = result;
+                    });
+                  }
+                },
               ),
             ],
           ),
