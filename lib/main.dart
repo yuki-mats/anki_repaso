@@ -11,6 +11,48 @@ import 'forum_page.dart';
 import 'utils/app_colors.dart';
 import 'firebase_options.dart';
 import 'my_page.dart';
+// 追加：Google Mobile Ads SDK の初期化用
+import 'package:google_mobile_ads/google_mobile_ads.dart';
+// 追加：App Open Ad 管理クラスのインポート
+import 'app_open_ad_manager.dart';
+// 追加：AppLifecycleListener の簡易実装（Flutter 3.13 以降の仕組みを利用）
+class AppLifecycleListener extends StatefulWidget {
+  final Widget child;
+  final VoidCallback onRestart;
+  final VoidCallback onShow;
+  const AppLifecycleListener({
+    Key? key,
+    required this.child,
+    required this.onRestart,
+    required this.onShow,
+  }) : super(key: key);
+
+  @override
+  _AppLifecycleListenerState createState() => _AppLifecycleListenerState();
+}
+
+class _AppLifecycleListenerState extends State<AppLifecycleListener> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      widget.onRestart();
+    }
+  }
+  @override
+  Widget build(BuildContext context) {
+    return widget.child;
+  }
+}
 
 Future<void> requestTrackingPermission() async {
   try {
@@ -33,6 +75,9 @@ void main() async {
   );
 
   await initializeDateFormatting('ja_JP', null);
+
+  // Google Mobile Ads SDK の初期化
+  MobileAds.instance.initialize();
 
   runApp(const MyApp());
 }
@@ -112,7 +157,6 @@ class _StartupScreenState extends State<StartupScreen> {
   }
 }
 
-
 class MainPage extends StatefulWidget {
   const MainPage({Key? key}) : super(key: key);
   @override
@@ -121,7 +165,6 @@ class MainPage extends StatefulWidget {
 
 class _MainPageState extends State<MainPage> {
   int _currentIndex = 0;
-
   final List<Widget> _pages = [
     FolderListPage(title: 'ホーム'),
     OfficialListPage(),
@@ -129,55 +172,76 @@ class _MainPageState extends State<MainPage> {
     MyPage(),
   ];
 
+  // 追加：App Open Ad 管理インスタンス
+  final AppOpenAdManager _appOpenAdManager = AppOpenAdManager();
+
+  @override
+  void initState() {
+    super.initState();
+    // 起動時に広告をロード
+    _appOpenAdManager.loadAd();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _pages,
-      ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          boxShadow: [
-            BoxShadow(
-              color: Colors.grey.withOpacity(0.5),
-              spreadRadius: 1,
-              blurRadius: 2.5,
-              offset: const Offset(0, 3),
-            ),
-          ],
+    // 追加：アプリ切り替え時に広告表示するために AppLifecycleListener で Scaffold をラップ
+    return AppLifecycleListener(
+      onRestart: () {
+        // アプリが再開されたときに広告を表示
+        _appOpenAdManager.showAdIfAvailable();
+      },
+      onShow: () {
+        // 広告が表示された後、次回用に再ロード
+        _appOpenAdManager.loadAd();
+      },
+      child: Scaffold(
+        body: IndexedStack(
+          index: _currentIndex,
+          children: _pages,
         ),
-        child: BottomNavigationBar(
-          type: BottomNavigationBarType.fixed,
-          backgroundColor: Colors.white,
-          currentIndex: _currentIndex,
-          onTap: (index) {
-            setState(() {
-              _currentIndex = index;
-            });
-          },
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home),
-              label: 'ホーム',
-              backgroundColor: Colors.white,
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.search_rounded),
-              label: '公式問題',
-              backgroundColor: Colors.white,
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.forum_outlined),
-              label: 'コミュニティ',
-              backgroundColor: Colors.white,
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.account_circle),
-              label: 'マイページ',
-              backgroundColor: Colors.white,
-            ),
-          ],
+        bottomNavigationBar: Container(
+          decoration: BoxDecoration(
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withOpacity(0.5),
+                spreadRadius: 1,
+                blurRadius: 2.5,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: BottomNavigationBar(
+            type: BottomNavigationBarType.fixed,
+            backgroundColor: Colors.white,
+            currentIndex: _currentIndex,
+            onTap: (index) {
+              setState(() {
+                _currentIndex = index;
+              });
+            },
+            items: const [
+              BottomNavigationBarItem(
+                icon: Icon(Icons.home),
+                label: 'ホーム',
+                backgroundColor: Colors.white,
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.search_rounded),
+                label: '公式問題',
+                backgroundColor: Colors.white,
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.forum_outlined),
+                label: 'フォーラム',
+                backgroundColor: Colors.white,
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.account_circle),
+                label: 'マイページ',
+                backgroundColor: Colors.white,
+              ),
+            ],
+          ),
         ),
       ),
     );

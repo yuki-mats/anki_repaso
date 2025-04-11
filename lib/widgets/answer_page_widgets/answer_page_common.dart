@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:repaso/widgets/answer_page_widgets/chat_gpt_screen.dart';
 
 class CommonQuestionFooter extends StatelessWidget {
   final double? correctRate;
@@ -53,6 +54,37 @@ class CommonQuestionFooter extends StatelessWidget {
     );
   }
 
+  Widget _buildAIBotIconButton(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 8.0),
+      child: _buildRoundedIconButton(
+        icon: Icons.live_help_outlined,
+        onPressed: () {
+          Navigator.push(
+            context,
+            PageRouteBuilder(
+              opaque: false,
+              barrierColor: Colors.black.withOpacity(0.5), // 背景の暗くするオーバーレイ
+              pageBuilder: (context, animation, secondaryAnimation) {
+                return const ChatGPTScreen();
+              },
+              transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                const begin = Offset(0, 1);
+                const end = Offset.zero;
+                const curve = Curves.easeInOut;
+                final tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+                return SlideTransition(
+                  position: animation.drive(tween),
+                  child: child,
+                );
+              },
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   /// 説明アイコン（バッジなし）
   Widget _buildExplanationIcon() {
     return _buildRoundedIconButton(
@@ -67,7 +99,7 @@ class CommonQuestionFooter extends StatelessWidget {
       clipBehavior: Clip.none,
       children: [
         _buildRoundedIconButton(
-          icon: Icons.edit_note_outlined,
+          icon: Icons.edit_note_rounded,
           onPressed: onMemoPressed,
         ),
         if (memoCount != null && memoCount! > 0)
@@ -129,34 +161,42 @@ class CommonQuestionFooter extends StatelessWidget {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // ヒントアイコン（ヒントテキストが存在する場合）
-            if (hasHint)
+            _buildAIBotIconButton(context),
+
+            // ヒントアイコン
+            if (hasHint) ...[
+              const SizedBox(width: 8),
               _buildRoundedIconButton(
                 icon: Icons.lightbulb_outline,
                 onPressed: onShowHintDialog,
               ),
-            // 説明アイコン（footerButtonType が非null またはフラッシュカードの答えが開示されており、かつ解説テキストが存在する場合）
-            if ((footerButtonType != null || flashCardHasBeenRevealed) && hasExplanation)
-              Padding(
-                padding: const EdgeInsets.only(left: 8.0),
-                child: _buildExplanationIcon(),
-              ),
-            const SizedBox(width: 8),
-            // メモアイコン＋バッジ（公式問題の場合）
-            if (isOfficialQuestion)
+            ],
+
+            // 解説アイコン
+            if ((footerButtonType != null || flashCardHasBeenRevealed) && hasExplanation) ...[
+              const SizedBox(width: 8),
+              _buildExplanationIcon(),
+            ],
+
+            // メモアイコン（公式問題のみ）
+            if (isOfficialQuestion) ...[
+              const SizedBox(width: 8),
               _buildMemoIconWithBadge(),
+            ],
+
+            // フラグ（常に表示）
             const SizedBox(width: 8),
-            // フラグ（ブックマーク）アイコン
             _buildRoundedIconButton(
               icon: isFlagged ? Icons.bookmark : Icons.bookmark_outline,
               onPressed: onToggleFlag,
             ),
           ],
-        ),
+        )
       ],
     );
   }
 }
+
 
 /// True/False 選択ウィジェット
 class TrueFalseWidget extends StatelessWidget {

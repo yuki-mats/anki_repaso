@@ -2,7 +2,7 @@ name: repaso
 description: "A new Flutter project."
 
 publish_to: 'none'
-version: 2.3.2+1
+version: 2.4.0+1
 
 environment:
   sdk: ^3.5.3
@@ -38,6 +38,9 @@ dependencies:
   version: ^3.0.2 # バージョン管理用パッケージを追加
   rxdart: ^0.28.0
   flutter_native_splash: ^2.4.4
+  flutter_image_compress: ^2.4.0
+  flutter_math_fork: ^0.7.3
+  google_mobile_ads: ^6.0.0
 
 flutter_native_splash:
   # ロード画面の背景色
