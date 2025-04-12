@@ -102,15 +102,15 @@ class MyApp extends StatelessWidget {
           ),
           iconTheme: IconThemeData(
             size: 18,
-            color: AppColors.gray900, // アイコンの色
+            color: AppColors.gray700, // アイコンの色
           ),
           toolbarHeight: 50,
         ),
         scaffoldBackgroundColor: Colors.white,
         bottomNavigationBarTheme: const BottomNavigationBarThemeData(
           backgroundColor: Colors.white,
-          selectedItemColor: AppColors.blue500,
-          unselectedItemColor: AppColors.gray600,
+          selectedItemColor: AppColors.blue600,
+          unselectedItemColor: AppColors.gray536,
           selectedIconTheme: IconThemeData(size: 28),
           unselectedIconTheme: IconThemeData(size: 28),
           selectedLabelStyle: TextStyle(fontSize: 10),
@@ -221,6 +221,7 @@ class _MainPageState extends State<MainPage> {
             },
             items: const [
               BottomNavigationBarItem(
+                //アイコンの色を変えたい
                 icon: Icon(Icons.home),
                 label: 'ホーム',
                 backgroundColor: Colors.white,
@@ -231,7 +232,7 @@ class _MainPageState extends State<MainPage> {
                 backgroundColor: Colors.white,
               ),
               BottomNavigationBarItem(
-                icon: Icon(Icons.forum_outlined),
+                icon: Icon(Icons.comment),
                 label: 'フォーラム',
                 backgroundColor: Colors.white,
               ),

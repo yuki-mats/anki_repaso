@@ -14,7 +14,6 @@ import 'package:rxdart/rxdart.dart';
 import 'utils/app_colors.dart';
 import 'folder_add_page.dart';
 import 'main.dart';
-import 'package:flutter/material.dart';
 
 class FolderListPage extends StatefulWidget {
   const FolderListPage({super.key, required this.title});
@@ -34,6 +33,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     fetchFirebaseData();
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       FocusManager.instance.primaryFocus?.unfocus();
     });
@@ -708,19 +708,15 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                     memoryLevels['unanswered'] = unanswered;
 
                     return Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+                      padding: const EdgeInsets.symmetric(horizontal: 0.0, vertical: 4.0),
                       child: Card(
                         color: Colors.white,
-                        elevation: 0.5,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8.0),
-                        ),
+                        elevation: 0,
                         child: InkWell(
                           onTap: () {
                             // フォルダをタップしたときの遷移
                             navigateToQuestionSetsListPage(folderDoc);
                           },
-                          borderRadius: BorderRadius.circular(8.0),
                           child: Padding(
                             padding: const EdgeInsets.only(top: 8.0, bottom: 16.0, left: 16.0),
                             child: Column(
@@ -730,10 +726,27 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                                 Row(
                                   crossAxisAlignment: CrossAxisAlignment.center,
                                   children: [
-                                    RoundedIconBox(
-                                      icon: Icons.folder_outlined, // フォルダアイコン
-                                      iconColor: isPublic ? Colors.orange : AppColors.blue500, // アイコンの色
-                                      backgroundColor: isPublic ? Colors.orange.withOpacity(0.2) : AppColors.blue100, // 薄いオレンジ色の背景// アイコンサイズ
+                                    Stack(
+                                      children: [
+                                        RoundedIconBox(
+                                          icon: Icons.folder_outlined,
+                                          iconColor: AppColors.blue500,
+                                          backgroundColor: AppColors.blue100,
+                                        ),
+                                        if (isPublic)
+                                          Positioned(
+                                            bottom: 1,
+                                            right: 0,
+                                            child: Container(
+                                              padding: const EdgeInsets.all(1.0),
+                                              child: const Icon(
+                                                Icons.verified,
+                                                size: 12,
+                                                color: Colors.blueAccent,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
                                     ),
                                     const SizedBox(width: 12),
                                     Expanded(
@@ -742,10 +755,10 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                                         style: const TextStyle(
                                           fontSize: 14,
                                           fontWeight: FontWeight.bold,
-                                          color: AppColors.gray700,
+                                          color: Colors.black87,
                                         ),
                                         overflow: TextOverflow.ellipsis,
-                                        maxLines: 1,
+                                        maxLines: 2,
                                       ),
                                     ),
                                     IconButton(
@@ -856,13 +869,10 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
             };
 
             return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+              padding: const EdgeInsets.symmetric(horizontal: 0.0, vertical: 4.0),
               child: Card(
                 color: Colors.white,
-                elevation: 0.5,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8.0),
-                ),
+                elevation: 0,
                 child: InkWell(
                   onTap: () {
                     final studySetId = studySetDoc.id;
@@ -875,7 +885,6 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                       ),
                     );
                   },
-                  borderRadius: BorderRadius.circular(8.0),
                   child: Padding(
                     padding: const EdgeInsets.only(top: 8.0, bottom: 16.0, left: 16.0),
                     child: Column(
@@ -980,6 +989,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
           bottom: TabBar(
             controller: _tabController,
             labelColor: AppColors.blue700,
+            overlayColor: WidgetStateProperty.all(Colors.transparent),
             unselectedLabelColor: AppColors.gray900,
             labelStyle:
             const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -994,17 +1004,14 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
             ],
           ),
         ),
-        body: Padding(
-          padding: const EdgeInsets.only(top: 16.0),
-          child: TabBarView(
-            controller: _tabController,
-            children: [
-              buildFolderList(),
-              buildStudySetList(),
-            ],
-          ),
+        body: TabBarView(
+          controller: _tabController,
+          children: [
+            buildFolderList(),
+            buildStudySetList(),
+          ],
         ),
-        backgroundColor: AppColors.gray50,
+        backgroundColor: Colors.white,
         floatingActionButton: Padding(
           padding: const EdgeInsets.only(bottom: 8.0, right: 16.0),
           child: FloatingActionButton(
@@ -1019,7 +1026,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(30),
             ),
-            child: const Icon(Icons.add, color: Colors.white),
+            child: const Icon(Icons.add, color: Colors.white, size: 40),
           ),
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,

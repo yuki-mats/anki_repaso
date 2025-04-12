@@ -66,7 +66,7 @@ class LobbyPage extends StatelessWidget {
                     ),
                     child: const Text(
                       'はじめる',
-                      style: TextStyle(fontSize: 16, color: Colors.white),
+                      style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ),
@@ -83,7 +83,7 @@ class LobbyPage extends StatelessWidget {
                       );
                     },
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.grey, side: const BorderSide(color: Colors.grey), // ボーダーの色
+                      foregroundColor: Colors.grey, side: const BorderSide(color: Colors.black54, ), // ボーダーの色
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -91,7 +91,7 @@ class LobbyPage extends StatelessWidget {
                     ),
                     child: const Text(
                       'ログイン',
-                      style: TextStyle(fontSize: 16),
+                      style: TextStyle(fontSize: 16, color: Colors.black87, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ),

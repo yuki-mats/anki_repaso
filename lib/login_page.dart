@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:repaso/sign_up_page.dart';
-// iOS向けのパッケージはWebでは利用しないので条件分岐します
+import 'package:repaso/widgets/common_widgets/common_text_field.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'utils/app_colors.dart';
 import 'main.dart';
@@ -19,7 +19,6 @@ class _LoginPageState extends State<LoginPage> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  // モバイル用GoogleSignInインスタンス（Webは使用しません）
   final GoogleSignIn _googleSignIn = GoogleSignIn();
   bool _isPasswordVisible = false;
 
@@ -57,19 +56,9 @@ class _LoginPageState extends State<LoginPage> {
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 16),
-                  TextField(
+                  CommonTextField(
                     controller: resetEmailController,
-                    decoration: InputDecoration(
-                      labelText: 'メールアドレス',
-                      labelStyle: const TextStyle(fontSize: 14),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8.0),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        vertical: 12.0,
-                        horizontal: 16.0,
-                      ),
-                    ),
+                    labelText: 'メールアドレス',
                   ),
                   const SizedBox(height: 32),
                   Column(
@@ -95,10 +84,7 @@ class _LoginPageState extends State<LoginPage> {
                             );
                           }
                         },
-                        child: const Text(
-                          '送信する',
-                          style: TextStyle(fontSize: 16),
-                        ),
+                        child: const Text('送信する', style: TextStyle(fontSize: 16)),
                       ),
                       const SizedBox(height: 12),
                       OutlinedButton(
@@ -109,13 +95,8 @@ class _LoginPageState extends State<LoginPage> {
                           side: const BorderSide(color: Colors.grey),
                           padding: const EdgeInsets.symmetric(vertical: 12.0),
                         ),
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                        },
-                        child: const Text(
-                          'キャンセル',
-                          style: TextStyle(fontSize: 14, color: Colors.grey),
-                        ),
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('キャンセル', style: TextStyle(fontSize: 14, color: Colors.grey)),
                       ),
                     ],
                   ),
@@ -135,12 +116,9 @@ class _LoginPageState extends State<LoginPage> {
         const SnackBar(content: Text('パスワードリセットメールを送信しました。')),
       );
     } on FirebaseAuthException catch (e) {
-      String errorMessage;
-      if (e.code == 'user-not-found') {
-        errorMessage = 'このメールアドレスは登録されていません。';
-      } else {
-        errorMessage = 'エラーが発生しました: ${e.message}';
-      }
+      final errorMessage = e.code == 'user-not-found'
+          ? 'このメールアドレスは登録されていません。'
+          : 'エラーが発生しました: ${e.message}';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMessage)));
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -149,88 +127,54 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  Future<void> _signInWithApple() async {
-    try {
-      if (kIsWeb) {
-        // Webの場合はFirebaseのOAuthProviderを利用
-        final OAuthProvider appleProvider = OAuthProvider('apple.com');
-        appleProvider.addScope('email');
-        appleProvider.addScope('name');
-        final UserCredential userCredential =
-        await FirebaseAuth.instance.signInWithPopup(appleProvider);
-        // tracking permission等の処理が必要なら追加
-        await requestTrackingPermission();
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const MainPage(),
-          ),
-        );
-      } else {
-        // モバイルの場合（既存の実装）
-        final result = await SignInWithApple.getAppleIDCredential(
-          scopes: [
-            AppleIDAuthorizationScopes.email,
-            AppleIDAuthorizationScopes.fullName,
-          ],
-        );
-        final oauthProvider = OAuthProvider('apple.com');
-        final credential = oauthProvider.credential(
-          idToken: result.identityToken,
-          accessToken: result.authorizationCode,
-        );
-        await FirebaseAuth.instance.signInWithCredential(credential);
-        await requestTrackingPermission();
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const MainPage(),
-          ),
-        );
-      }
-    } catch (e) {
-      print('Apple Sign-In Error: $e');
-    }
-  }
-
   Future<void> _signInWithGoogle() async {
     try {
       if (kIsWeb) {
-        // Webの場合はGoogleAuthProviderを利用してsignInWithPopup
-        final GoogleAuthProvider googleProvider = GoogleAuthProvider();
+        final googleProvider = GoogleAuthProvider();
         googleProvider.setCustomParameters({'prompt': 'select_account'});
-        final UserCredential userCredential =
         await FirebaseAuth.instance.signInWithPopup(googleProvider);
-        await requestTrackingPermission();
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const MainPage(),
-          ),
-              (Route<dynamic> route) => false,
-        );
       } else {
-        // モバイルの場合は従来のgoogle_sign_inパッケージを利用
-        final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+        final googleUser = await _googleSignIn.signIn();
         if (googleUser == null) return;
-        final GoogleSignInAuthentication googleAuth =
-        await googleUser.authentication;
-        final AuthCredential credential = GoogleAuthProvider.credential(
+        final googleAuth = await googleUser.authentication;
+        final credential = GoogleAuthProvider.credential(
           accessToken: googleAuth.accessToken,
           idToken: googleAuth.idToken,
         );
         await _auth.signInWithCredential(credential);
-        await requestTrackingPermission();
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const MainPage(),
-          ),
-              (Route<dynamic> route) => false,
-        );
       }
+      await requestTrackingPermission();
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => const MainPage()),
+            (route) => false,
+      );
     } catch (e) {
-      print("Error during Google Sign In: $e");
+      print("Google Sign In Error: $e");
+    }
+  }
+
+  Future<void> _signInWithApple() async {
+    try {
+      if (kIsWeb) {
+        final appleProvider = OAuthProvider('apple.com')
+          ..addScope('email')
+          ..addScope('name');
+        await FirebaseAuth.instance.signInWithPopup(appleProvider);
+      } else {
+        final credential = await SignInWithApple.getAppleIDCredential(
+          scopes: [AppleIDAuthorizationScopes.email, AppleIDAuthorizationScopes.fullName],
+        );
+        final oauthCredential = OAuthProvider('apple.com').credential(
+          idToken: credential.identityToken,
+          accessToken: credential.authorizationCode,
+        );
+        await _auth.signInWithCredential(oauthCredential);
+      }
+      await requestTrackingPermission();
+      Navigator.push(context, MaterialPageRoute(builder: (_) => const MainPage()));
+    } catch (e) {
+      print('Apple Sign-In Error: $e');
     }
   }
 
@@ -239,10 +183,7 @@ class _LoginPageState extends State<LoginPage> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text(
-          'ログイン',
-          style: TextStyle(color: Colors.black, fontSize: 24),
-        ),
+        title: const Text('ログイン', style: TextStyle(color: Colors.black, fontSize: 18)),
         backgroundColor: Colors.white,
         elevation: 0,
       ),
@@ -251,57 +192,45 @@ class _LoginPageState extends State<LoginPage> {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24.0),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const SizedBox(height: 18),
-                SizedBox(
-                  height: 48,
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    icon: const Icon(
-                      Icons.g_mobiledata_sharp,
-                      color: Colors.black,
-                      size: 44,
-                    ),
-                    label: const Text(
-                      'Googleでログイン',
-                      style: TextStyle(color: Colors.black, fontSize: 18),
-                    ),
-                    onPressed: _signInWithGoogle,
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Colors.grey),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
+                const SizedBox(height: 8),
+                ElevatedButton(
+                  onPressed: _signInWithGoogle,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.blue600,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    minimumSize: const Size.fromHeight(48),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.g_mobiledata_sharp, color: Colors.white, size: 36),
+                      Text('Googleでログイン', style: TextStyle(color: Colors.white, fontSize: 18)),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 16),
-                SizedBox(
-                  height: 48,
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    icon: const Icon(
-                      Icons.apple,
-                      color: Colors.black,
-                      size: 32,
-                    ),
-                    label: const Text(
-                      'Appleでログイン',
-                      style: TextStyle(color: Colors.black, fontSize: 18),
-                    ),
-                    onPressed: _signInWithApple,
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Colors.grey),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
+                ElevatedButton(
+                  onPressed: _signInWithApple,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.black,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    minimumSize: const Size.fromHeight(48),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.apple, color: Colors.white, size: 24),
+                      SizedBox(width: 8),
+                      Text('Appleでログイン', style: TextStyle(color: Colors.white, fontSize: 18)),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 32),
-                Row(
-                  children: const [
+                const Row(
+                  children: [
                     Expanded(child: Divider(color: Colors.grey)),
                     Padding(
                       padding: EdgeInsets.symmetric(horizontal: 8.0),
@@ -311,50 +240,20 @@ class _LoginPageState extends State<LoginPage> {
                   ],
                 ),
                 const SizedBox(height: 32),
-                TextField(
+                CommonTextField(
                   controller: _emailController,
-                  onChanged: (value) {
-                    setState(() {
-                      email = value;
-                    });
-                  },
-                  decoration: InputDecoration(
-                    labelText: 'メールアドレス',
-                    filled: true,
-                    fillColor: Colors.grey[200],
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
+                  labelText: 'メールアドレス',
+                  onChanged: (value) => setState(() => email = value),
                 ),
                 const SizedBox(height: 16),
-                TextField(
+                CommonTextField(
                   controller: _passwordController,
+                  labelText: 'パスワード',
                   obscureText: !_isPasswordVisible,
-                  onChanged: (value) {
-                    setState(() {
-                      password = value;
-                    });
-                  },
-                  decoration: InputDecoration(
-                    labelText: 'パスワード',
-                    filled: true,
-                    fillColor: Colors.grey[200],
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide.none,
-                    ),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          _isPasswordVisible = !_isPasswordVisible;
-                        });
-                      },
-                    ),
+                  onChanged: (value) => setState(() => password = value),
+                  suffixIcon: IconButton(
+                    icon: Icon(_isPasswordVisible ? Icons.visibility : Icons.visibility_off),
+                    onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -362,10 +261,7 @@ class _LoginPageState extends State<LoginPage> {
                   alignment: Alignment.centerRight,
                   child: TextButton(
                     onPressed: _showPasswordResetDialog,
-                    child: const Text(
-                      'パスワードを忘れた',
-                      style: TextStyle(color: AppColors.blue600),
-                    ),
+                    child: const Text('パスワードを忘れた', style: TextStyle(color: AppColors.blue600)),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -373,77 +269,97 @@ class _LoginPageState extends State<LoginPage> {
                   width: double.infinity,
                   child: ElevatedButton(
                     onPressed: () async {
-                      try {
-                        UserCredential userCredential = await FirebaseAuth.instance
-                            .signInWithEmailAndPassword(
-                          email: email,
-                          password: password,
-                        );
+                      final emailTrimmed = email.trim();
+                      final passwordTrimmed = password.trim();
 
-                        User? user = userCredential.user;
-                        if (user != null) {
-                          if (!user.emailVerified) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                  content: Text('メールアドレスが確認されていません。確認してください。')),
-                            );
-                            await FirebaseAuth.instance.signOut();
-                            return;
-                          }
-                          await requestTrackingPermission();
-                          Navigator.pushAndRemoveUntil(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const MainPage(),
-                            ),
-                                (Route<dynamic> route) => false,
+                      // メールアドレスの形式を事前チェック
+                      final emailRegex = RegExp(r"^[\w\.-]+@[\w\.-]+\.\w+$");
+                      if (!emailRegex.hasMatch(emailTrimmed)) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('メールアドレスの形式が正しくありません。')),
+                        );
+                        return;
+                      }
+
+                      try {
+                        final userCredential = await _auth.signInWithEmailAndPassword(
+                          email: emailTrimmed,
+                          password: passwordTrimmed,
+                        );
+                        final user = userCredential.user;
+                        if (user != null && !user.emailVerified) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('メールアドレスが確認されていません。確認してください。')),
                           );
+                          await _auth.signOut();
+                          return;
                         }
+
+                        await requestTrackingPermission();
+                        Navigator.pushAndRemoveUntil(
+                          context,
+                          MaterialPageRoute(builder: (context) => const MainPage()),
+                              (route) => false,
+                        );
                       } on FirebaseAuthException catch (e) {
-                        if (e.code == 'user-not-found') {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('メールアドレスが登録されていません。')),
-                          );
-                        } else if (e.code == 'wrong-password') {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('パスワードが間違っています。')),
-                          );
+                        String errorMessage;
+                        switch (e.code) {
+                          case 'user-disabled':
+                            errorMessage = 'このユーザーアカウントは無効化されています。';
+                            break;
+                          case 'user-not-found':
+                            errorMessage = 'ユーザーが見つかりません。メールアドレスを確認してください。';
+                            break;
+                          case 'wrong-password':
+                            errorMessage = 'パスワードが間違っています。';
+                            break;
+                          default:
+                            errorMessage = 'エラーが発生しました（${e.message}）';
+                            break;
                         }
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(errorMessage)),
+                        );
                       } catch (e) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('エラーが発生しました: $e')),
+                          SnackBar(content: Text('予期しないエラーが発生しました: $e')),
                         );
                       }
                     },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.blue500,
+                    style: OutlinedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      elevation: 0,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
+                        side: const BorderSide(color: Colors.grey),
                       ),
                       padding: const EdgeInsets.symmetric(vertical: 12),
+                    ).copyWith(
+                      overlayColor: WidgetStateProperty.resolveWith<Color?>((states) {
+                        if (states.contains(WidgetState.pressed)) {
+                          return AppColors.gray50;
+                        }
+                        return null;
+                      }),
                     ),
                     child: const Text(
                       'ログインする',
-                      style: TextStyle(fontSize: 16, color: Colors.white),
+                      style: TextStyle(fontSize: 16, color: Colors.black87, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ),
                 const SizedBox(height: 24),
                 GestureDetector(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const SignUpPage(),
-                      ),
-                    );
-                  },
+                  onTap: () => Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (_) => const SignUpPage()),
+                  ),
                   child: const Text(
                     '新規登録はこちら',
                     style: TextStyle(
                       color: AppColors.blue600,
-                      decoration: TextDecoration.underline,
                       decorationColor: AppColors.blue600,
+                      decoration: TextDecoration.none,
                     ),
                   ),
                 ),

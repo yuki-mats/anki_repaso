@@ -34,6 +34,18 @@ class MemoryLevelProgressBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isAllZero = order.every((level) => (memoryValues[level] ?? 0) == 0);
+
+    if (isAllZero) {
+      return ClipRRect(
+        borderRadius: borderRadius,
+        child: Container(
+          height: height,
+          color: _getMemoryLevelColor('unanswered'),
+        ),
+      );
+    }
+
     return ClipRRect(
       borderRadius: borderRadius,
       child: Row(

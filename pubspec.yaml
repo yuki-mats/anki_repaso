@@ -67,4 +67,7 @@ flutter_icons:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/images/ios_neutral_rd_na@3x.png
+
 
