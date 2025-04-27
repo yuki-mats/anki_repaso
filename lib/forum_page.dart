@@ -61,7 +61,7 @@ class _AllMemoListPageState extends State<ForumPage> {
       ),
       body: Container(
         color: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+        padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 8.0),
         child: StreamBuilder<QuerySnapshot>(
           stream: _getMemoStream(),
           builder: (context, snapshot) {

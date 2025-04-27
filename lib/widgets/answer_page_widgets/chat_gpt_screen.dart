@@ -15,7 +15,7 @@ class _ChatGPTScreenState extends State<ChatGPTScreen> {
   // ダミーのメッセージ一覧（初期表示用）
   final List<Message> _messages = [
     Message(
-      text: "こんにちは！私はChatGPTです。\nご質問は何でしょうか？",
+      text: "こんにちは！LLMを活用した機能を現在開発中です！\n楽しみにしていてください！",
       isUser: false,
     ),
     Message(
@@ -190,7 +190,7 @@ class _ChatGPTScreenState extends State<ChatGPTScreen> {
                     cursorColor: Colors.blue,
                     style: const TextStyle(fontSize: 14),
                     decoration: InputDecoration(
-                      hintText: "メッセージを入力…",
+                      hintText: "メッセージを入力…（使用できません）",
                       hintStyle: TextStyle(color: Colors.grey.shade500),
                       contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
                       filled: true,
@@ -238,7 +238,7 @@ class _ChatGPTScreenState extends State<ChatGPTScreen> {
         backgroundColor: Colors.white,
         centerTitle: false,
         title: const Text(
-          "AI解説",
+          "AI解説（現在開発中）",
           style: TextStyle(color: Colors.black),
         ),
         actions: [

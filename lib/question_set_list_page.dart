@@ -28,7 +28,6 @@ class QuestionSetsListPage extends StatefulWidget {
 }
 
 class _QuestionSetListPageState extends State<QuestionSetsListPage> {
-
   void navigateToQuestionSetAddPage(BuildContext context, DocumentSnapshot folder) {
     Navigator.push(
       context,
@@ -42,20 +41,14 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
     try {
       // デバッグ用: QuestionSet ID を確認
       print("QuestionSet ID: ${questionSet.id}");
-
-      // questions コレクションから指定の questionSetRef に関連する質問を取得
       QuerySnapshot questionSnapshot = await FirebaseFirestore.instance
           .collection("questions")
           .where("questionSetRef", isEqualTo: questionSet.reference)
           .get();
 
-      // リファレンスをリスト化
-      List<DocumentReference> questionRefs = questionSnapshot.docs.map((doc) => doc.reference).toList();
+      List<DocumentReference> questionRefs =
+      questionSnapshot.docs.map((doc) => doc.reference).toList();
 
-      // デバッグ用
-      print("QuestionRefs: ${questionRefs.map((ref) => ref.id).toList()}");
-
-      // 質問がない場合はエラーメッセージを表示
       if (questionRefs.isEmpty) {
         print("No questions found for the selected question set.");
         ScaffoldMessenger.of(context).showSnackBar(
@@ -75,7 +68,6 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
     }
   }
 
-
   void navigateToQuestionListPage(BuildContext context, DocumentSnapshot folder, DocumentSnapshot questionSet) {
     Navigator.push(
       context,
@@ -88,7 +80,6 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
       ),
     );
   }
-
 
   void navigateToQuestionAddPage(
       BuildContext context,
@@ -110,19 +101,15 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
     if (result == true) {
       Future.microtask(() {
         if (mounted) {
-          print('FolderListPageへ true を渡します');
           try {
             Navigator.of(context, rootNavigator: true).pop(true);
           } catch (e) {
             print('Navigator.pop() 実行時にエラー発生: $e');
           }
-        } else {
-          print('ウィジェットが破棄されているため、Navigator.pop を呼び出しません');
         }
       });
     }
   }
-
 
   void navigateToQuestionSetsEditPage(BuildContext context, DocumentSnapshot folder, DocumentSnapshot questionSet) async {
     final result = await Navigator.push(
@@ -141,13 +128,11 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
     }
   }
 
-
   void navigateToAnswerPage(BuildContext context, DocumentReference folderRef, DocumentReference questionSetRef, String questionSetName) {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => AnswerPage(
-          // folderId と questionSetId を渡す
           folderId: folderRef.id,
           questionSetId: questionSetRef.id,
           questionSetName: questionSetName,
@@ -155,8 +140,8 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
       ),
     );
   }
+
   void showQuestionSetOptionsModal(BuildContext context, DocumentSnapshot folder, DocumentSnapshot questionSet) async {
-    // FolderListPageから渡されたfolderPermissionを利用
     bool isViewer = widget.folderPermission == 'viewer';
 
     showModalBottomSheet(
@@ -229,7 +214,6 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                   },
                 ),
                 const SizedBox(height: 8),
-                // 問題の追加（編集権限がない場合は無効化）
                 Tooltip(
                   message: isViewer ? '編集権限がありません。' : '',
                   child: ListTile(
@@ -253,7 +237,6 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                // 名前を変更（編集権限がない場合は無効化）
                 Tooltip(
                   message: isViewer ? '編集権限がありません。' : '',
                   child: ListTile(
@@ -277,7 +260,6 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                // 削除する（削除権限がない場合は無効化）
                 Tooltip(
                   message: isViewer ? '削除権限がありません。' : '',
                   child: ListTile(
@@ -296,7 +278,6 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                         ? null
                         : () async {
                       Navigator.of(context).pop();
-                      // 確認ダイアログを表示
                       bool? confirmDelete = await showDialog<bool>(
                         context: context,
                         builder: (context) => AlertDialog(
@@ -327,13 +308,11 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                         WriteBatch batch = firestore.batch();
                         final deletedAt = FieldValue.serverTimestamp();
 
-                        // 質問集自体をソフトデリート
                         batch.update(questionSet.reference, {
                           'isDeleted': true,
                           'deletedAt': deletedAt,
                         });
 
-                        // 配下の質問を取得してソフトデリート
                         QuerySnapshot questionSnapshot = await firestore
                             .collection("questions")
                             .where("questionSetRef", isEqualTo: questionSet.reference)
@@ -344,25 +323,8 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                             'deletedAt': deletedAt,
                           });
                         }
-
-                        // バッチ更新を実行
                         await batch.commit();
-
-                        // 上位フォルダの質問数を再計算して更新
-                        await updateQuestionCounts(folder.id, questionSet.id);
-
-                        // folderSetUserStats の memoryLevels から対象の質問エントリーを削除
-                        Map<String, dynamic> deletionMap = {};
-                        for (var question in questionSnapshot.docs) {
-                          deletionMap["memoryLevels.${question.id}"] = FieldValue.delete();
-                        }
-                        if (deletionMap.isNotEmpty) {
-                          await widget.folder.reference
-                              .collection('folderSetUserStats')
-                              .doc(FirebaseAuth.instance.currentUser!.uid)
-                              .update(deletionMap);
-                        }
-
+                        await updateQuestionCounts(widget.folder.id, questionSet.id);
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('問題集と配下の問題が削除されました。')),
                         );
@@ -381,13 +343,14 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
 
   @override
   Widget build(BuildContext context) {
+    // 上部パディングを除去した ListView にするため、MediaQuery.removePadding を利用
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.folder['name']),
         leading: IconButton(
           icon: Icon(Icons.arrow_back_ios),
           onPressed: () {
-            Navigator.pop(context, true);  // ★ ここでtrueを返す
+            Navigator.pop(context, true);
           },
         ),
         bottom: PreferredSize(
@@ -396,158 +359,178 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
         ),
       ),
       body: Container(
-        color: AppColors.gray50,
-        padding: const EdgeInsets.only(top: 16.0),
-        child: StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection("questionSets")
-              .where("folderId", isEqualTo: widget.folder.id)
-              .where("isDeleted", isEqualTo: false)  // 追加: 削除フラグがfalseのもののみ表示
-              .snapshots(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (snapshot.hasError) {
-              return const Center(child: Text('エラーが発生しました'));
-            }
-            final questionSets = snapshot.data?.docs ?? [];
-            if (questionSets.isEmpty) {
-              // ここで「表示する問題集がありません。」というメッセージを表示する
-              return const Center(
-                child: Text(
-                  "問題集がありません。\n\n早速、右下をタップし作成しよう！",
-                  style: TextStyle(fontSize: 16, color: Colors.black54),
-                  textAlign: TextAlign.center,
-                ),
-              );
-            }
-            // 名前の昇順でソート
-            questionSets.sort((a, b) {
-              final aData = a.data() as Map<String, dynamic>? ?? {};
-              final bData = b.data() as Map<String, dynamic>? ?? {};
-              final aName = aData['name'] ?? '';
-              final bName = bData['name'] ?? '';
-              return aName.toString().compareTo(bName.toString());
-            });
-            return ListView.builder(
-              itemCount: questionSets.length,
-              itemBuilder: (context, index) {
-                final questionSet = questionSets[index];
-                final questionSetData = questionSet.data() as Map<String, dynamic>? ?? {};
-                final questionCount = questionSetData['questionCount'] ?? 0;
+        color: Colors.white,
+        // フォルダリスト同様、上部の余白をなくすため padding はゼロに
+        padding: EdgeInsets.zero,
+        child: MediaQuery.removePadding(
+          removeTop: true,
+          context: context,
+          child: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection("questionSets")
+                .where("folderId", isEqualTo: widget.folder.id)
+                .where("isDeleted", isEqualTo: false)
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return const Center(child: Text('エラーが発生しました'));
+              }
+              final questionSets = snapshot.data?.docs ?? [];
+              if (questionSets.isEmpty) {
+                return const Center(
+                  child: Text(
+                    "問題集がありません。\n\n早速、右下をタップし作成しよう！",
+                    style: TextStyle(fontSize: 16, color: Colors.black54),
+                    textAlign: TextAlign.center,
+                  ),
+                );
+              }
+              // 名前順にソート
+              questionSets.sort((a, b) {
+                final aName = (a.data() as Map<String, dynamic>? ?? {})['name'] ?? '';
+                final bName = (b.data() as Map<String, dynamic>? ?? {})['name'] ?? '';
+                return aName.toString().compareTo(bName.toString());
+              });
+              return ListView.builder(
+                padding: const EdgeInsets.only(top: 0.0, bottom: 80.0),
+                itemCount: questionSets.length,
+                itemBuilder: (context, index) {
+                  final questionSet = questionSets[index];
+                  final questionSetData = questionSet.data() as Map<String, dynamic>? ?? {};
+                  final questionCount = questionSetData['questionCount'] ?? 0;
+                  // ユーザーごとの統計情報取得
+                  return StreamBuilder<DocumentSnapshot>(
+                    stream: questionSet.reference
+                        .collection('questionSetUserStats')
+                        .doc(FirebaseAuth.instance.currentUser?.uid)
+                        .snapshots(),
+                    builder: (context, userStatsSnapshot) {
+                      Map<String, int> memoryLevels = {
+                        'again': 0,
+                        'hard': 0,
+                        'good': 0,
+                        'easy': 0,
+                      };
+                      int correctAnswers = 0;
+                      int totalAnswers = 0;
+                      if (userStatsSnapshot.hasData && userStatsSnapshot.data!.exists) {
+                        final userStatsData = userStatsSnapshot.data!.data() as Map<String, dynamic>? ?? {};
+                        final memoryData = userStatsData['memoryLevels'] as Map<String, dynamic>? ?? {};
+                        memoryData.forEach((key, value) {
+                          if (memoryLevels.containsKey(value)) {
+                            memoryLevels[value] = memoryLevels[value]! + 1;
+                          }
+                        });
+                        correctAnswers = (memoryLevels['easy'] ?? 0) +
+                            (memoryLevels['good'] ?? 0) +
+                            (memoryLevels['hard'] ?? 0);
+                        totalAnswers = correctAnswers + (memoryLevels['again'] ?? 0);
+                      }
+                      final unanswered = (questionCount > correctAnswers) ? (questionCount - correctAnswers) : 0;
+                      memoryLevels['unanswered'] = unanswered;
 
-                return StreamBuilder<DocumentSnapshot>(
-                  stream: questionSet.reference
-                      .collection('questionSetUserStats')
-                      .doc(FirebaseAuth.instance.currentUser?.uid)
-                      .snapshots(),
-                  builder: (context, userStatsSnapshot) {
-                    Map<String, int> memoryLevels = {
-                      'again': 0,
-                      'hard': 0,
-                      'good': 0,
-                      'easy': 0,
-                    };
-
-                    if (userStatsSnapshot.hasData && userStatsSnapshot.data!.exists) {
-                      final userStatsData = userStatsSnapshot.data!.data() as Map<String, dynamic>? ?? {};
-                      final memoryData = userStatsData['memoryLevels'] as Map<String, dynamic>? ?? {};
-                      memoryData.forEach((key, value) {
-                        if (memoryLevels.containsKey(value)) {
-                          memoryLevels[value] = memoryLevels[value]! + 1;
-                        }
-                      });
-                    }
-
-                    // **正答数の計算 (hard, good, easy の合計)**
-                    final correctAnswers = (memoryLevels['easy'] ?? 0) +
-                        (memoryLevels['good'] ?? 0) +
-                        (memoryLevels['hard'] ?? 0);
-
-                    final totalAnswers = (memoryLevels['easy'] ?? 0) +
-                        (memoryLevels['good'] ?? 0) +
-                        (memoryLevels['hard'] ?? 0) +
-                        (memoryLevels['again'] ?? 0);
-
-                    // **未回答数の計算**
-                    final unanswered = (questionCount > correctAnswers)
-                        ? (questionCount - correctAnswers)
-                        : 0;
-
-                    // 未回答を memoryLevels に追加
-                    memoryLevels['unanswered'] = unanswered;
-
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-                      child: Card(
-                        color: Colors.white,
-                        elevation: 0.5,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8.0),
-                        ),
-                        child: InkWell(
-                          onTap: () {
-                            navigateToAnswerPage(context, widget.folder.reference, questionSet.reference, questionSetData['name']);
-                          },
-                          borderRadius: BorderRadius.circular(8.0),
-                          child: Padding(
-                            padding: const EdgeInsets.only(top: 8.0, bottom: 16.0, left: 16.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    RoundedIconBox(
-                                      icon: Icons.quiz_outlined, // アイコン
-                                      iconColor: widget.folder['isPublic'] ? Colors.orange : AppColors.blue600, // 公開フォルダならオレンジ
-                                      backgroundColor: widget.folder['isPublic'] ? Colors.orange.withOpacity(0.2) : AppColors.blue100, // 公開フォルダなら薄いオレンジ背景
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Text(
-                                        questionSetData['name'],
-                                        style: const TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.bold,
-                                          color: AppColors.gray700,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                        maxLines: 1,
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 0.0, vertical: 4.0),
+                        child: Card(
+                          color: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8.0),
+                          ),
+                          child: InkWell(
+                            onTap: () {
+                              navigateToAnswerPage(
+                                context,
+                                widget.folder.reference,
+                                questionSet.reference,
+                                questionSetData['name'],
+                              );
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.only(top: 8.0, bottom: 0.0, left: 16.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // タイトル行：アイコン（Stack で公式の場合に verified アイコンを追加）、タイトル、オプションボタン
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.center,
+                                    children: [
+                                      Stack(
+                                        children: [
+                                          RoundedIconBox(
+                                            icon: Icons.quiz_outlined,
+                                            iconColor: AppColors.blue500,
+                                            backgroundColor: AppColors.blue100,
+                                          ),
+                                          if (widget.folder['isPublic'] == true)
+                                            Positioned(
+                                              bottom: 1,
+                                              right: 0,
+                                              child: Container(
+                                                padding: const EdgeInsets.all(1.0),
+                                                child: const Icon(
+                                                  Icons.verified,
+                                                  size: 12,
+                                                  color: Colors.blueAccent,
+                                                ),
+                                              ),
+                                            ),
+                                        ],
                                       ),
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(Icons.more_horiz_rounded, color: Colors.grey),
-                                      onPressed: () {
-                                        showQuestionSetOptionsModal(context, widget.folder, questionSet);
-                                      },
-                                    ),
-                                  ],
-                                ),
-                                QuestionRateDisplay(
-                                  top: correctAnswers,
-                                  bottom: totalAnswers,
-                                  memoryLevels: memoryLevels,
-                                  count: questionCount,
-                                  countSuffix: ' 問',
-                                ),
-                                const SizedBox(height: 2),
-                                // **メモリーレベルのプログレスバー**
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 16.0),
-                                  child: MemoryLevelProgressBar(memoryValues: memoryLevels),
-                                ),
-                              ],
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Text(
+                                          questionSetData['name'],
+                                          style: const TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.bold,
+                                            color: AppColors.gray700,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                          maxLines: 1,
+                                        ),
+                                      ),
+                                      Container(
+                                        constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                                        alignment: Alignment.center,
+                                        child: IconButton(
+                                          icon: const Icon(Icons.more_horiz_outlined, color: Colors.grey),
+                                          onPressed: () {
+                                            showQuestionSetOptionsModal(context, widget.folder, questionSet);
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  // 正答率・総問題数表示
+                                  QuestionRateDisplay(
+                                    top: correctAnswers,
+                                    bottom: totalAnswers,
+                                    memoryLevels: memoryLevels,
+                                    count: questionCount,
+                                    countSuffix: ' 問',
+                                  ),
+                                  const SizedBox(height: 2),
+                                  // メモリーレベルのプログレスバー
+                                  Padding(
+                                    padding: const EdgeInsets.only(right: 16.0),
+                                    child: MemoryLevelProgressBar(memoryValues: memoryLevels),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    );
-                  },
-                );
-              },
-            );
-          },
+                      );
+                    },
+                  );
+                },
+              );
+            },
+          ),
         ),
       ),
       floatingActionButton: Padding(
@@ -560,7 +543,7 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(30),
           ),
-          child: const Icon(Icons.add, color: Colors.white),
+          child: const Icon(Icons.add, color: Colors.white, size: 40),
         ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,

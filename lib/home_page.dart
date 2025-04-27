@@ -644,6 +644,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
             }
 
             return ListView.builder(
+              padding: const EdgeInsets.only(top: 0.0, bottom: 80.0),
               itemCount: folders.length,
               itemBuilder: (context, index) {
                 final folderDoc = folders[index];
@@ -718,7 +719,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                             navigateToQuestionSetsListPage(folderDoc);
                           },
                           child: Padding(
-                            padding: const EdgeInsets.only(top: 8.0, bottom: 16.0, left: 16.0),
+                            padding: const EdgeInsets.only(top: 8.0, bottom: 0.0, left: 16.0),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -780,10 +781,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                                 ),
                                 const SizedBox(height: 2),
                                 // **メモリーレベルのプログレスバー**
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 16.0),
-                                  child: MemoryLevelProgressBar(memoryValues: memoryLevels),
-                                ),
+                                MemoryLevelProgressBar(memoryValues: memoryLevels),
                               ],
                             ),
                           ),
@@ -831,6 +829,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
         }
 
         return ListView.builder(
+          padding: const EdgeInsets.only(top: 0.0, bottom: 80.0),
           itemCount: studySets.length,
           itemBuilder: (context, index) {
             final studySetDoc = studySets[index];
@@ -886,7 +885,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                     );
                   },
                   child: Padding(
-                    padding: const EdgeInsets.only(top: 8.0, bottom: 16.0, left: 16.0),
+                    padding: const EdgeInsets.only(top: 0.0, bottom: 0.0, left: 16.0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -966,41 +965,39 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: Padding(
-            padding: const EdgeInsets.only(left: 4.0, right: 4.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('ホーム'),
-                Row(
-                  children: [
-                    AvailableLikesWidget(),
-                    const SizedBox(width: 16),
-                    Icon(
-                      Icons.notifications_none_outlined,
-                      color: AppColors.gray700,
-                      size: 24,
-                    ),
-                  ],
-                ),
-              ],
-            ),
+          title: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('ホーム'),
+              Row(
+                children: [
+                  AvailableLikesWidget(),
+                  const SizedBox(width: 16),
+                  Icon(
+                    Icons.notifications_none_outlined,
+                    color: AppColors.gray700,
+                    size: 24,
+                  ),
+                ],
+              ),
+            ],
           ),
           bottom: TabBar(
             controller: _tabController,
             labelColor: AppColors.blue700,
             overlayColor: WidgetStateProperty.all(Colors.transparent),
-            unselectedLabelColor: AppColors.gray900,
-            labelStyle:
-            const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            unselectedLabelStyle: const TextStyle(fontSize: 16),
+            unselectedLabelColor: Colors.black54,
+            labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+            unselectedLabelStyle: const TextStyle(fontSize: 14),
             indicator: const UnderlineTabIndicator(
-              borderSide: BorderSide(color: AppColors.blue400, width: 4),
-              insets: EdgeInsets.symmetric(horizontal: -32.0),
+              borderSide: BorderSide(color: AppColors.blue700, width: 2),
+              insets: EdgeInsets.symmetric(horizontal: 16.0),
             ),
             tabs: const [
-              Tab(text: 'フォルダ'),
-              Tab(text: '暗記セット'),
+              Tab(child: Center(child: Text('フォルダ',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)))),
+              Tab(child: Center(child: Center(child: Text('暗記セット',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))))),
             ],
           ),
         ),
@@ -1026,7 +1023,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(30),
             ),
-            child: const Icon(Icons.add, color: Colors.white, size: 40),
+            child: const Icon(Icons.add_rounded, color: Colors.white, size: 40),
           ),
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,

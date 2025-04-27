@@ -11,6 +11,8 @@ import 'package:repaso/widgets/info_dialog.dart';
 import 'package:repaso/widgets/answer_page_widgets/answer_page_common.dart'; // ここに TrueFalseWidget, SingleChoiceWidget, FlashCardWidget などが含まれる
 import 'package:repaso/services/answer_service.dart';
 
+import 'ads/banner_ad_widget.dart';
+
 class StudySetAnswerPage extends StatefulWidget {
   final String studySetId; // StudySet の ID
 
@@ -648,7 +650,9 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
                       }
                       return const SizedBox.shrink();
                     }),
-                  )
+                  ),
+                  if (_selectedAnswer == null)
+                  const BannerAdWidget(),
                 ],
               ),
             ),

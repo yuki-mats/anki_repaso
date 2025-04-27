@@ -54,6 +54,7 @@ class DefaultFirebaseOptions {
     projectId: 'repaso-rbaqy4',
     authDomain: 'repaso-rbaqy4.firebaseapp.com',
     storageBucket: 'repaso-rbaqy4.appspot.com',
+    measurementId: 'G-QQRG3T2GMJ',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
@@ -70,6 +71,9 @@ class DefaultFirebaseOptions {
     messagingSenderId: '967790239352',
     projectId: 'repaso-rbaqy4',
     storageBucket: 'repaso-rbaqy4.appspot.com',
+    androidClientId: '967790239352-rail73qn41g8po7d2bq56mb4u4jtm4fr.apps.googleusercontent.com',
+    iosClientId: '967790239352-0kdq2n0d7ln631dscch8bu9899qioqlc.apps.googleusercontent.com',
     iosBundleId: 'com.example.repaso',
   );
+
 }

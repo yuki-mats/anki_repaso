@@ -41,7 +41,7 @@ class MemoListItem extends StatelessWidget {
     }
   }
 
-  // ヘルパー関数：memoTypeに応じた背景色を返す
+  // ヘルパー関数：memoTypeに応じた背景色を返す（※現在はチップ全体のスタイルに統一しているため直接利用していません）
   Color _getMemoTypeColor(String memoType) {
     switch (memoType) {
       case 'notice':
@@ -57,7 +57,7 @@ class MemoListItem extends StatelessWidget {
     }
   }
 
-// ヘルパー関数：memoTypeに応じたテキスト色を返す
+  // ヘルパー関数：memoTypeに応じたテキスト色を返す（※現在はチップ全体のスタイルに統一しているため直接利用していません）
   Color _getMemoTypeTextColor(String memoType) {
     switch (memoType) {
       case 'notice':
@@ -72,7 +72,6 @@ class MemoListItem extends StatelessWidget {
         return Colors.grey.shade600;
     }
   }
-
 
   // 投稿日時を"yyyy.MM.dd HH:mm"形式に変換
   String _formatTime(DateTime dateTime) {
@@ -142,7 +141,7 @@ class MemoListItem extends StatelessWidget {
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (context) => MemoEditPage(memoId: memoId),
-                        fullscreenDialog: true, // 下からスライドするページ遷移を有効化
+                        fullscreenDialog: true,
                       ),
                     );
                   },
@@ -253,7 +252,7 @@ class MemoListItem extends StatelessWidget {
             bottom: BorderSide(color: Colors.grey, width: 0.3),
           ),
         ),
-        padding: const EdgeInsets.only(bottom: 12.0),
+        padding: const EdgeInsets.only(bottom: 12.0, top: 8.0, left: 8.0, right: 8.0),
         child: FutureBuilder<Map<String, dynamic>?>(
           future: _getUserData(createdById),
           builder: (context, snapshot) {
@@ -261,26 +260,36 @@ class MemoListItem extends StatelessWidget {
             final profileImageUrl = userData['profileImageUrl'] as String?;
             final userName = userData['name'] ?? 'ユーザー';
 
-            return Column(
+            return Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ユーザー情報とメモメニュー
+                // 左側：アイコン画像（下端は独立して余白となる）
                 Padding(
-                  padding: const EdgeInsets.only(top: 8.0, bottom: 4.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  padding: const EdgeInsets.only(top: 4.0),
+                  child: CircleAvatar(
+                    radius: 16,
+                    backgroundImage: profileImageUrl != null ? NetworkImage(profileImageUrl) : null,
+                    child: profileImageUrl == null ? const Icon(Icons.person, size: 18) : null,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // 右側：ユーザー情報、タイトル、本文など
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // ユーザー名、投稿日時とメニューアイコンを横並びで表示
                       Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          CircleAvatar(
-                            radius: 15,
-                            backgroundImage: profileImageUrl != null ? NetworkImage(profileImageUrl) : null,
-                            child: profileImageUrl == null ? const Icon(Icons.person, size: 18) : null,
-                          ),
-                          const SizedBox(width: 8),
                           Column(
+                            //サイズを指定しないと、アイコンが上に寄ってしまう。というか縦幅を最小にしたい。
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.start,
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              // ユーザー名
                               Text(
                                 userName,
                                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
@@ -291,113 +300,106 @@ class MemoListItem extends StatelessWidget {
                               ),
                             ],
                           ),
+                          Container(
+                            constraints: const BoxConstraints(minWidth: 32, minHeight: 32), // 最低48×48のタップ領域を確保
+                            alignment: Alignment.center,
+                            child: IconButton(
+                              visualDensity: VisualDensity.compact,
+                              padding: EdgeInsets.zero,
+                              // constraints の指定は不要になったので削除
+                              icon: const Icon(Icons.more_horiz_outlined, color: Colors.grey),
+                              onPressed: () {
+                                _showMemoMenu(context, memoDoc.id, createdById);
+                              },
+                            ),
+                          )
                         ],
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.more_horiz_outlined, color: Colors.grey),
-                        onPressed: () {
-                          _showMemoMenu(context, memoDoc.id, createdById);
+                      // タイトル（存在する場合）
+                      if (title.isNotEmpty) ...[
+                        Text(
+                          title,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                      ],
+                      const SizedBox(height: 2),
+                      // 本文
+                      Text(
+                        content,
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                      const SizedBox(height: 8),
+                      // メモタイプ、資格名、問題集名をTwitter風ハッシュタグとして表示
+                      FutureBuilder<Map<String, String>>(
+                        future: _getQuestionMetaData(memoData['questionId'] as String),
+                        builder: (context, metaSnapshot) {
+                          final questionSetName = metaSnapshot.hasData ? metaSnapshot.data!['questionSetName'] ?? '' : '';
+                          final licenseName = metaSnapshot.hasData ? metaSnapshot.data!['licenseName'] ?? '' : '';
+                          return Wrap(
+                            spacing: 4,
+                            runSpacing: 8,
+                            children: [
+                              if (memoType != null && memoType.isNotEmpty)
+                                Text(
+                                  "#${_getMemoTypeLabel(memoType)}",
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xFF1DA1F2),
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              if (licenseName.isNotEmpty)
+                                Text(
+                                  "#$licenseName",
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xFF1DA1F2),
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              if (questionSetName.isNotEmpty)
+                                Text(
+                                  "#$questionSetName",
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xFF1DA1F2),
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                            ],
+                          );
                         },
+                      ),
+                      const SizedBox(height: 8),
+                      // いいね数、返信数の表示
+                      Row(
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.favorite_border, size: 16, color: Colors.grey),
+                              const SizedBox(width: 4),
+                              Text(
+                                '$likeCount',
+                                style: const TextStyle(color: Colors.grey, fontSize: 12),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(width: 12),
+                          Row(
+                            children: [
+                              const Icon(Icons.chat_bubble_outline, size: 16, color: Colors.grey),
+                              const SizedBox(width: 4),
+                              Text(
+                                '$replyCount',
+                                style: const TextStyle(color: Colors.grey, fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ),
-                // タイトル（存在する場合）
-                if (title.isNotEmpty)
-                  Text(
-                    title,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                  ),
-                // 本文
-                Text(
-                  content,
-                  style: const TextStyle(fontSize: 14),
-                ),
-                SizedBox(height: 8),
-                // メモタイプタグと追加情報（questionSetName, licenseName）を横並びで表示
-                FutureBuilder<Map<String, String>>(
-                  future: _getQuestionMetaData(memoData['questionId'] as String),
-                  builder: (context, metaSnapshot) {
-                    final questionSetName = metaSnapshot.hasData ? metaSnapshot.data!['questionSetName'] ?? '' : '';
-                    final licenseName = metaSnapshot.hasData ? metaSnapshot.data!['licenseName'] ?? '' : '';
-                    return Wrap(
-                      spacing: 4,
-                      runSpacing: 4,
-                      children: [
-                        if (memoType != null && memoType.isNotEmpty)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            margin: const EdgeInsets.only(top: 4, bottom: 4),
-                            decoration: BoxDecoration(
-                              color: _getMemoTypeColor(memoType),
-                              borderRadius: BorderRadius.circular(32),
-                              border: Border.all(color: _getMemoTypeTextColor(memoType)),
-                            ),
-                            child: Text(
-                              _getMemoTypeLabel(memoType),
-                              style: TextStyle(fontSize: 12, color: _getMemoTypeTextColor(memoType)),
-                            ),
-                          ),
-                        if (licenseName.isNotEmpty)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            margin: const EdgeInsets.only(top: 4, bottom: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade200,
-                              borderRadius: BorderRadius.circular(32),
-                              border: Border.all(color: Colors.grey.shade400),
-                            ),
-                            child: Text(
-                              licenseName,
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                          ),
-                        if (questionSetName.isNotEmpty)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            margin: const EdgeInsets.only(top: 4, bottom: 4),
-                            constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.6),
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade200,
-                              borderRadius: BorderRadius.circular(32),
-                              border: Border.all(color: Colors.grey.shade400),
-                            ),
-                            child: Text(
-                              questionSetName,
-                              style: const TextStyle(fontSize: 12),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                      ],
-                    );
-                  },
-                ),
-                SizedBox(height: 8),
-                // いいね数、返信数の表示
-                Row(
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.favorite_border, size: 16, color: Colors.grey),
-                        const SizedBox(width: 4),
-                        Text(
-                          '$likeCount',
-                          style: const TextStyle(color: Colors.grey, fontSize: 12),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(width: 12),
-                    Row(
-                      children: [
-                        const Icon(Icons.chat_bubble_outline, size: 16, color: Colors.grey),
-                        const SizedBox(width: 4),
-                        Text(
-                          '$replyCount',
-                          style: const TextStyle(color: Colors.grey, fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ],
                 ),
               ],
             );

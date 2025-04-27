@@ -10,6 +10,7 @@ import 'package:repaso/widgets/image_preview_widget.dart';
 import 'package:repaso/widgets/answer_page_widgets/answer_page_common.dart';
 import 'package:repaso/widgets/info_dialog.dart';
 import 'package:repaso/memo_list_page.dart';
+import 'ads/banner_ad_widget.dart';
 import 'utils/app_colors.dart';
 import 'completion_summary_page.dart';
 
@@ -536,7 +537,9 @@ class _AnswerPageState extends State<AnswerPage> {
                         return const SizedBox.shrink();
                       },
                     ),
-                  )
+                  ),
+                  if (_selectedAnswer == null)
+                    const BannerAdWidget(),
                 ],
               ),
             ),

@@ -48,8 +48,8 @@ class CommonQuestionFooter extends StatelessWidget {
         icon: Icon(icon, size: 22, color: Colors.grey),
         visualDensity: VisualDensity.compact,
         padding: EdgeInsets.zero,
-        onPressed: onPressed,
         constraints: const BoxConstraints(),
+        onPressed: onPressed,
       ),
     );
   }

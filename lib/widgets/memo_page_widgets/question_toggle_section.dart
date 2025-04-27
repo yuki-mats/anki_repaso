@@ -68,26 +68,36 @@ class _QuestionToggleSectionState extends State<QuestionToggleSection>
                     if (!snapshot.hasData || !snapshot.data!.exists) {
                       return const SizedBox();
                     }
-                    final questionData =
-                        snapshot.data!.data() as Map<String, dynamic>? ?? {};
+                    final questionData = snapshot.data!.data() as Map<String, dynamic>? ?? {};
                     final questionText = questionData['questionText'] as String? ?? '';
-                    final correctChoiceText =
-                        questionData['correctChoiceText'] as String? ?? '';
+                    final correctChoiceText = questionData['correctChoiceText'] as String? ?? '';
+                    final examSource= questionData['examSource']as String? ?? '';
+
                     return Padding(
                       padding: const EdgeInsets.only(left: 8.0, top: 4.0,right: 8.0,bottom: 4.0),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            '問題: $questionText',
+                            '$questionText',
                             style: const TextStyle(
                                 fontSize: 14,),
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 2),
                           Text(
-                            '回答: $correctChoiceText',
+                            '<回答> $correctChoiceText',
                             style: const TextStyle(fontSize: 14),
                           ),
+                          const SizedBox(height: 4),
+                          // ── 出典 ──
+                          if (examSource.isNotEmpty)
+                            Text(
+                              '出典：$examSource',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
                         ],
                       ),
                     );
