@@ -274,7 +274,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                     folder['name'],
                     style: const TextStyle(fontSize: 16),
                     overflow: TextOverflow.ellipsis,
-                    maxLines: 2,
+                    maxLines: 1,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -490,7 +490,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                     studySetDoc['name'] ?? '未設定',
                     style: const TextStyle(fontSize: 16),
                     overflow: TextOverflow.ellipsis,
-                    maxLines: 2,
+                    maxLines: 1,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -719,7 +719,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                             navigateToQuestionSetsListPage(folderDoc);
                           },
                           child: Padding(
-                            padding: const EdgeInsets.only(top: 8.0, bottom: 0.0, left: 16.0),
+                            padding: const EdgeInsets.only(top: 0.0, bottom: 12.0, left: 16.0),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -759,7 +759,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                                           color: Colors.black87,
                                         ),
                                         overflow: TextOverflow.ellipsis,
-                                        maxLines: 2,
+                                        maxLines: 1,
                                       ),
                                     ),
                                     IconButton(
@@ -885,7 +885,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                     );
                   },
                   child: Padding(
-                    padding: const EdgeInsets.only(top: 0.0, bottom: 0.0, left: 16.0),
+                    padding: const EdgeInsets.only(top: 0.0, bottom: 12.0, left: 16.0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [

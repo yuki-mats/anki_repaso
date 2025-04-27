@@ -1,5 +1,6 @@
 import 'package:app_tracking_transparency/app_tracking_transparency.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -107,6 +108,7 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Themed App',
       theme: ThemeData(
+        fontFamily: kIsWeb ? 'NotoSansJP' : null,
         appBarTheme: const AppBarTheme(
           backgroundColor: Colors.white,
           foregroundColor: AppColors.gray900,

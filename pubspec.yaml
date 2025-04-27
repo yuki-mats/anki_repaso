@@ -10,38 +10,39 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  csv: ^5.0.0 # CSVファイル操作用パッケージを追加
-  excel: ^4.0.6 # Excelファイル操作用パッケージを追加
-  path_provider: ^2.1.5 # ファイルパス取得用パッケージを追加
-  share_plus: ^10.1.2 # ファイル共有用パッケージを追加
-  file_picker: ^8.1.4   # ファイル選択用パッケージを追加
-  cupertino_icons: ^1.0.8
-  firebase_core: ^3.13.0
-  firebase_analytics: ^11.4.5
-  cloud_firestore: ^5.5.1
-  firebase_auth: ^5.3.2
-  google_sign_in: ^6.2.2
-  sign_in_with_apple: ^6.1.4
-  crypto: ^3.0.6
-  fl_chart: ^0.69.2
-  syncfusion_flutter_charts: ^28.1.33
-  intl: ^0.19.0
-  path_drawing: ^1.0.1
-  url_launcher: ^6.3.1
-  dotted_border: ^2.1.0
-  firebase_storage: ^12.4.4
-  image_picker: ^1.1.2
-  image: ^4.3.0
-  image_cropper: ^8.1.0
-  flutter_launcher_icons: ^0.14.2
   app_tracking_transparency: ^2.0.6+1
-  package_info_plus: ^8.2.0
-  version: ^3.0.2 # バージョン管理用パッケージを追加
-  rxdart: ^0.28.0
-  flutter_native_splash: ^2.4.4
+  cloud_firestore: ^5.5.1
+  cloud_functions: ^5.4.0
+  crypto: ^3.0.6
+  csv: ^5.0.0
+  cupertino_icons: ^1.0.8
+  excel: ^4.0.6
+  file_picker: ^8.1.4
+  firebase_analytics: ^11.4.5
+  firebase_auth: ^5.3.2
+  firebase_core: ^3.13.0
+  firebase_storage: ^12.4.4
+  fl_chart: ^0.69.2
   flutter_image_compress: ^2.4.0
+  flutter_launcher_icons: ^0.14.2
   flutter_math_fork: ^0.7.3
   google_mobile_ads: ^6.0.0
+  google_sign_in: ^6.2.2
+  http: ^1.3.0
+  image: ^4.3.0
+  image_cropper: ^8.1.0
+  image_picker: ^1.1.2
+  intl: ^0.19.0
+  package_info_plus: ^8.2.0
+  path_drawing: ^1.0.1
+  path_provider: ^2.1.5
+  rxdart: ^0.28.0
+  share_plus: ^10.1.2
+  sign_in_with_apple: ^6.1.4
+  syncfusion_flutter_charts: ^28.1.33
+  url_launcher: ^6.3.1
+  version: ^3.0.2
+
 
 flutter_native_splash:
   # ロード画面の背景色
@@ -70,5 +71,12 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/ios_neutral_rd_na@3x.png
+  fonts:
+    - family: NotoSansJP
+      fonts:
+        - asset: assets/fonts/NotoSansJP-Regular.ttf
+        - asset: assets/fonts/NotoSansJP-Bold.ttf
+          weight: 700
+
 
 

@@ -450,7 +450,7 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                               );
                             },
                             child: Padding(
-                              padding: const EdgeInsets.only(top: 8.0, bottom: 0.0, left: 16.0),
+                              padding: const EdgeInsets.only(top: 16.0, bottom: 0.0, left: 16.0),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [

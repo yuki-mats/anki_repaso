@@ -1,1 +1,61 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"repaso-rbaqy4","appId":"1:967790239352:android:1a275d083f0224f88fd78d","fileOutput":"android/app/google-services.json"}},"ios":{"default":{"projectId":"repaso-rbaqy4","appId":"1:967790239352:ios:a17fea1966095fdc8fd78d","uploadDebugSymbols":false,"fileOutput":"ios/Runner/GoogleService-Info.plist"}},"dart":{"lib/firebase_options.dart":{"projectId":"repaso-rbaqy4","configurations":{"android":"1:967790239352:android:1a275d083f0224f88fd78d","ios":"1:967790239352:ios:a17fea1966095fdc8fd78d","web":"1:967790239352:web:ae709ae6e4dd88fc8fd78d"}}}}},"hosting":{"public":"build/web","ignore":["firebase.json","**/.*","**/node_modules/**"],"rewrites":[{"source":"**","destination":"/index.html"}]}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "repaso-rbaqy4",
+          "appId": "1:967790239352:android:1a275d083f0224f88fd78d",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "ios": {
+        "default": {
+          "projectId": "repaso-rbaqy4",
+          "appId": "1:967790239352:ios:a17fea1966095fdc8fd78d",
+          "uploadDebugSymbols": false,
+          "fileOutput": "ios/Runner/GoogleService-Info.plist"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "repaso-rbaqy4",
+          "configurations": {
+            "android": "1:967790239352:android:1a275d083f0224f88fd78d",
+            "ios": "1:967790239352:ios:a17fea1966095fdc8fd78d",
+            "web": "1:967790239352:web:ae709ae6e4dd88fc8fd78d"
+          }
+        }
+      }
+    }
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ],
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" run lint"
+      ]
+    }
+  ]
+}
