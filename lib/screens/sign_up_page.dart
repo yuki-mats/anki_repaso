@@ -10,7 +10,7 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'main.dart';
 import 'privacy_policy_page.dart';
 import 'terms_of_service_page.dart';
-import 'utils/app_colors.dart';
+import '../utils/app_colors.dart';
 import 'login_page.dart';
 
 class SignUpPage extends StatefulWidget {

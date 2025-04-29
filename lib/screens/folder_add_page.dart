@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:repaso/widgets/add_page_widgets/name_imput.dart';
-import 'utils/app_colors.dart';
+import '../utils/app_colors.dart';
 
 class FolderAddPage extends StatefulWidget {
   const FolderAddPage({Key? key}) : super(key: key);

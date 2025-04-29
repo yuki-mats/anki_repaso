@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'utils/app_colors.dart';
+import '../utils/app_colors.dart';
 
 class SetNumberOfQuestionsPage extends StatefulWidget {
   final int? initialSelection; // 初期選択を保持

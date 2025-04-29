@@ -2,16 +2,16 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:repaso/completion_summary_page.dart';
-import 'package:repaso/memo_list_page.dart';
-import 'package:repaso/review_answers_page.dart';
+import 'package:repaso/screens/completion_summary_page.dart';
+import 'package:repaso/screens/memo_list_page.dart';
+import 'package:repaso/screens/review_answers_page.dart';
 import 'package:repaso/utils/app_colors.dart';
 import 'package:repaso/widgets/image_preview_widget.dart';
 import 'package:repaso/widgets/info_dialog.dart';
 import 'package:repaso/widgets/answer_page_widgets/answer_page_common.dart'; // ここに TrueFalseWidget, SingleChoiceWidget, FlashCardWidget などが含まれる
 import 'package:repaso/services/answer_service.dart';
 
-import 'ads/banner_ad_widget.dart';
+import '../ads/banner_ad_widget.dart';
 
 class StudySetAnswerPage extends StatefulWidget {
   final String studySetId; // StudySet の ID
@@ -556,9 +556,13 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
                                     final double correctRate = statsData['correctRate'] ?? 0.0;
 
                                     return CommonQuestionFooter(
+                                      questionId: question['questionId'] as String,
+                                      questionText     : question['questionText']     ?? '',
+                                      correctChoiceText: question['correctChoiceText']?? '',
+                                      explanationText  : question['explanationText']  ?? '',
+                                      aiMemoId  : null,
                                       correctRate: correctRate,
                                       hintText: question['hintText'],
-                                      explanationText: question['explanationText'],
                                       footerButtonType: _footerButtonType,
                                       flashCardHasBeenRevealed: _flashCardHasBeenRevealed,
                                       isFlagged: question['statsData']['isFlagged'] == true,

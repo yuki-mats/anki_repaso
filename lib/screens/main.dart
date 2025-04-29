@@ -4,17 +4,17 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:repaso/home_page.dart';
-import 'package:repaso/lobby_page.dart';
-import 'package:repaso/official_list_page.dart';
+import 'package:repaso/screens/home_page.dart';
+import 'package:repaso/screens/lobby_page.dart';
+import 'package:repaso/screens/official_list_page.dart';
 import 'package:repaso/utils/update_checker.dart';
 import 'forum_page.dart';
-import 'utils/app_colors.dart';
+import '../utils/app_colors.dart';
 import 'firebase_options.dart';
 import 'my_page.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
-import 'ads/app_open_ad_manager.dart';
-import 'ads/banner_ad_widget.dart';
+import '../ads/app_open_ad_manager.dart';
+import '../ads/banner_ad_widget.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_analytics/observer.dart';
 
@@ -85,11 +85,13 @@ Future<void> main() async {
   // 日付ローカライズ
   await initializeDateFormatting('ja_JP', null);
 
-  // AdMob 初期化
-  await MobileAds.instance.updateRequestConfiguration(
-    RequestConfiguration(testDeviceIds: ['01262462e4ee6bb499fd8becbef443f3']),
-  );
-  await MobileAds.instance.initialize();
+  // AdMob 初期化（Webの場合はスキップする！）
+  if (!kIsWeb) {
+    await MobileAds.instance.updateRequestConfiguration(
+      RequestConfiguration(testDeviceIds: ['01262462e4ee6bb499fd8becbef443f3']),
+    );
+    await MobileAds.instance.initialize();
+  }
 
   runApp(const MyApp());
 }

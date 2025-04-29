@@ -2,16 +2,16 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:repaso/question_add_page.dart';
-import 'package:repaso/review_answers_page.dart';
+import 'package:repaso/screens/question_add_page.dart';
+import 'package:repaso/screens/review_answers_page.dart';
 import 'package:repaso/services/answer_service.dart';
 import 'package:repaso/widgets/answer_page_widgets/no_questions_widget.dart';
 import 'package:repaso/widgets/image_preview_widget.dart';
 import 'package:repaso/widgets/answer_page_widgets/answer_page_common.dart';
 import 'package:repaso/widgets/info_dialog.dart';
-import 'package:repaso/memo_list_page.dart';
-import 'ads/banner_ad_widget.dart';
-import 'utils/app_colors.dart';
+import 'package:repaso/screens/memo_list_page.dart';
+import '../ads/banner_ad_widget.dart';
+import '../utils/app_colors.dart';
 import 'completion_summary_page.dart';
 
 
@@ -463,18 +463,29 @@ class _AnswerPageState extends State<AnswerPage> {
                                   builder: (context) {
                                     final question = _questionsWithStats[_currentQuestionIndex];
                                     return CommonQuestionFooter(
-                                      correctRate: question['correctRate'],
-                                      hintText: question['hintText'],
-                                      explanationText: question['explanationText'],
-                                      footerButtonType: _footerButtonType,
-                                      flashCardHasBeenRevealed: _flashCardHasBeenRevealed,
-                                      isFlagged: question['isFlagged'] == true,
-                                      isOfficialQuestion: question['isOfficialQuestion'] == true,
-                                      memoCount: question['memoCount'],
-                                      onShowHintDialog: _showHintDialog,
-                                      onShowExplanationDialog: _showExplanationDialog,
-                                      onToggleFlag: _toggleFlag,
-                                      onMemoPressed: () {
+                                      /* --- AI 用コンテキスト ------------------------------ */
+                                      questionId       : question['questionId'] as String,
+                                      questionText     : question['questionText']     ?? '',
+                                      correctChoiceText: question['correctChoiceText']?? '',
+                                      explanationText  : question['explanationText']  ?? '',
+
+                                      /* --- 既存スレッドがあれば ID を渡す（無ければ null） */
+                                      aiMemoId : null,
+
+                                      /* --- UI／統計 -------------------------------------- */
+                                      correctRate              : question['correctRate'],
+                                      hintText                 : question['hintText'],
+                                      footerButtonType         : _footerButtonType,
+                                      flashCardHasBeenRevealed : _flashCardHasBeenRevealed,
+                                      isFlagged                : question['isFlagged'] == true,
+                                      isOfficialQuestion       : question['isOfficialQuestion'] == true,
+                                      memoCount                : question['memoCount'],
+
+                                      /* --- コールバック ---------------------------------- */
+                                      onShowHintDialog        : _showHintDialog,
+                                      onShowExplanationDialog : _showExplanationDialog,
+                                      onToggleFlag            : _toggleFlag,
+                                      onMemoPressed           : () {
                                         _showMemoListSheet(question['questionId'], widget.questionSetId);
                                       },
                                     );

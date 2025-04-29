@@ -1,18 +1,18 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:repaso/folder_edit_page.dart';
-import 'package:repaso/question_set_add_page.dart';
-import 'package:repaso/question_set_list_page.dart';
-import 'package:repaso/study_set_add_page.dart' as AddPage; // 新しい暗記セット用
-import 'package:repaso/study_set_answer_page.dart';
-import 'package:repaso/study_set_edit_page.dart' as EditPage; // 既存暗記セット編集用
+import 'package:repaso/screens/folder_edit_page.dart';
+import 'package:repaso/screens/question_set_list_page.dart';
+import 'package:repaso/screens/study_set_answer_page.dart';
+import 'package:repaso/screens/question_set_add_page.dart';
+import 'package:repaso/screens/folder_add_page.dart';
+import 'package:repaso/screens/study_set_edit_page.dart' as EditPage;
+import 'package:repaso/screens/study_set_add_page.dart' as AddPage;
 import 'package:repaso/widgets/list_page_widgets/memory_level_progress_bar.dart';
 import 'package:repaso/widgets/answer_page_widgets/question_rate_display.dart';
 import 'package:repaso/widgets/list_page_widgets/rounded_icon_box.dart';
 import 'package:rxdart/rxdart.dart';
-import 'utils/app_colors.dart';
-import 'folder_add_page.dart';
+import '../utils/app_colors.dart';
 import 'main.dart';
 
 class FolderListPage extends StatefulWidget {
@@ -781,7 +781,10 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                                 ),
                                 const SizedBox(height: 2),
                                 // **メモリーレベルのプログレスバー**
-                                MemoryLevelProgressBar(memoryValues: memoryLevels),
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 16.0),
+                                  child: MemoryLevelProgressBar(memoryValues: memoryLevels),
+                                ),
                               ],
                             ),
                           ),

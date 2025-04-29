@@ -1,17 +1,17 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:repaso/question_set_add_page.dart';
-import 'package:repaso/question_set_edit_page.dart';
+import 'package:repaso/screens/question_list_page.dart';
+import 'package:repaso/screens/question_set_add_page.dart';
+import 'package:repaso/screens/question_set_edit_page.dart';
 import 'package:repaso/services/question_count.dart';
 import 'package:repaso/widgets/list_page_widgets/memory_level_progress_bar.dart';
 import 'package:repaso/widgets/answer_page_widgets/question_rate_display.dart';
 import 'package:repaso/widgets/list_page_widgets/rounded_icon_box.dart';
-import 'utils/app_colors.dart';
+import '../utils/app_colors.dart';
 import 'learning_analytics_page.dart';
 import 'question_add_page.dart';
 import 'answer_page.dart';
-import 'question_list_page.dart';
 
 class QuestionSetsListPage extends StatefulWidget {
   final DocumentSnapshot folder;

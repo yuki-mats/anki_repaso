@@ -1,11 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:repaso/screens/set_study_set_name_page.dart';
 import 'package:repaso/utils/app_colors.dart';
-import 'package:repaso/set_number_of_questions_page.dart';
-import 'package:repaso/set_question_order_page.dart';
-import 'package:repaso/set_question_set_page.dart';
-import 'package:repaso/set_study_set_name_page.dart';
+import 'package:repaso/screens/set_number_of_questions_page.dart';
+import 'package:repaso/screens/set_question_order_page.dart';
+import 'package:repaso/screens/set_question_set_page.dart';
 import 'package:repaso/widgets/set_memory_level_page.dart';
 
 /// StudySet モデル（StudySetEditPage に合わせた追加フィールド付き）

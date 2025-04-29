@@ -2,7 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:repaso/utils/app_colors.dart';
-import 'package:repaso/main.dart';
+import 'package:repaso/screens/main.dart';
 import 'package:repaso/widgets/list_page_widgets/rounded_icon_box.dart';
 
 class OfficialListPage extends StatefulWidget {

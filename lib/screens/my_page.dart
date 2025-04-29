@@ -1,10 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:repaso/privacy_policy_page.dart';
-import 'package:repaso/profile_edit_page.dart';
-import 'package:repaso/terms_of_service_page.dart';
-import 'package:repaso/lobby_page.dart'; // LobbyPageをインポート
+import 'package:repaso/screens/privacy_policy_page.dart';
+import 'package:repaso/screens/profile_edit_page.dart';
+import 'package:repaso/screens/terms_of_service_page.dart';
+import 'package:repaso/screens/lobby_page.dart'; // LobbyPageをインポート
 
 class MyPage extends StatefulWidget {
   @override

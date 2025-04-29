@@ -1,10 +1,10 @@
+/* eslint-env node */
 module.exports = {
-  env: {
-    es6: true,
-    node: true,
-  },
+  root: true,
+  env: {es2022: true, node: true},
   parserOptions: {
-    "ecmaVersion": 2018,
+    ecmaVersion: 2022,
+    sourceType: "module",
   },
   extends: [
     "eslint:recommended",
@@ -17,12 +17,8 @@ module.exports = {
   },
   overrides: [
     {
-      files: ["**/*.spec.*"],
-      env: {
-        mocha: true,
-      },
-      rules: {},
+      files: ["**/*.spec.*", "**/*.test.*"],
+      env: {mocha: true},
     },
   ],
-  globals: {},
 };

@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -6,74 +5,103 @@ import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:repaso/utils/app_colors.dart';
 
-/// このファイルだけで完結する、Vertex AI チャット画面（Cloud Functions 経由）
+/// Vertex AI（Gemini）とチャットする画面
 class ChatGPTScreen extends StatefulWidget {
-  const ChatGPTScreen({Key? key}) : super(key: key);
+  /// 表示中の問題の ID（必須）
+  final String questionId;
+
+  /// 問題文・正答・解説（Gemini への前提知識として渡す）
+  final String questionText;
+  final String correctChoiceText;
+  final String explanationText;
+
+  /// すでに作成済みスレッドであれば memoId を渡す（省略可）
+  final String? memoId;
+
+  const ChatGPTScreen({
+    super.key,
+    required this.questionId,
+    required this.questionText,
+    required this.correctChoiceText,
+    required this.explanationText,
+    this.memoId,
+  });
 
   @override
   State<ChatGPTScreen> createState() => _ChatGPTScreenState();
 }
 
 class _ChatGPTScreenState extends State<ChatGPTScreen> {
+  /* ────── UI 用状態 ────── */
   final TextEditingController _controller = TextEditingController();
-  final List<_Message> _messages = [
-    _Message(
-      text:
-      "ご指摘いただきありがとうございます！\n問題文を修正しました🙇‍♂️\n\n<修正内容>\n全開時→全閉時",
-      isUser: false,
-      userName: "yuki",
-      createdAt: DateTime(2025, 4, 20, 15, 18),
-    ),
-    _Message(
-      text: "I",
-      isUser: false,
-      userName: "未設定",
-      createdAt: DateTime(2025, 4, 21, 1, 10),
-    ),
-  ];
+  final List<_Message> _messages = [];
   bool _isSending = false;
 
-  /// Firebase Functions の callVertexAI を呼び出し
+  /* ────── Cloud Functions callable ────── */
   final HttpsCallable _callVertex =
   FirebaseFunctions.instance.httpsCallable('callVertexAI');
 
+  /* ────── スレッド ID（memoId） ────── */
+  late String? _memoId; // 初期化は initState で
+
+  @override
+  void initState() {
+    super.initState();
+    _memoId = widget.memoId;
+  }
+
+  /* ────── Gemini へ渡す前提文（systemContext） ────── */
+  String get _systemContext => '''
+あなたは資格試験対策アプリの AI 解説者です。
+以下の情報を前提として、ユーザーの問いに分かりやすく日本語で答えてください。
+
+【問題文】
+${widget.questionText}
+
+【正解】
+${widget.correctChoiceText}
+
+【解説】
+${widget.explanationText}
+''';
+
+  /* ────── Vertex AI 呼び出し ────── */
   Future<String> _sendToVertexAI(String userMessage) async {
     try {
-      // 認証状態チェック（匿名ログイン等を済ませておくこと）
+      /* 認証確認（匿名ログインでも OK） */
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return '未ログインのため利用できません';
 
-      // Cloud Function をコール
-      final result = await _callVertex.call(<String, dynamic>{
-        'message': userMessage,
-      });
+      /* Cloud Function へ渡すペイロード */
+      final params = <String, dynamic>{
+        'message'      : userMessage,
+        'questionId'   : widget.questionId,
+        'systemContext': _systemContext,  // ★ 追加
+        if (_memoId != null) 'memoId': _memoId,
+      };
 
-      final data = result.data as Map<String, dynamic>;
+      final result = await _callVertex.call(params);
+      final data   = Map<String, dynamic>.from(result.data);
+      _memoId      = data['memoId'] as String?; // 以降のやり取り用に保持
       return data['reply'] as String;
-
-    } on FirebaseFunctionsException catch (e) {
-      // FirebaseFunctionsException の詳細をデバッグ出力
-      debugPrint('=== FirebaseFunctionsException ===');
-      debugPrint('code: ${e.code}');
-      debugPrint('message: ${e.message}');
-      debugPrint('details: ${e.details}');
-      debugPrint('stackTrace: ${e.stackTrace}');
-      return 'エラー(${e.code}): ${e.message}';
-
+    } on FirebaseFunctionsException catch (e, st) {
+      debugPrint('=== FirebaseFunctionsException ===\n'
+          'code   : ${e.code}\n'
+          'message: ${e.message}\n'
+          'details: ${e.details}\n'
+          'stack  : $st');
+      return 'エラー(${e.code}): ${e.message ?? '不明なエラー'}';
     } catch (e, st) {
-      // その他の例外もスタックトレース付きで出力
-      debugPrint('=== Unexpected Exception ===');
-      debugPrint('error: $e');
-      debugPrint('stackTrace: $st');
+      debugPrint('=== Unexpected Exception ===\nerror: $e\nstack: $st');
       return '予期せぬエラー: $e';
     }
   }
 
-
-  /// 画面上の送信処理
+  /* ────── 送信ボタン処理 ────── */
   Future<void> _onSendPressed() async {
     final text = _controller.text.trim();
     if (text.isEmpty || _isSending) return;
+
     setState(() {
       _messages.add(_Message(
         text: text,
@@ -104,85 +132,77 @@ class _ChatGPTScreenState extends State<ChatGPTScreen> {
     super.dispose();
   }
 
+  /* ────── 1 メッセージ気泡 ────── */
   Widget _buildBubble(_Message m) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        CircleAvatar(
-          radius: 16,
-          backgroundColor: Colors.grey.shade300,
-          child: const Icon(Icons.person, size: 18, color: Colors.white),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Text(m.userName,
-                  style:
-                  const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-              const SizedBox(width: 8),
-              Text(_fmt(m.createdAt),
-                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
-            ]),
-            const SizedBox(height: 8),
-            ..._buildTextWithMath(m.text),
-            if (!m.isUser) ...[
-              const SizedBox(height: 8),
-              Row(children: [
-                IconButton(
-                  icon:
-                  const Icon(Icons.copy, size: 16, color: Colors.black54),
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: m.text));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('コピーしました')),
-                    );
-                  },
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  visualDensity: VisualDensity.compact,
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: const Icon(Icons.thumb_up_alt_outlined,
-                      size: 16, color: Colors.black54),
-                  onPressed: () {},
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  visualDensity: VisualDensity.compact,
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: const Icon(Icons.thumb_down_alt_outlined,
-                      size: 16, color: Colors.black54),
-                  onPressed: () {},
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  visualDensity: VisualDensity.compact,
-                ),
-              ]),
-            ],
-          ]),
-        ),
-        IconButton(
-          icon: const Icon(Icons.more_horiz, size: 20, color: Colors.grey),
-          onPressed: () {},
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints(),
-          visualDensity: VisualDensity.compact,
-        ),
-      ]),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            radius: 16,
+            backgroundColor: Colors.grey.shade300,
+            child: Icon(
+              m.isUser ? Icons.person : Icons.smart_toy,
+              size: 18,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Text(
+                    m.userName,
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    _fmt(m.createdAt),
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ]),
+                const SizedBox(height: 8),
+                ..._buildTextWithMath(m.text),
+                if (!m.isUser) ...[
+                  const SizedBox(height: 8),
+                  IconButton(
+                    icon:
+                    const Icon(Icons.copy, size: 16, color: Colors.black54),
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: m.text));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('コピーしました')),
+                      );
+                    },
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
+  /* ────── TeX / テキスト分割描画 ────── */
   List<Widget> _buildTextWithMath(String text) {
     return text.split('\n').map((line) {
       final t = line.trim();
       if (t.startsWith(r'$') && t.endsWith(r'$')) {
-        return Math.tex(t.substring(1, t.length - 1),
-            textStyle: const TextStyle(fontSize: 14, height: 1.4));
+        return Math.tex(
+          t.substring(1, t.length - 1),
+          textStyle: const TextStyle(fontSize: 14, height: 1.4),
+        );
       } else {
-        return Text(line, style: const TextStyle(fontSize: 14, height: 1.4));
+        return Text(line,
+            style: const TextStyle(fontSize: 14, height: 1.4));
       }
     }).toList();
   }
@@ -191,6 +211,7 @@ class _ChatGPTScreenState extends State<ChatGPTScreen> {
       '${d.year}.${d.month.toString().padLeft(2, '0')}.${d.day.toString().padLeft(2, '0')} '
           '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 
+  /* ────── 画面 ────── */
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -199,13 +220,12 @@ class _ChatGPTScreenState extends State<ChatGPTScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         automaticallyImplyLeading: false,
-        title:
-        const Text('AI解説（開発中）', style: TextStyle(color: Colors.black)),
+        title: const Text('AI 解説', style: TextStyle(color: Colors.black)),
         actions: [
           IconButton(
             icon: const Icon(Icons.close, color: Colors.black, size: 22),
             onPressed: () => Navigator.pop(context),
-          )
+          ),
         ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
@@ -237,22 +257,22 @@ class _ChatGPTScreenState extends State<ChatGPTScreen> {
                   cursorColor: Colors.blue,
                   decoration: InputDecoration(
                     hintText: 'メッセージを入力',
-                    contentPadding: const EdgeInsets.symmetric(
-                        vertical: 10, horizontal: 12),
+                    contentPadding:
+                    const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
                     filled: true,
                     fillColor: Colors.white,
                     border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8.0),
-                        borderSide: BorderSide(
-                            color: Colors.blue.shade300, width: 2)),
+                        borderSide:
+                        BorderSide(color: Colors.blue.shade300, width: 2)),
                     enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8.0),
-                        borderSide: BorderSide(
-                            color: Colors.blue.shade300, width: 2)),
+                        borderSide:
+                        BorderSide(color: Colors.blue.shade300, width: 2)),
                     focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8.0),
-                        borderSide: BorderSide(
-                            color: Colors.blue.shade500, width: 2)),
+                        borderSide:
+                        BorderSide(color: Colors.blue.shade500, width: 2)),
                   ),
                 ),
               ),
@@ -279,7 +299,7 @@ class _ChatGPTScreenState extends State<ChatGPTScreen> {
   }
 }
 
-/// メッセージモデル（このファイル内で完結）
+/* ────── メッセージモデル ────── */
 class _Message {
   final String text;
   final bool isUser;

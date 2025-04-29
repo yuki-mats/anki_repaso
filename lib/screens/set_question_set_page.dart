@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'utils/app_colors.dart';
+import '../utils/app_colors.dart';
 
 class SetQuestionSetPage extends StatefulWidget {
   final String userId; // ログイン中のユーザーID

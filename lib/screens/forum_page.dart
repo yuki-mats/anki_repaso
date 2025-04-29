@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:repaso/widgets/memo_page_widgets/memo_list_item.dart';
 import 'reply_list_page.dart';
-import 'utils/app_colors.dart';
+import '../utils/app_colors.dart';
 
 class ForumPage extends StatefulWidget {
   const ForumPage({Key? key}) : super(key: key);

@@ -2,10 +2,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:repaso/sign_up_page.dart';
+import 'package:repaso/screens/sign_up_page.dart';
 import 'package:repaso/widgets/common_widgets/common_text_field.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
-import 'utils/app_colors.dart';
+import '../utils/app_colors.dart';
 import 'main.dart';
 
 class LoginPage extends StatefulWidget {

@@ -1,9 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:repaso/screens/question_add_page.dart';
 import 'package:repaso/utils/app_colors.dart';
 import 'package:repaso/widgets/add_page_widgets/name_imput.dart';
-import 'question_add_page.dart';
 
 class QuestionSetsAddPage extends StatefulWidget {
   final String folderId; // DocumentReference ではなく String に変更
