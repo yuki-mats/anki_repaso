@@ -68,29 +68,57 @@ class CommonQuestionFooter extends StatelessWidget {
     ),
   );
 
-  /*──────── AI ボタン ────────*/
+/*──────── AI ボタン ────────*/
   Widget _aiButton(BuildContext ctx) => Padding(
     padding: const EdgeInsets.only(left: 8),
     child: _roundBtn(
       Icons.live_help_outlined,
-          () => Navigator.push(
-        ctx,
-        PageRouteBuilder(
-          opaque: false,
-          barrierColor: Colors.black.withOpacity(.5),
-          pageBuilder: (_, __, ___) => ChatGPTScreen(
-            questionId       : questionId,
-            questionText     : questionText,
-            correctChoiceText: correctChoiceText,
-            explanationText  : explanationText,
-            memoId           : aiMemoId,
-          ),
-          transitionsBuilder: (_, anim, __, child) {
-            final tween =
-            Tween(begin: const Offset(0, 1), end: Offset.zero).chain(CurveTween(curve: Curves.easeInOut));
-            return SlideTransition(position: anim.drive(tween), child: child);
-          },
-        ),
+          () => showModalBottomSheet(
+        context: ctx,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        enableDrag: true,
+        builder: (context) {
+          return DraggableScrollableSheet(
+            initialChildSize: 0.95,
+            builder: (context, scrollController) {
+              return ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                child: SafeArea(
+                  top: true,
+                  child: Container(
+                    color: Colors.white,
+                    child: Column(
+                      children: [
+                        // ─── ヘッダー（×ボタン） ───
+                        Container(
+                          height: 48,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          alignment: Alignment.centerRight,
+                          child: IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () => Navigator.of(context).pop(),
+                          ),
+                        ),
+                        // ─── 本体 ───
+                        Expanded(
+                          child: ChatGPTScreen(
+                            scrollController: scrollController,
+                            questionId       : questionId,
+                            questionText     : questionText,
+                            correctChoiceText: correctChoiceText,
+                            explanationText  : explanationText,
+                            memoId           : aiMemoId,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          );
+        },
       ),
     ),
   );

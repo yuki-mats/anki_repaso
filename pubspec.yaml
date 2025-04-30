@@ -39,6 +39,7 @@ dependencies:
   rxdart: ^0.28.0
   share_plus: ^10.1.2
   sign_in_with_apple: ^6.1.4
+  sliding_sheet2: ^2.0.1
   syncfusion_flutter_charts: ^28.1.33
   url_launcher: ^6.3.1
   version: ^3.0.2

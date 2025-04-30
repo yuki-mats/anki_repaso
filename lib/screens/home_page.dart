@@ -644,7 +644,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
             }
 
             return ListView.builder(
-              padding: const EdgeInsets.only(top: 0.0, bottom: 80.0),
+              padding: const EdgeInsets.only(top: 16.0, bottom: 80.0),
               itemCount: folders.length,
               itemBuilder: (context, index) {
                 final folderDoc = folders[index];
@@ -653,7 +653,6 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                 final questionCount = folderData['questionCount'] ?? 0;
                 final isPublic = folderData['isPublic'] ?? false;
 
-                // --- フォルダユーザーステータスも購読 ---
                 final folderUserStatsStream = folderDoc.reference
                     .collection('folderSetUserStats')
                     .doc(user.uid)
@@ -681,9 +680,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                           userStatsSnapshot.data!.data() as Map<String, dynamic>? ?? {};
                       final memoryData =
                           userStatsData['memoryLevels'] as Map<String, dynamic>? ?? {};
-
-                      // 各問題のメモリレベルをカウント
-                      memoryData.forEach((questionId, level) {
+                      memoryData.forEach((_, level) {
                         if (memoryLevels.containsKey(level)) {
                           memoryLevels[level] = memoryLevels[level]! + 1;
                         }
@@ -694,32 +691,30 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                     final correctAnswers = (memoryLevels['easy'] ?? 0) +
                         (memoryLevels['good'] ?? 0) +
                         (memoryLevels['hard'] ?? 0);
-
-                    final totalAnswers = (memoryLevels['easy'] ?? 0) +
-                        (memoryLevels['good'] ?? 0) +
-                        (memoryLevels['hard'] ?? 0) +
-                        (memoryLevels['again'] ?? 0);
+                    final totalAnswers = correctAnswers + (memoryLevels['again'] ?? 0);
 
                     // **未回答数の計算**
-                    final unanswered = (questionCount > correctAnswers)
-                        ? (questionCount - correctAnswers)
-                        : 0;
-
-                    // 未回答を memoryLevels に追加
+                    final unanswered =
+                    questionCount > correctAnswers ? questionCount - correctAnswers : 0;
                     memoryLevels['unanswered'] = unanswered;
 
                     return Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 0.0, vertical: 4.0),
-                      child: Card(
-                        color: Colors.white,
-                        elevation: 0,
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12.0),
+                          //外枠
+                          border: Border.all(
+                            color: AppColors.gray100,
+                            width: 1.0,
+                          ),
+                        ),
                         child: InkWell(
-                          onTap: () {
-                            // フォルダをタップしたときの遷移
-                            navigateToQuestionSetsListPage(folderDoc);
-                          },
+                          onTap: () => navigateToQuestionSetsListPage(folderDoc),
                           child: Padding(
-                            padding: const EdgeInsets.only(top: 0.0, bottom: 12.0, left: 16.0),
+                            padding: const EdgeInsets.only(
+                                top: 12.0, bottom: 12.0, left: 16.0, right: 16.0),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -749,32 +744,39 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                                           ),
                                       ],
                                     ),
-                                    const SizedBox(width: 12),
+                                    const SizedBox(width: 10),
                                     Expanded(
                                       child: Text(
                                         folderName,
                                         style: const TextStyle(
-                                          fontSize: 14,
+                                          fontSize: 13,
                                           fontWeight: FontWeight.bold,
-                                          color: Colors.black87,
+                                          color: Colors.black,
                                         ),
                                         overflow: TextOverflow.ellipsis,
-                                        maxLines: 1,
+                                        maxLines: 2,
                                       ),
                                     ),
-                                    IconButton(
-                                      icon: const Icon(Icons.more_horiz_outlined, color: Colors.grey),
-                                      onPressed: () {
-                                        // フォルダ操作用モーダル
-                                        showFolderOptionsModal(context, folderDoc);
-                                      },
+                                    SizedBox(
+                                      width: 40,
+                                      height: 40,
+                                      child: IconButton(
+                                        icon: const Icon(Icons.more_horiz_outlined,
+                                            color: Colors.grey),
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(),
+                                        visualDensity: VisualDensity.compact,
+                                        onPressed: () =>
+                                            showFolderOptionsModal(context, folderDoc),
+                                      ),
                                     ),
                                   ],
                                 ),
+                                const SizedBox(height: 8),
                                 // **正答率表示**
                                 QuestionRateDisplay(
-                                  top: correctAnswers,   // 正答数
-                                  bottom: totalAnswers, // 総問題数（フォルダの questionCount）
+                                  top: correctAnswers,
+                                  bottom: totalAnswers,
                                   memoryLevels: memoryLevels,
                                   count: questionCount,
                                   countSuffix: ' 問',
@@ -782,9 +784,11 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                                 const SizedBox(height: 2),
                                 // **メモリーレベルのプログレスバー**
                                 Padding(
-                                  padding: const EdgeInsets.only(right: 16.0),
-                                  child: MemoryLevelProgressBar(memoryValues: memoryLevels),
+                                  padding: const EdgeInsets.only(right: 8.0),
+                                  child: MemoryLevelProgressBar(
+                                      memoryValues: memoryLevels),
                                 ),
+                                const SizedBox(height: 4),
                               ],
                             ),
                           ),
