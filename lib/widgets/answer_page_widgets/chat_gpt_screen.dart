@@ -162,8 +162,8 @@ ${widget.explanationText}
                     icon: const Icon(Icons.copy, size: 16, color: Colors.black54),
                     onPressed: () {
                       Clipboard.setData(ClipboardData(text: m.text));
-                      ScaffoldMessenger.of(context)
-                          .showSnackBar(const SnackBar(content: Text('コピーしました')));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('コピーしました')));
                     },
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
@@ -200,16 +200,39 @@ ${widget.explanationText}
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // ── メッセージリスト ──
+        // ── メッセージエリア ──
         Expanded(
-          child: GestureDetector(
+          child: _messages.isEmpty
+          // チャット未開始時は中央に注意文
+              ? Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: const [
+                  Icon(Icons.info_outline,
+                      size: 40, color: Colors.orange),
+                  SizedBox(height: 12),
+                  Text(
+                    'この会話はフォーラムで公開されます。',
+                    textAlign: TextAlign.center,
+                    style:
+                    TextStyle(fontSize: 16, color: Colors.orange),
+                  ),
+                ],
+              ),
+            ),
+          )
+          // チャット開始後は通常表示
+              : GestureDetector(
             onTap: () => FocusScope.of(context).unfocus(),
             child: ListView.builder(
               controller: widget.scrollController,
               reverse: true,
               padding: const EdgeInsets.symmetric(vertical: 8),
               itemCount: _messages.length,
-              itemBuilder: (_, i) => _buildBubble(_messages[_messages.length - 1 - i]),
+              itemBuilder: (_, i) => _buildBubble(
+                  _messages[_messages.length - 1 - i]),
             ),
           ),
         ),
@@ -220,9 +243,18 @@ ${widget.explanationText}
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              const Padding(
+                padding:
+                EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                child: Text(
+                  'AI解説の回答は必ずしも正しいとは限りません。',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                color: Colors.grey.shade100,
+                padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                color: Colors.white,
                 child: Row(children: [
                   Expanded(
                     child: TextField(
@@ -232,22 +264,22 @@ ${widget.explanationText}
                       cursorColor: Colors.blue,
                       decoration: InputDecoration(
                         hintText: 'メッセージを入力',
-                        contentPadding:
-                        const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                        contentPadding: const EdgeInsets.symmetric(
+                            vertical: 10, horizontal: 12),
                         filled: true,
                         fillColor: Colors.white,
                         border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8.0),
-                            borderSide:
-                            BorderSide(color: Colors.blue.shade300, width: 2)),
+                            borderSide: BorderSide(
+                                color: Colors.blue.shade300, width: 2)),
                         enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8.0),
-                            borderSide:
-                            BorderSide(color: Colors.blue.shade300, width: 2)),
+                            borderSide: BorderSide(
+                                color: Colors.blue.shade300, width: 2)),
                         focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8.0),
-                            borderSide:
-                            BorderSide(color: Colors.blue.shade500, width: 2)),
+                            borderSide: BorderSide(
+                                color: Colors.blue.shade500, width: 2)),
                       ),
                     ),
                   ),
@@ -256,24 +288,20 @@ ${widget.explanationText}
                       ? const SizedBox(
                     width: 28,
                     height: 28,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child:
+                    CircularProgressIndicator(strokeWidth: 2),
                   )
                       : IconButton(
-                    icon: const Icon(Icons.arrow_circle_up_rounded,
-                        size: 36, color: Colors.blue),
+                    icon: const Icon(
+                        Icons.arrow_circle_up_rounded,
+                        size: 36,
+                        color: Colors.blue),
                     onPressed: _onSendPressed,
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
                     visualDensity: VisualDensity.compact,
                   ),
                 ]),
-              ),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                child: Text(
-                  'AI解説の回答は必ずしも正しいとは限りません。重要な情報は確認するようにしてください。',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
-                ),
               ),
             ],
           ),

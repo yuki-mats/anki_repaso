@@ -212,9 +212,13 @@ class _ReplyPageState extends State<ReplyListPage> {
           Row(
             children: [
               CircleAvatar(
-                radius: 16,
-                backgroundImage: profileImageUrl != null ? NetworkImage(profileImageUrl) : null,
-                child: profileImageUrl == null ? const Icon(Icons.person, size: 18) : null,
+                radius: 16, // または 14（返信アイテムの場合）
+                backgroundImage: NetworkImage(
+                  (profileImageUrl != null && profileImageUrl.isNotEmpty)
+                      ? profileImageUrl
+                      : 'https://firebasestorage.googleapis.com/v0/b/repaso-rbaqy4.appspot.com/o/profile_images%2Fdefault_profile_icon_v1.0.png?alt=media&token=545710a7-af21-41d8-ab8b-c56484685f68',
+                ),
+                backgroundColor: Colors.grey[200],
               ),
               const SizedBox(width: 8),
               Column(
@@ -526,10 +530,15 @@ class ReplyItem extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(top: 8.0, right: 8.0),
                 child: CircleAvatar(
-                  radius: 14,
-                  backgroundImage: profileImageUrl != null ? NetworkImage(profileImageUrl) : null,
-                  child: profileImageUrl == null ? const Icon(Icons.person, size: 18) : null,
-                ),
+                  radius: 14, // または 14（返信アイテムの場合）
+                  backgroundImage: NetworkImage(
+                    (profileImageUrl != null && profileImageUrl.isNotEmpty)
+                        ? profileImageUrl
+                        : 'https://firebasestorage.googleapis.com/v0/b/repaso-rbaqy4.appspot.com/o/profile_images%2Fdefault_profile_icon_v1.0.png?alt=media&token=545710a7-af21-41d8-ab8b-c56484685f68',
+                  ),
+                  backgroundColor: Colors.grey[200],
+                )
+
               ),
               Expanded(
                 child: Column(
@@ -623,10 +632,15 @@ class ReplyItemLocal extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(top: 8.0, right: 8.0),
                 child: CircleAvatar(
-                  radius: 14,
-                  backgroundImage: profileImageUrl != null ? NetworkImage(profileImageUrl) : null,
-                  child: profileImageUrl == null ? const Icon(Icons.person, size: 18) : null,
-                ),
+                  radius: 14, // または 14（返信アイテムの場合）
+                  backgroundImage: NetworkImage(
+                    (profileImageUrl != null && profileImageUrl.isNotEmpty)
+                        ? profileImageUrl
+                        : 'https://firebasestorage.googleapis.com/v0/b/repaso-rbaqy4.appspot.com/o/profile_images%2Fdefault_profile_icon_v1.0.png?alt=media&token=545710a7-af21-41d8-ab8b-c56484685f68',
+                  ),
+                  backgroundColor: Colors.grey[200],
+                )
+
               ),
               Expanded(
                 child: Column(

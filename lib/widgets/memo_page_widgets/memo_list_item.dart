@@ -196,10 +196,12 @@ class MemoListItem extends StatelessWidget {
                 padding: const EdgeInsets.only(top: 4),
                 child: CircleAvatar(
                   radius: 16,
-                  backgroundImage:
-                  iconUrl != null ? NetworkImage(iconUrl) : null,
-                  child:
-                  iconUrl == null ? const Icon(Icons.person, size: 18) : null,
+                  backgroundImage: NetworkImage(
+                    iconUrl != null && iconUrl.isNotEmpty
+                        ? iconUrl
+                        : 'https://firebasestorage.googleapis.com/v0/b/repaso-rbaqy4.appspot.com/o/profile_images%2Fdefault_profile_icon_v1.0.png?alt=media&token=545710a7-af21-41d8-ab8b-c56484685f68',
+                  ),
+                  backgroundColor: Colors.grey[200],
                 ),
               ),
               const SizedBox(width: 8),

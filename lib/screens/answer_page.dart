@@ -320,7 +320,7 @@ class _AnswerPageState extends State<AnswerPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.gray50,
+      backgroundColor: Colors.white,
       appBar: AppBar(
         title: Text(
           'あと${_questionsWithStats.length - _currentQuestionIndex}問',
@@ -328,10 +328,9 @@ class _AnswerPageState extends State<AnswerPage> {
         ),
       ),
       body: _isLoading
-          ? Center(
-        child: CircularProgressIndicator(
-          valueColor:
-          const AlwaysStoppedAnimation(AppColors.blue500),
+          ? const Center(
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation(AppColors.blue500),
         ),
       )
           : _questionsWithStats.isEmpty
@@ -352,13 +351,21 @@ class _AnswerPageState extends State<AnswerPage> {
       )
           : Column(
         children: [
-          // プログレスバー（メモリレベル順にまとまった色）はそのまま固定
-          Row(
-            children: getProgressColors(
-              totalQuestions: _questionsWithStats.length,
-              answerResults: _answerResults,
-            ).map((color) => Expanded(child: Container(height: 10, color: color)))
-                .toList(),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4.0),  // 両端を丸める
+            child: Row(
+              children: getProgressColors(
+                totalQuestions: _questionsWithStats.length,
+                answerResults: _answerResults,
+              ).map((color) {
+                return Expanded(
+                  child: Container(
+                    height: 8,
+                    color: color,
+                  ),
+                );
+              }).toList(),
+            ),
           ),
           // 以下、プログレスバー下部をスクロール可能に変更
           Flexible(
@@ -366,14 +373,14 @@ class _AnswerPageState extends State<AnswerPage> {
               child: Column(
                 children: [
                   Padding(
-                    padding: const EdgeInsets.only(top: 16.0,),
+                    padding: const EdgeInsets.only(top: 8.0,),
                     child: Column(
                       children: [
                         Container(
                           width: double.infinity,
                           height: MediaQuery.of(context).size.height * 0.48,
                           child: Padding(
-                            padding: const EdgeInsets.only(top: 12.0, left: 12.0, right: 12.0),
+                            padding: const EdgeInsets.only(top: 8.0, left: 14.0, right: 14.0),
                             child: Column(
                               children: [
                                 Align(
@@ -389,13 +396,13 @@ class _AnswerPageState extends State<AnswerPage> {
                                     ),
                                   ),
                                 ),
-                                const SizedBox(height: 8),
+                                const SizedBox(height: 4),
                                 // 問題文と画像の部分をスクロール可能にする
                                 if (_questionsWithStats.isNotEmpty)
                                   Expanded(
                                     child: Scrollbar(
                                       controller: _scrollController,
-                                      thumbVisibility: true, // スクロール可能なときに常に表示
+                                      thumbVisibility: false, // スクロール可能なときに常に表示
                                       child: SingleChildScrollView(
                                         controller: _scrollController, // スクロールを制御
                                         padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 0), // 余白を統一
@@ -421,13 +428,12 @@ class _AnswerPageState extends State<AnswerPage> {
                                                 children: [
                                                   Text(
                                                     displayText,
-                                                    style: const TextStyle(fontSize: 13),
+                                                    style: const TextStyle(fontSize: 13.5, height: 1.6,),
                                                     textAlign: TextAlign.start,
                                                   ),
                                                   const SizedBox(height: 8), // 固定間隔
                                                   if (displayImageUrls.isNotEmpty)
                                                     ImagePreviewWidget(imageUrls: displayImageUrls),
-                                                  const SizedBox(height: 8), // 固定間隔
                                                   if (_questionsWithStats.isNotEmpty)
                                                     Builder(
                                                       builder: (context) {
@@ -474,6 +480,7 @@ class _AnswerPageState extends State<AnswerPage> {
 
                                       /* --- UI／統計 -------------------------------------- */
                                       correctRate              : question['correctRate'],
+                                      totalAnswers             : question['attemptCount'],
                                       hintText                 : question['hintText'],
                                       footerButtonType         : _footerButtonType,
                                       flashCardHasBeenRevealed : _flashCardHasBeenRevealed,
@@ -550,7 +557,10 @@ class _AnswerPageState extends State<AnswerPage> {
                     ),
                   ),
                   if (_selectedAnswer == null)
-                    const BannerAdWidget(),
+                    Padding(
+                      padding: const EdgeInsets.only(top:16.0),
+                      child: const BannerAdWidget(),
+                    ),
                 ],
               ),
             ),

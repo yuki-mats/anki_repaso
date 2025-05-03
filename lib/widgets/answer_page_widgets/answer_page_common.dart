@@ -9,16 +9,12 @@ import 'package:repaso/widgets/answer_page_widgets/chat_gpt_screen.dart';
   共通フッター
 ───────────────────────────────────────────────────────────────*/
 class CommonQuestionFooter extends StatelessWidget {
-  /* 必須（AI ボタン用） */
   final String  questionId;
   final String  questionText;
   final String  correctChoiceText;
   final String  explanationText;
-
-  /* 既存スレッドがあれば渡す（null なら新規） */
   final String? aiMemoId;
-
-  /* UI／統計系 */
+  final int? totalAnswers;
   final double?      correctRate;
   final String?      hintText;
   final String?      footerButtonType;
@@ -42,9 +38,11 @@ class CommonQuestionFooter extends StatelessWidget {
     required this.flashCardHasBeenRevealed,
     required this.isFlagged,
     required this.isOfficialQuestion,
+  /* 統計情報を受け取る */
+    this.correctRate,
+    this.totalAnswers,
     /* オプション */
     this.aiMemoId,
-    this.correctRate,
     this.hintText,
     this.footerButtonType,
     this.onShowHintDialog,
@@ -90,15 +88,40 @@ class CommonQuestionFooter extends StatelessWidget {
                     color: Colors.white,
                     child: Column(
                       children: [
-                        // ─── ヘッダー（×ボタン） ───
-                        Container(
-                          height: 48,
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          alignment: Alignment.centerRight,
-                          child: IconButton(
-                            icon: const Icon(Icons.close),
-                            onPressed: () => Navigator.of(context).pop(),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Center(
+                            child: Container(
+                              width: 40,
+                              height: 4,
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade300,
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
                           ),
+                        ),
+                        // ─── ヘッダー（×ボタン） ───
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.only(left: 16.0),
+                              child: Text(
+                                'AI解説',
+                                style: const TextStyle(fontSize: 18, color: Colors.black87),
+                              ),
+                            ),
+                            Container(
+                              height: 50,
+                              alignment: Alignment.centerRight,
+                              child: IconButton(
+                                icon: const Icon(Icons.close, size: 28, color: Colors.grey),
+                                onPressed: () => Navigator.of(context).pop(),
+                              ),
+                            ),
+                          ],
                         ),
                         // ─── 本体 ───
                         Expanded(
@@ -147,19 +170,60 @@ class CommonQuestionFooter extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasHint        = hintText?.trim().isNotEmpty ?? false;
     final hasExplanation = explanationText.trim().isNotEmpty;
+    final count = totalAnswers ?? 0;
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         /* 左側：正答率 */
-        Column(
+        Row(
           children: [
-            const Text('正答率', style: TextStyle(fontSize: 12, color: Colors.grey)),
-            Text('${correctRate?.toStringAsFixed(0) ?? '-'}%',
-                style: const TextStyle(fontSize: 12, color: Colors.grey)),
-            const SizedBox(height: 8),
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text('正答率', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                RichText(
+                  text: TextSpan(
+                    children: [
+                      TextSpan(
+                        text: '${correctRate?.toStringAsFixed(0) ?? '-'}',
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                      TextSpan(
+                        text: ' %',
+                        style: const TextStyle(fontSize: 10, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+            const SizedBox(width: 8),
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text('回答数', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                RichText(
+                  text: TextSpan(
+                    children: [
+                      TextSpan(
+                        text: '$count',
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                      TextSpan(
+                        text: ' 回',
+                        style: const TextStyle(fontSize: 10, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
           ],
         ),
+
         /* 右側：各種アクション */
         Row(
           mainAxisSize: MainAxisSize.min,
@@ -273,7 +337,7 @@ class TrueFalseWidget extends StatelessWidget {
           children: [
             Icon(icon, color: iconColor, size: 18),
             const SizedBox(width: 12),
-            Expanded(child: Text(label, style: const TextStyle(fontSize: 12))),
+            Expanded(child: Text(label, style: const TextStyle(fontSize: 13.5))),
           ],
         ),
       );

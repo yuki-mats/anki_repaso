@@ -6,18 +6,17 @@ import 'package:intl/intl.dart';
 /// メモリレベルに応じた色を返す
 Color getMemoryLevelColor(String level) {
   switch (level) {
-    case 'unanswered':
-      return Colors.grey[300]!;
     case 'again':
-      return Colors.red[300]!;
+      return const Color(0xFFFF6464);   // 赤
     case 'hard':
-      return Colors.orange[300]!;
+      return const Color(0xFFFFA726);   // オレンジ
     case 'good':
-      return Colors.green[300]!;
+      return const Color(0xFF66BB6A);   // グリーン
     case 'easy':
-      return Colors.blue[300]!;
+      return const Color(0xFF42A5F5);   // ブルー
+    case 'unanswered':
     default:
-      return Colors.grey;
+      return const Color(0xFFBDBDBD);   // グレー
   }
 }
 
@@ -26,26 +25,30 @@ List<Color> getProgressColors({
   required int totalQuestions,
   required List<Map<String, dynamic>> answerResults,
 }) {
-  if (totalQuestions == 0) return [Colors.grey[300]!];
+  if (totalQuestions == 0) {
+    return [getMemoryLevelColor('unanswered')];
+  }
 
   // 未回答数を含めたカウント
-  Map<String, int> memoryLevelCounts = {
-    'easy': 0,
-    'good': 0,
-    'hard': 0,
+  final memoryLevelCounts = {
     'again': 0,
+    'hard': 0,
+    'good': 0,
+    'easy': 0,
     'unanswered': totalQuestions - answerResults.length,
   };
 
-  for (var result in answerResults) {
-    String level = result['memoryLevel'] ?? 'unanswered';
-    memoryLevelCounts[level] = (memoryLevelCounts[level] ?? 0) + 1;
+  for (final result in answerResults) {
+    final level = result['memoryLevel'] as String? ?? 'unanswered';
+    if (memoryLevelCounts.containsKey(level)) {
+      memoryLevelCounts[level] = memoryLevelCounts[level]! + 1;
+    }
   }
 
-  List<String> levelOrder = ['again', 'hard', 'good', 'easy', 'unanswered'];
-  List<Color> colors = [];
-  for (String level in levelOrder) {
-    int count = memoryLevelCounts[level] ?? 0;
+  const levelOrder = ['again', 'hard', 'good', 'easy', 'unanswered'];
+  final colors = <Color>[];
+  for (final level in levelOrder) {
+    final count = memoryLevelCounts[level]!;
     if (count > 0) {
       colors.addAll(List.filled(count, getMemoryLevelColor(level)));
     }

@@ -31,26 +31,35 @@ class SignUpPageState extends State<SignUpPage> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn(scopes: []);
 
+  String defaultProfileImageUrl =
+      'https://firebasestorage.googleapis.com/v0/b/repaso-rbaqy4.appspot.com/o/profile_images%2Fdefault_profile_icon_v1.0.png?alt=media&token=545710a7-af21-41d8-ab8b-c56484685f68';
+
+
   Future<User?> signInWithGoogle() async {
     try {
       if (kIsWeb) {
-        final GoogleAuthProvider googleProvider = GoogleAuthProvider();
-        googleProvider.setCustomParameters({'prompt': 'select_account'});
+        final GoogleAuthProvider googleProvider = GoogleAuthProvider()
+          ..setCustomParameters({'prompt': 'select_account'});
         final UserCredential userCredential =
         await FirebaseAuth.instance.signInWithPopup(googleProvider);
 
         final user = userCredential.user;
         if (user != null) {
-          final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
-          await userRef.set({
-            'name': '未設定',
-            'joinedGroups': [],
-            'createdAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
+          final isNew = userCredential.additionalUserInfo?.isNewUser ?? false;
+          if (isNew) {
+            final userRef =
+            FirebaseFirestore.instance.collection('users').doc(user.uid);
+            await userRef.set({
+              'name': 'user_${user.uid.substring(0, 8)}',
+              'profileImageUrl': defaultProfileImageUrl,
+              'joinedGroups': [],
+              'createdAt': FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true));
+          }
 
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => MainPage()),
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => MainPage()),
+                (_) => false,  // すべての既存ルートを削除
           );
         }
         return user;
@@ -58,25 +67,32 @@ class SignUpPageState extends State<SignUpPage> {
         final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
         if (googleUser == null) return null;
 
-        final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+        final GoogleSignInAuthentication googleAuth =
+        await googleUser.authentication;
         final credential = GoogleAuthProvider.credential(
           accessToken: googleAuth.accessToken,
           idToken: googleAuth.idToken,
         );
 
-        final UserCredential userCredential = await _auth.signInWithCredential(credential);
+        final UserCredential userCredential =
+        await _auth.signInWithCredential(credential);
         final user = userCredential.user;
         if (user != null) {
-          final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
-          await userRef.set({
-            'name': '未設定',
-            'joinedGroups': [],
-            'createdAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
+          final isNew = userCredential.additionalUserInfo?.isNewUser ?? false;
+          if (isNew) {
+            final userRef =
+            FirebaseFirestore.instance.collection('users').doc(user.uid);
+            await userRef.set({
+              'name': 'user_${user.uid.substring(0, 8)}',
+              'profileImageUrl': defaultProfileImageUrl,
+              'joinedGroups': [],
+              'createdAt': FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true));
+          }
 
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => MainPage()),
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => MainPage()),
+                (_) => false,  // すべての既存ルートを削除
           );
         }
         return user;
@@ -92,49 +108,63 @@ class SignUpPageState extends State<SignUpPage> {
   Future<User?> signInWithApple() async {
     try {
       if (kIsWeb) {
-        final OAuthProvider appleProvider = OAuthProvider('apple.com');
-        appleProvider.addScope('email');
-        appleProvider.addScope('name');
+        final OAuthProvider appleProvider = OAuthProvider('apple.com')
+          ..addScope('email')
+          ..addScope('name');
         final UserCredential userCredential =
         await FirebaseAuth.instance.signInWithPopup(appleProvider);
 
         final user = userCredential.user;
         if (user != null) {
-          final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
-          await userRef.set({
-            'name': '未設定',
-            'joinedGroups': [],
-            'createdAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
+          final isNew = userCredential.additionalUserInfo?.isNewUser ?? false;
+          if (isNew) {
+            final userRef =
+            FirebaseFirestore.instance.collection('users').doc(user.uid);
+            await userRef.set({
+              'name': 'user_${user.uid.substring(0, 8)}',
+              'profileImageUrl': defaultProfileImageUrl,
+              'joinedGroups': [],
+              'createdAt': FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true));
+          }
 
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => MainPage()),
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => MainPage()),
+                (_) => false,  // すべての既存ルートを削除
           );
         }
         return user;
       } else {
         final credential = await SignInWithApple.getAppleIDCredential(
-          scopes: [AppleIDAuthorizationScopes.email, AppleIDAuthorizationScopes.fullName],
+          scopes: [
+            AppleIDAuthorizationScopes.email,
+            AppleIDAuthorizationScopes.fullName
+          ],
         );
         final oauthCredential = OAuthProvider("apple.com").credential(
           idToken: credential.identityToken,
           accessToken: credential.authorizationCode,
         );
 
-        final userCredential = await _auth.signInWithCredential(oauthCredential);
+        final UserCredential userCredential =
+        await _auth.signInWithCredential(oauthCredential);
         final user = userCredential.user;
         if (user != null) {
-          final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
-          await userRef.set({
-            'name': '未設定',
-            'joinedGroups': [],
-            'createdAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
+          final isNew = userCredential.additionalUserInfo?.isNewUser ?? false;
+          if (isNew) {
+            final userRef =
+            FirebaseFirestore.instance.collection('users').doc(user.uid);
+            await userRef.set({
+              'name': 'user_${user.uid.substring(0, 8)}',
+              'profileImageUrl': defaultProfileImageUrl,
+              'joinedGroups': [],
+              'createdAt': FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true));
+          }
 
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => MainPage()),
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => MainPage()),
+                (_) => false,  // すべての既存ルートを削除
           );
         }
         return user;
@@ -149,7 +179,8 @@ class SignUpPageState extends State<SignUpPage> {
 
   void _validatePassword(String password) {
     setState(() {
-      if (password.length < 8 || !RegExp(r'^[a-zA-Z0-9]+$').hasMatch(password)) {
+      if (password.length < 8 ||
+          !RegExp(r'^[a-zA-Z0-9]+$').hasMatch(password)) {
         passwordError = 'パスワードは8文字以上の英数字で入力してください。';
       } else {
         passwordError = null;
@@ -165,15 +196,20 @@ class SignUpPageState extends State<SignUpPage> {
 
   Future<void> _signUpUser() async {
     try {
-      final userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+      final userCredential =
+      await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: _emailController.text,
         password: _passwordController.text,
       );
 
       final User? user = userCredential.user;
       if (user != null) {
-        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-          'name': '未設定',
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .set({
+          'name': 'user_${user.uid.substring(0, 8)}',
+          'profileImageUrl': defaultProfileImageUrl,
           'joinedGroups': [],
           'createdAt': FieldValue.serverTimestamp(),
         });
@@ -181,7 +217,9 @@ class SignUpPageState extends State<SignUpPage> {
         await user.sendEmailVerification();
 
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('確認メールを送信しました。メールを確認してください。')),
+          const SnackBar(
+              content:
+              Text('確認メールを送信しました。メールを確認してください。')),
         );
 
         Navigator.pushReplacement(
@@ -223,7 +261,8 @@ class SignUpPageState extends State<SignUpPage> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('新規登録', style: TextStyle(color: Colors.black, fontSize: 18)),
+        title: const Text('新規登録',
+            style: TextStyle(color: Colors.black, fontSize: 18)),
         backgroundColor: Colors.white,
         elevation: 0,
       ),
@@ -246,11 +285,15 @@ class SignUpPageState extends State<SignUpPage> {
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.center, // ← 上下中央揃え！
+                    crossAxisAlignment:
+                    CrossAxisAlignment.center, // ← 上下中央揃え！
                     mainAxisSize: MainAxisSize.min,
                     children: const [
-                      Icon(Icons.g_mobiledata_sharp, color: Colors.white, size: 36),
-                      Text('Googleで登録', style: TextStyle(color: Colors.white, fontSize: 18)),
+                      Icon(Icons.g_mobiledata_sharp,
+                          color: Colors.white, size: 36),
+                      Text('Googleで登録',
+                          style:
+                          TextStyle(color: Colors.white, fontSize: 18)),
                     ],
                   ),
                 ),
@@ -259,7 +302,8 @@ class SignUpPageState extends State<SignUpPage> {
                   height: 48,
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    icon: const Icon(Icons.apple, color: Colors.white, size: 24),
+                    icon:
+                    const Icon(Icons.apple, color: Colors.white, size: 24),
                     label: const Text(
                       'Appleで登録',
                       style: TextStyle(color: Colors.white, fontSize: 18),
@@ -298,8 +342,11 @@ class SignUpPageState extends State<SignUpPage> {
                   obscureText: !isPasswordVisible,
                   onChanged: _validatePassword,
                   suffixIcon: IconButton(
-                    icon: Icon(isPasswordVisible ? Icons.visibility : Icons.visibility_off),
-                    onPressed: () => setState(() => isPasswordVisible = !isPasswordVisible),
+                    icon: Icon(isPasswordVisible
+                        ? Icons.visibility
+                        : Icons.visibility_off),
+                    onPressed: () =>
+                        setState(() => isPasswordVisible = !isPasswordVisible),
                   ),
                   errorText: passwordError,
                 ),
@@ -310,10 +357,14 @@ class SignUpPageState extends State<SignUpPage> {
                   obscureText: !isConfirmPasswordVisible,
                   onChanged: (_) => setState(() {}),
                   suffixIcon: IconButton(
-                    icon: Icon(isConfirmPasswordVisible ? Icons.visibility : Icons.visibility_off),
-                    onPressed: () => setState(() => isConfirmPasswordVisible = !isConfirmPasswordVisible),
+                    icon: Icon(isConfirmPasswordVisible
+                        ? Icons.visibility
+                        : Icons.visibility_off),
+                    onPressed: () => setState(() =>
+                    isConfirmPasswordVisible = !isConfirmPasswordVisible),
                   ),
-                  errorText: _passwordController.text != _confirmPasswordController.text &&
+                  errorText: _passwordController.text !=
+                      _confirmPasswordController.text &&
                       _confirmPasswordController.text.isNotEmpty
                       ? 'パスワードが一致しません。'
                       : null,
@@ -324,32 +375,32 @@ class SignUpPageState extends State<SignUpPage> {
                   child: RichText(
                     textAlign: TextAlign.center,
                     text: TextSpan(
-                      style: const TextStyle(color: Colors.black, fontSize: 12),
+                      style:
+                      const TextStyle(color: Colors.black, fontSize: 12),
                       children: [
                         const TextSpan(text: '登録を続行すると、'),
                         TextSpan(
                           text: '利用規約',
                           style: const TextStyle(
-                            color: AppColors.blue600,
-                            decoration: TextDecoration.none,
-                          ),
+                              color: AppColors.blue600,
+                              decoration: TextDecoration.none),
                           recognizer: TapGestureRecognizer()
                             ..onTap = () => Navigator.push(
                               context,
-                              MaterialPageRoute(builder: (_) => const TermsOfServicePage()),
+                              MaterialPageRoute(
+                                  builder: (_) => const TermsOfServicePage()),
                             ),
                         ),
                         const TextSpan(text: 'および'),
                         TextSpan(
                           text: 'プライバシーポリシー',
                           style: const TextStyle(
-                            color: AppColors.blue600,
-                            decoration: TextDecoration.none,
-                          ),
+                              color: AppColors.blue600,
+                              decoration: TextDecoration.none),
                           recognizer: TapGestureRecognizer()
                             ..onTap = () => Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (_) => const PrivacyPolicyPage()),
+                              context,MaterialPageRoute(
+                                builder: (_) => const PrivacyPolicyPage()),
                             ),
                         ),
                         const TextSpan(text: 'に同意したものとみなされます。'),
@@ -362,18 +413,22 @@ class SignUpPageState extends State<SignUpPage> {
                   child: ElevatedButton(
                     onPressed: isSignUpEnabled ? _signUpUser : null,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: isSignUpEnabled ? AppColors.blue600 : Colors.grey,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      backgroundColor:
+                      isSignUpEnabled ? AppColors.blue600 : Colors.grey,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
-                    child: const Text('登録する', style: TextStyle(fontSize: 16, color: Colors.white)),
+                    child: const Text('登録する',
+                        style: TextStyle(fontSize: 16, color: Colors.white)),
                   ),
                 ),
                 const SizedBox(height: 16),
                 GestureDetector(
                   onTap: () => Navigator.pushReplacement(
                     context,
-                    MaterialPageRoute(builder: (context) => const LoginPage()),
+                    MaterialPageRoute(
+                        builder: (context) => const LoginPage()),
                   ),
                   child: const Text(
                     'ログインする',

@@ -1,47 +1,51 @@
 import 'package:flutter/material.dart';
 
 class MemoryLevelProgressBar extends StatelessWidget {
-  final Map<String, int> memoryValues;                // {'again': 3, 'hard': 2, ...}
+  /// 各レベルの件数（unanswered は含めず、ウィジェット内で計算）
+  final Map<String, int> memoryValues; // {'again':1, 'hard':0, 'good':0, 'easy':0}
+  /// 問題の総数
+  final int totalCount;
+  /// バーの高さ
   final double height;
+  /// 角丸
   final BorderRadiusGeometry borderRadius;
-  final List<String> order;
 
   const MemoryLevelProgressBar({
     Key? key,
     required this.memoryValues,
+    required this.totalCount,
     this.height = 8.0,
     this.borderRadius = const BorderRadius.all(Radius.circular(4.0)),
-    this.order = const ['again', 'hard', 'good', 'easy', 'unanswered'],
   }) : super(key: key);
 
-  // ── レベルに応じたグラデーション ────────────────────
+  // レベルに応じたグラデーション
   LinearGradient _gradient(String level) {
     switch (level) {
-      case 'again':       // 赤 → ハイライト
+      case 'again': // 赤 → ハイライト
         return const LinearGradient(
           colors: [Color(0xFFFF6464), Color(0xFFFF8A8A)],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         );
-      case 'hard':        // オレンジ
+      case 'hard': // オレンジ
         return const LinearGradient(
           colors: [Color(0xFFFFA726), Color(0xFFFFC47E)],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         );
-      case 'good':        // グリーン
+      case 'good': // グリーン
         return const LinearGradient(
           colors: [Color(0xFF66BB6A), Color(0xFF9EE29F)],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         );
-      case 'easy':        // ブルー
+      case 'easy': // ブルー
         return const LinearGradient(
           colors: [Color(0xFF42A5F5), Color(0xFF89C6FF)],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         );
-      case 'unanswered':  // グレー
+      case 'unanswered': // グレー
       default:
         return const LinearGradient(
           colors: [Color(0xFFBDBDBD), Color(0xFFE0E0E0)],
@@ -53,10 +57,27 @@ class MemoryLevelProgressBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isAllZero = order.every((level) => (memoryValues[level] ?? 0) == 0);
+    // 回答済み合計を計算
+    final int answeredSum =
+        (memoryValues['again'] ?? 0) +
+            (memoryValues['hard']  ?? 0) +
+            (memoryValues['good']  ?? 0) +
+            (memoryValues['easy']  ?? 0);
 
-    // 全て 0 のときはグレー 1 本
-    if (isAllZero) {
+    // 未回答を計算（負にならないよう clamp）
+    final int unanswered = (totalCount - answeredSum).clamp(0, totalCount);
+
+    // 各レベルの最終的な件数マップ
+    final counts = <String, int>{
+      'again':      memoryValues['again'] ?? 0,
+      'hard':       memoryValues['hard']  ?? 0,
+      'good':       memoryValues['good']  ?? 0,
+      'easy':       memoryValues['easy']  ?? 0,
+      'unanswered': unanswered,
+    };
+
+    // 全て未回答（answeredSum == 0）のときはグレー1本
+    if (answeredSum == 0) {
       return ClipRRect(
         borderRadius: borderRadius,
         child: Container(
@@ -66,14 +87,16 @@ class MemoryLevelProgressBar extends StatelessWidget {
       );
     }
 
+    // 部分描画
     return ClipRRect(
       borderRadius: borderRadius,
       child: Row(
-        children: order.map((level) {
-          final flexValue = memoryValues[level] ?? 0;
-          if (flexValue <= 0) return const SizedBox.shrink();
+        children: counts.entries.map((entry) {
+          final level = entry.key;
+          final flex  = entry.value;
+          if (flex <= 0) return const SizedBox.shrink();
           return Expanded(
-            flex: flexValue,
+            flex: flex,
             child: Container(
               height: height,
               decoration: BoxDecoration(gradient: _gradient(level)),

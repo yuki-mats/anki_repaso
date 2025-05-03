@@ -98,7 +98,8 @@ exports.callVertexAI = onCall({ region: "us-central1" }, async (req) => {
         : {}),
       generationConfig: {
         temperature     : 0.7,
-        maxOutputTokens : 768,
+        maxOutputTokens : 256,
+        topP            : 0.9,
       },
     };
 
