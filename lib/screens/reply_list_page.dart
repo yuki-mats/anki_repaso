@@ -225,7 +225,8 @@ class _ReplyPageState extends State<ReplyListPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(userName,
-                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                      style:
+                      const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                   Text(
                     DateFormat('yyyy.MM.dd HH:mm').format(
                       (widget.memoData['createdAt'] is Timestamp)
@@ -239,14 +240,17 @@ class _ReplyPageState extends State<ReplyListPage> {
             ],
           ),
           const SizedBox(height: 12),
-          QuestionToggleSection(questionId: widget.memoData['questionId'] as String),
+          QuestionToggleSection(
+              questionId: widget.memoData['questionId'] as String),
           const SizedBox(height: 12),
           if ((widget.memoData['title'] ?? '').toString().isNotEmpty)
             Text(widget.memoData['title'],
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                style:
+                const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
           if ((widget.memoData['title'] ?? '').toString().isNotEmpty)
             const SizedBox(height: 4),
-          Text(widget.memoData['content'] ?? '', style: const TextStyle(fontSize: 14)),
+          Text(widget.memoData['content'] ?? '',
+              style: const TextStyle(fontSize: 14)),
           const SizedBox(height: 8),
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -277,7 +281,8 @@ class _ReplyPageState extends State<ReplyListPage> {
                                 color: Color(0xFF1DA1F2),
                                 fontWeight: FontWeight.w500),
                           ),
-                        if ((_questionMeta?['questionSetName'] ?? '').isNotEmpty)
+                        if ((_questionMeta?['questionSetName'] ?? '')
+                            .isNotEmpty)
                           Text(
                             "#${_questionMeta?['questionSetName']}",
                             style: const TextStyle(
@@ -293,21 +298,23 @@ class _ReplyPageState extends State<ReplyListPage> {
                       children: [
                         Row(
                           children: [
-                            const Icon(Icons.favorite_border, size: 16, color: Colors.grey),
+                            const Icon(Icons.favorite_border,
+                                size: 16, color: Colors.grey),
                             const SizedBox(width: 4),
                             Text('${widget.memoData['likeCount'] ?? 0}',
-                                style:
-                                const TextStyle(fontSize: 12, color: Colors.grey)),
+                                style: const TextStyle(
+                                    fontSize: 12, color: Colors.grey)),
                           ],
                         ),
                         const SizedBox(width: 12),
                         Row(
                           children: [
-                            const Icon(Icons.chat_bubble_outline, size: 16, color: Colors.grey),
+                            const Icon(Icons.chat_bubble_outline,
+                                size: 16, color: Colors.grey),
                             const SizedBox(width: 4),
                             Text('${widget.memoData['replyCount'] ?? 0}',
-                                style:
-                                const TextStyle(fontSize: 12, color: Colors.grey)),
+                                style: const TextStyle(
+                                    fontSize: 12, color: Colors.grey)),
                           ],
                         ),
                       ],
@@ -436,7 +443,8 @@ class ReplyItem extends StatelessWidget {
   const ReplyItem({Key? key, required this.replyDoc}) : super(key: key);
 
   Future<Map<String, dynamic>?> _getUserData(String userId) async {
-    final userDoc = await FirebaseFirestore.instance.collection('users').doc(userId).get();
+    final userDoc =
+    await FirebaseFirestore.instance.collection('users').doc(userId).get();
     return userDoc.data() as Map<String, dynamic>?;
   }
 
@@ -467,21 +475,22 @@ class ReplyItem extends StatelessWidget {
                       color: AppColors.gray100,
                       borderRadius: BorderRadius.circular(100),
                     ),
-                    child: const Icon(Icons.delete_outline, size: 22, color: AppColors.gray600),
+                    child:
+                    const Icon(Icons.delete_outline, size: 22, color: AppColors.gray600),
                   ),
                   title: const Text('返信を削除', style: TextStyle(fontSize: 16)),
                   onTap: () async {
                     Navigator.pop(modalContext);
                     final memoId = replyDoc.reference.parent.parent?.id ?? '';
-                    final memoRef = FirebaseFirestore.instance.collection('memos').doc(memoId);
+                    final memoRef =
+                    FirebaseFirestore.instance.collection('memos').doc(memoId);
                     await FirebaseFirestore.instance.runTransaction((transaction) async {
                       final replyRef = memoRef.collection('replies').doc(replyDoc.id);
                       transaction.update(replyRef, {'isDeleted': true});
                       transaction.update(memoRef, {'replyCount': FieldValue.increment(-1)});
                     });
                   },
-                )
-              else
+                ) else
                 ListTile(
                   leading: Container(
                     width: 40,
@@ -513,15 +522,20 @@ class ReplyItem extends StatelessWidget {
     final replyData = replyDoc.data() as Map<String, dynamic>? ?? {};
     final content = replyData['content'] ?? '';
     final createdAtTimestamp = replyData['createdAt'] as Timestamp?;
-    final createdAt = createdAtTimestamp != null ? createdAtTimestamp.toDate() : DateTime.now();
+    final createdAt = createdAtTimestamp != null
+        ? createdAtTimestamp.toDate()
+        : DateTime.now();
     final createdById = replyData['createdById'] ?? '';
+    final bool isAIGenerated = replyData['isAIGenerated'] == true;
 
     return FutureBuilder<Map<String, dynamic>?>(
       future: _getUserData(createdById),
       builder: (context, snapshot) {
         final userData = snapshot.data ?? {};
         final profileImageUrl = userData['profileImageUrl'] as String?;
-        final userName = userData['name'] ?? 'ユーザー';
+        final displayName = isAIGenerated
+            ? 'Anki Ai'
+            : (userData['name'] as String? ?? 'ユーザー');
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
           child: Row(
@@ -530,15 +544,19 @@ class ReplyItem extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(top: 8.0, right: 8.0),
                 child: CircleAvatar(
-                  radius: 14, // または 14（返信アイテムの場合）
-                  backgroundImage: NetworkImage(
+                  radius: 14,
+                  backgroundImage: isAIGenerated
+                      ? null
+                      : NetworkImage(
                     (profileImageUrl != null && profileImageUrl.isNotEmpty)
                         ? profileImageUrl
                         : 'https://firebasestorage.googleapis.com/v0/b/repaso-rbaqy4.appspot.com/o/profile_images%2Fdefault_profile_icon_v1.0.png?alt=media&token=545710a7-af21-41d8-ab8b-c56484685f68',
                   ),
-                  backgroundColor: Colors.grey[200],
-                )
-
+                  backgroundColor: isAIGenerated ? Colors.grey[400] : Colors.grey[200],
+                  child: isAIGenerated
+                      ? const Icon(Icons.smart_toy, size: 18, color: Colors.white)
+                      : null,
+                ),
               ),
               Expanded(
                 child: Column(
@@ -550,8 +568,9 @@ class ReplyItem extends StatelessWidget {
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(userName,
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                            Text(displayName,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold, fontSize: 14)),
                             Text(_formatTime(createdAt),
                                 style: const TextStyle(fontSize: 12, color: Colors.grey)),
                           ],
@@ -564,7 +583,8 @@ class ReplyItem extends StatelessWidget {
                         ),
                       ],
                     ),
-                    Text(content, style: const TextStyle(fontSize: 14), softWrap: true),
+                    Text(content,
+                        style: const TextStyle(fontSize: 14), softWrap: true),
                     const SizedBox(height: 4),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
@@ -572,10 +592,12 @@ class ReplyItem extends StatelessWidget {
                       children: [
                         Row(
                           children: [
-                            const Icon(Icons.favorite_border, size: 16, color: Colors.grey),
+                            const Icon(Icons.favorite_border,
+                                size: 16, color: Colors.grey),
                             const SizedBox(width: 4),
                             Text('${replyData['likeCount'] ?? 0}',
-                                style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                style: const TextStyle(
+                                    fontSize: 12, color: Colors.grey)),
                           ],
                         ),
                         Padding(
@@ -618,12 +640,16 @@ class ReplyItemLocal extends StatelessWidget {
     final content = replyData['content'] ?? '';
     final createdAt = replyData['createdAt'] as DateTime;
     final createdById = replyData['createdById'] ?? '';
+    final bool isAIGenerated = replyData['isAIGenerated'] == true;
+
     return FutureBuilder<Map<String, dynamic>?>(
       future: _getUserData(createdById),
       builder: (context, snapshot) {
         final userData = snapshot.data ?? {};
         final profileImageUrl = userData['profileImageUrl'] as String?;
-        final userName = userData['name'] ?? 'ユーザー';
+        final displayName = isAIGenerated
+            ? 'Anki Ai'
+            : (userData['name'] as String? ?? 'ユーザー');
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
           child: Row(
@@ -632,15 +658,19 @@ class ReplyItemLocal extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(top: 8.0, right: 8.0),
                 child: CircleAvatar(
-                  radius: 14, // または 14（返信アイテムの場合）
-                  backgroundImage: NetworkImage(
+                  radius: 14,
+                  backgroundImage: isAIGenerated
+                      ? null
+                      : NetworkImage(
                     (profileImageUrl != null && profileImageUrl.isNotEmpty)
                         ? profileImageUrl
                         : 'https://firebasestorage.googleapis.com/v0/b/repaso-rbaqy4.appspot.com/o/profile_images%2Fdefault_profile_icon_v1.0.png?alt=media&token=545710a7-af21-41d8-ab8b-c56484685f68',
                   ),
-                  backgroundColor: Colors.grey[200],
-                )
-
+                  backgroundColor: isAIGenerated ? Colors.grey[400] : Colors.grey[200],
+                  child: isAIGenerated
+                      ? const Icon(Icons.smart_toy, size: 18, color: Colors.white)
+                      : null,
+                ),
               ),
               Expanded(
                 child: Column(
@@ -652,8 +682,9 @@ class ReplyItemLocal extends StatelessWidget {
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(userName,
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                            Text(displayName,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold, fontSize: 14)),
                             Text(_formatTime(createdAt),
                                 style: const TextStyle(fontSize: 12, color: Colors.grey)),
                           ],
@@ -664,7 +695,8 @@ class ReplyItemLocal extends StatelessWidget {
                         ),
                       ],
                     ),
-                    Text(content, style: const TextStyle(fontSize: 14), softWrap: true),
+                    Text(content,
+                        style: const TextStyle(fontSize: 14), softWrap: true),
                     const SizedBox(height: 4),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
@@ -672,10 +704,12 @@ class ReplyItemLocal extends StatelessWidget {
                       children: [
                         Row(
                           children: [
-                            const Icon(Icons.favorite_border, size: 16, color: Colors.grey),
+                            const Icon(Icons.favorite_border,
+                                size: 16, color: Colors.grey),
                             const SizedBox(width: 4),
                             Text('${replyData['likeCount'] ?? 0}',
-                                style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                style: const TextStyle(
+                                    fontSize: 12, color: Colors.grey)),
                           ],
                         ),
                         Padding(
@@ -733,20 +767,24 @@ class ReplyInputBar extends StatelessWidget {
                     decoration: InputDecoration(
                       hintText: 'コメントを入力',
                       hintStyle: TextStyle(color: Colors.grey.shade500),
-                      contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                      contentPadding:
+                      const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
                       filled: true,
                       fillColor: Colors.white,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8.0),
-                        borderSide: BorderSide(color: Colors.blue.shade300, width: 2),
+                        borderSide:
+                        BorderSide(color: Colors.blue.shade300, width: 2),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8.0),
-                        borderSide: BorderSide(color: Colors.blue.shade300, width: 2),
+                        borderSide:
+                        BorderSide(color: Colors.blue.shade300, width: 2),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8.0),
-                        borderSide: BorderSide(color: Colors.blue.shade500, width: 2),
+                        borderSide:
+                        BorderSide(color: Colors.blue.shade500, width: 2),
                       ),
                     ),
                   ),

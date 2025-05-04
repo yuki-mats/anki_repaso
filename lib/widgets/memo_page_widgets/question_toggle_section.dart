@@ -21,10 +21,6 @@ class _QuestionToggleSectionState extends State<QuestionToggleSection>
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-      ),
-      child: Container(
         color: AppColors.gray50,
         child: Padding(
           padding: const EdgeInsets.all(8.0),
@@ -81,12 +77,12 @@ class _QuestionToggleSectionState extends State<QuestionToggleSection>
                           Text(
                             '$questionText',
                             style: const TextStyle(
-                                fontSize: 14,),
+                                fontSize: 13,),
                           ),
                           const SizedBox(height: 2),
                           Text(
                             '<回答> $correctChoiceText',
-                            style: const TextStyle(fontSize: 14),
+                            style: const TextStyle(fontSize: 13),
                           ),
                           const SizedBox(height: 4),
                           // ── 出典 ──
@@ -106,7 +102,6 @@ class _QuestionToggleSectionState extends State<QuestionToggleSection>
             ],
           ),
         ),
-      ),
-    );
+      );
   }
 }

@@ -412,7 +412,7 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.gray50,
+      backgroundColor: Colors.white,
       appBar: AppBar(
         title: Text(
           'あと${_questionsWithStats.length - _currentQuestionIndex}問',
@@ -455,12 +455,21 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
           : Column(
         children: [
           // 進捗バー
-          Row(
-            children: getProgressColors(
-              totalQuestions: _questionsWithStats.length,
-              answerResults: _answerResults,
-            ).map((color) => Expanded(child: Container(height: 10, color: color)))
-                .toList(),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4.0),  // 両端を丸める
+            child: Row(
+              children: getProgressColors(
+                totalQuestions: _questionsWithStats.length,
+                answerResults: _answerResults,
+              ).map((color) {
+                return Expanded(
+                  child: Container(
+                    height: 8,
+                    color: color,
+                  ),
+                );
+              }).toList(),
+            ),
           ),
           // 質問・画像・各種アイコンを含むスクロールエリア
           Flexible(
@@ -522,7 +531,7 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
                                               children: [
                                                 Text(
                                                   displayText,
-                                                  style: const TextStyle(fontSize: 13),
+                                                  style: const TextStyle(fontSize: 13.5, height: 1.6,),
                                                   textAlign: TextAlign.start,
                                                 ),
                                                 const SizedBox(height: 8),
@@ -656,7 +665,10 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
                     }),
                   ),
                   if (_selectedAnswer == null)
-                  const BannerAdWidget(),
+                    Padding(
+                      padding: const EdgeInsets.only(top:16.0),
+                      child: const BannerAdWidget(),
+                    ),
                 ],
               ),
             ),

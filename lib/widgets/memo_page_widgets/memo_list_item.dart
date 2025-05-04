@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:repaso/screens/reply_list_page.dart';
-import 'package:repaso/widgets/memo_edit_page.dart';
+import 'package:repaso/screens/memo_edit_page.dart';
+import 'package:repaso/widgets/memo_page_widgets/question_toggle_section.dart';
 import '../../utils/app_colors.dart';
 
 class MemoListItem extends StatelessWidget {
@@ -229,12 +230,19 @@ class MemoListItem extends StatelessWidget {
                       ),
                     ],
                   ),
+                  if (qId.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Padding(
+                      padding: const EdgeInsets.only(right: 12.0),
+                      child: QuestionToggleSection(questionId: qId),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
                   if (title.isNotEmpty) ...[
                     Text(title,
                         style: const TextStyle(
                             fontWeight: FontWeight.bold, fontSize: 14)),
                   ],
-                  const SizedBox(height: 2),
                   Text(content, style: const TextStyle(fontSize: 14)),
                   const SizedBox(height: 8),
                   /* ───── ハッシュタグ ───── */

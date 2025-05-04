@@ -109,7 +109,7 @@ class CommonQuestionFooter extends StatelessWidget {
                             Padding(
                               padding: const EdgeInsets.only(left: 16.0),
                               child: Text(
-                                'AI解説',
+                                'Anki AI',
                                 style: const TextStyle(fontSize: 18, color: Colors.black87),
                               ),
                             ),
@@ -228,7 +228,7 @@ class CommonQuestionFooter extends StatelessWidget {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _aiButton(context),
+            if (isOfficialQuestion) _aiButton(context),
             if (hasHint) ...[
               const SizedBox(width: 8),
               _roundBtn(Icons.lightbulb_outline, onShowHintDialog),

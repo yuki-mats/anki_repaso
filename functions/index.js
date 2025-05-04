@@ -14,7 +14,9 @@ const authClient = new GoogleAuth({
 
 exports.callVertexAI = onCall({ region: "us-central1" }, async (req) => {
   try {
-    // 1) 認証 & 入力チェック
+    /* ───────────────────────────────
+     * 1) 認証 & 入力チェック
+     * ─────────────────────────────── */
     if (!req.auth) {
       throw new HttpsError("unauthenticated", "ログインが必要です。");
     }
@@ -25,11 +27,42 @@ exports.callVertexAI = onCall({ region: "us-central1" }, async (req) => {
       questionId    = "",
       systemContext = "",
     } = req.data || {};
+
     if (typeof message !== "string" || message.trim() === "") {
       throw new HttpsError("invalid-argument", "message が空です。");
     }
 
-    // 2) Firestore にユーザー発話を保存
+    /* ───────────────────────────────
+     * 2) フォルダの licenseName を取得
+     * ─────────────────────────────── */
+    let licenseName = "";
+    if (questionId) {
+      try {
+        const qSnap = await db.doc(`questions/${questionId}`).get();
+        if (qSnap.exists) {
+          const { questionSetId = "" } = qSnap.data() || {};
+          if (questionSetId) {
+            const qsSnap = await db.doc(`questionSets/${questionSetId}`).get();
+            if (qsSnap.exists) {
+              const { folderId = "" } = qsSnap.data() || {};
+              if (folderId) {
+                const fSnap = await db.doc(`folders/${folderId}`).get();
+                if (fSnap.exists) {
+                  licenseName = (fSnap.data() || {}).licenseName || "";
+                }
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error("[callVertexAI] licenseName 取得失敗:", err);
+        // licenseName が取得できなくても致命的ではないので処理続行
+      }
+    }
+
+    /* ───────────────────────────────
+     * 3) Firestore にユーザー発話を保存
+     * ─────────────────────────────── */
     let targetMemoId = memoId;
     const now        = admin.firestore.FieldValue.serverTimestamp();
 
@@ -38,6 +71,7 @@ exports.callVertexAI = onCall({ region: "us-central1" }, async (req) => {
         questionId,
         visibility    : "private",
         isDeleted     : false,
+        licenseName   : licenseName,     // ★ 追加 ★
         content       : message,
         memoType      : "question",
         createdById   : uid,
@@ -48,6 +82,7 @@ exports.callVertexAI = onCall({ region: "us-central1" }, async (req) => {
         likeCount     : 0,
         replyCount    : 0,
         isResolved    : false,
+        isAIGenerated : false,
         updatedById   : uid,
         updatedAt     : now,
         deletedAt     : null,
@@ -59,6 +94,7 @@ exports.callVertexAI = onCall({ region: "us-central1" }, async (req) => {
         parentReplyId : null,
         createdById   : uid,
         createdAt     : now,
+        isAIGenerated : false,
         isDeleted     : false,
       });
       await db.doc(`memos/${targetMemoId}`).update({
@@ -68,7 +104,9 @@ exports.callVertexAI = onCall({ region: "us-central1" }, async (req) => {
       });
     }
 
-    // 3) 会話履歴を直近10件構築
+    /* ───────────────────────────────
+     * 4) 直近 10 件の会話履歴を構築
+     * ─────────────────────────────── */
     const replySnap = await db
       .collection(`memos/${targetMemoId}/replies`)
       .orderBy("createdAt", "asc")
@@ -82,7 +120,9 @@ exports.callVertexAI = onCall({ region: "us-central1" }, async (req) => {
       };
     });
 
-    // 4) Vertex AI 呼び出し用ペイロード組み立て
+    /* ───────────────────────────────
+     * 5) Vertex AI 呼び出し
+     * ─────────────────────────────── */
     const contents = [
       ...history,
       { role: "user", parts: [{ text: message }] },
@@ -103,10 +143,8 @@ exports.callVertexAI = onCall({ region: "us-central1" }, async (req) => {
       },
     };
 
-    // デバッグ用：実際に送信するペイロードを出力
     console.log("[callVertexAI] payload:", JSON.stringify(payload));
 
-    // 5) Vertex AI 呼び出し
     const client    = await authClient.getClient();
     const { token } = await client.getAccessToken();
     const project   = process.env.GCLOUD_PROJECT;
@@ -130,12 +168,15 @@ exports.callVertexAI = onCall({ region: "us-central1" }, async (req) => {
     const aiText =
       resp.data?.candidates?.[0]?.content?.parts?.[0]?.text || "(empty)";
 
-    // 6) Gemini 応答を Firestore に保存
+    /* ───────────────────────────────
+     * 6) Gemini 応答を Firestore に保存
+     * ─────────────────────────────── */
     await db.collection(`memos/${targetMemoId}/replies`).add({
       content       : aiText,
       parentReplyId : null,
       createdById   : "gemini",
       createdAt     : now,
+      isAIGenerated : true,
       isDeleted     : false,
     });
     await db.doc(`memos/${targetMemoId}`).update({
@@ -144,7 +185,9 @@ exports.callVertexAI = onCall({ region: "us-central1" }, async (req) => {
       updatedAt  : now,
     });
 
-    // 7) クライアントへ返却
+    /* ───────────────────────────────
+     * 7) クライアントへ返却
+     * ─────────────────────────────── */
     return { reply: aiText, memoId: targetMemoId };
   } catch (err) {
     console.error("[callVertexAI] Error:", err);

@@ -3,11 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:repaso/utils/app_colors.dart';
 
-/// Vertex AI（Gemini）とチャットする画面
-/// DraggableScrollableSheet 内で使う想定なので Scaffold は外し、
-/// 代わりに Column でハンドル＋メッセージ＋入力欄を並べています。
 class ChatGPTScreen extends StatefulWidget {
   /// 下部シートのスクロールを制御するコントローラ
   final ScrollController scrollController;
@@ -113,7 +109,7 @@ ${widget.explanationText}
       _messages.add(_Message(
         text: reply,
         isUser: false,
-        userName: 'Gemini',
+        userName: 'Anki AI',
         createdAt: DateTime.now(),
       ));
       _isSending = false;

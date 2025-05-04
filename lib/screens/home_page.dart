@@ -8,13 +8,11 @@ import 'package:repaso/screens/question_set_add_page.dart';
 import 'package:repaso/screens/folder_add_page.dart';
 import 'package:repaso/screens/study_set_edit_page.dart' as EditPage;
 import 'package:repaso/screens/study_set_add_page.dart' as AddPage;
-import 'package:repaso/widgets/list_page_widgets/memory_level_progress_bar.dart';
-import 'package:repaso/widgets/common_widgets/question_rate_display.dart';
 import 'package:repaso/widgets/list_page_widgets/rounded_icon_box.dart';
 import 'package:rxdart/rxdart.dart';
 import '../utils/app_colors.dart';
 import '../widgets/list_page_widgets/reusable_progress_card.dart';
-import 'main.dart';
+import '../main.dart';
 
 class FolderListPage extends StatefulWidget {
   const FolderListPage({super.key, required this.title});
@@ -262,6 +260,19 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
             height: 280,
             child: Column(
               children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 0),
+                  child: Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                ),
                 ListTile(
                   leading: const RoundedIconBox(
                     icon: Icons.folder_outlined, // フォルダアイコン
@@ -478,6 +489,19 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
             height: 220,
             child: Column(
               children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 0),
+                  child: Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                ),
                 ListTile(
                   leading: const RoundedIconBox(
                     icon: Icons.school_outlined,
@@ -811,9 +835,9 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
             ),
             tabs: const [
               Tab(child: Center(child: Text('フォルダ',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)))),
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)))),
               Tab(child: Center(child: Center(child: Text('暗記セット',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold))))),
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold))))),
             ],
           ),
         ),
