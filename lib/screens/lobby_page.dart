@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:repaso/utils/app_colors.dart';
 import 'package:repaso/screens/sign_up_page.dart';
+import 'license_select_page.dart';
 import 'login_page.dart';
 
 class LobbyPage extends StatelessWidget {
@@ -49,14 +50,26 @@ class LobbyPage extends StatelessWidget {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: () {
+                    // 変更箇所だけ抜粋
+                    onPressed: () async {
+                      // ① 資格選択ページへ
+                      final selected = await Navigator.push<List<String>>(
+                        context,
+                        MaterialPageRoute(builder: (_) => const LicenseSelectPage()),
+                      );
+
+                      // キャンセル (=null) なら何もしない
+                      if (selected == null) return;
+
+                      // ② サインアップページへ選択結果を渡す
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => const SignUpPage(),
+                          builder: (_) => SignUpPage(selectedLicenseNames: selected),
                         ),
                       );
                     },
+
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.blue600, // ボタンの背景色
                       shape: RoundedRectangleBorder(

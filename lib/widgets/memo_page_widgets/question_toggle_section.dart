@@ -17,91 +17,112 @@ class QuestionToggleSection extends StatefulWidget {
 class _QuestionToggleSectionState extends State<QuestionToggleSection>
     with SingleTickerProviderStateMixin {
   bool _showQuestionSection = false;
+  bool _loading = false;
+  bool _fetched = false;
+  Map<String, dynamic>? _cachedData;
+
+  void _toggleSection() {
+    setState(() {
+      _showQuestionSection = !_showQuestionSection;
+    });
+
+    if (_showQuestionSection && !_fetched) {
+      // 初回開閉時にだけフェッチ
+      print('[Debug] Fetching question for id=${widget.questionId}');
+      setState(() => _loading = true);
+      FirebaseFirestore.instance
+          .collection('questions')
+          .doc(widget.questionId)
+          .get()
+          .then((doc) {
+        print('[Debug] Question fetched: ${doc.data()}');
+        setState(() {
+          _cachedData = doc.exists
+              ? (doc.data()! as Map<String, dynamic>)
+              : <String, dynamic>{};
+          _fetched = true;
+          _loading = false;
+        });
+      }).catchError((error) {
+        print('[Debug] Error fetching question: $error');
+        setState(() {
+          _cachedData = null;
+          _fetched = true;
+          _loading = false;
+        });
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Container(
+      decoration: BoxDecoration(
         color: AppColors.gray50,
-        child: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // トグルボタンとラベルは常時表示
-              InkWell(
-                onTap: () {
-                  setState(() {
-                    _showQuestionSection = !_showQuestionSection;
-                  });
-                },
-                child: Row(
-                  children: [
-                    Icon(
-                      _showQuestionSection
-                          ? Icons.arrow_drop_down_sharp
-                          : Icons.arrow_right_sharp,
-                      size: 28,
-                    ),
-                    const SizedBox(width: 4),
-                    const Text(
-                      '問題',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
+        borderRadius: BorderRadius.circular(4.0),
+      ),
+      child: Padding(
+        padding: _showQuestionSection
+            ? const EdgeInsets.only(left: 2, top: 2, right: 2, bottom: 4)
+            : const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // トグルボタン
+            InkWell(
+              onTap: _toggleSection,
+              child: Row(
+                children: [
+                  Icon(
+                    _showQuestionSection
+                        ? Icons.arrow_drop_down_sharp
+                        : Icons.arrow_right_sharp,
+                    size: 28,
+                  ),
+                  const SizedBox(width: 4),
+                  const Text(
+                    '問題',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                  ),
+                ],
               ),
-              // トグルON時にFirestoreから問題情報を取得して表示
-              if (_showQuestionSection)
-                FutureBuilder<DocumentSnapshot>(
-                  future: FirebaseFirestore.instance
-                      .collection('questions')
-                      .doc(widget.questionId)
-                      .get(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    if (!snapshot.hasData || !snapshot.data!.exists) {
-                      return const SizedBox();
-                    }
-                    final questionData = snapshot.data!.data() as Map<String, dynamic>? ?? {};
-                    final questionText = questionData['questionText'] as String? ?? '';
-                    final correctChoiceText = questionData['correctChoiceText'] as String? ?? '';
-                    final examSource= questionData['examSource']as String? ?? '';
-
-                    return Padding(
-                      padding: const EdgeInsets.only(left: 8.0, top: 4.0,right: 8.0,bottom: 4.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '$questionText',
-                            style: const TextStyle(
-                                fontSize: 13,),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            '<回答> $correctChoiceText',
-                            style: const TextStyle(fontSize: 13),
-                          ),
-                          const SizedBox(height: 4),
-                          // ── 出典 ──
-                          if (examSource.isNotEmpty)
-                            Text(
-                              '出典：$examSource',
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                        ],
+            ),
+            // 展開時のみ表示
+            if (_showQuestionSection)
+              if (_loading)
+                const Center(child: CircularProgressIndicator())
+              else if (!_fetched || _cachedData == null || _cachedData!.isEmpty)
+                const SizedBox()
+              else
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _cachedData!['questionText'] as String? ?? '',
+                        style: const TextStyle(fontSize: 13),
                       ),
-                    );
-                  },
+                      const SizedBox(height: 2),
+                      Text(
+                        '<回答> ${_cachedData!['correctChoiceText'] as String? ?? ''}',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                      const SizedBox(height: 4),
+                      if ((_cachedData!['examSource'] as String?)?.isNotEmpty ?? false)
+                        Text(
+                          '出典：${_cachedData!['examSource']}',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
-            ],
-          ),
+          ],
         ),
-      );
+      ),
+    );
   }
 }

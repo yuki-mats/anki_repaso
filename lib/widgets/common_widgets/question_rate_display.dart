@@ -29,10 +29,7 @@ class QuestionRateDisplay extends StatelessWidget {
   Widget build(BuildContext context) {
     // bottom > 0の場合、(正答数(top) / 総問題数(bottom)) * 100
     double correctRate = bottom > 0 ? ((top / bottom) * 100) : 0;
-    double roundedRate = (correctRate * 10).round() / 10;
-    String correctRateStr = roundedRate == 0
-        ? '0'
-        : (roundedRate % 1 == 0 ? roundedRate.toStringAsFixed(0) : roundedRate.toStringAsFixed(1));
+    String correctRateStr = correctRate.toStringAsFixed(1);
 
     return Padding(
       padding: const EdgeInsets.only(right: 16.0),

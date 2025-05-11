@@ -14,7 +14,7 @@ class MemoryLevelProgressBar extends StatelessWidget {
     Key? key,
     required this.memoryValues,
     required this.totalCount,
-    this.height = 8.0,
+    this.height = 5.0,
     this.borderRadius = const BorderRadius.all(Radius.circular(4.0)),
   }) : super(key: key);
 

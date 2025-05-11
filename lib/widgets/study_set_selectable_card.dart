@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:repaso/utils/app_colors.dart';
 import 'package:repaso/widgets/common_widgets/question_rate_display.dart';
 import 'package:repaso/widgets/list_page_widgets/rounded_icon_box.dart';
-import 'memory_level_progress_bar.dart';
+import 'list_page_widgets/memory_level_progress_bar.dart';
 
-/// 汎用カード：フォルダ・暗記セット・問題集を共通レイアウトで表示
-class ReusableProgressCard extends StatelessWidget {
-  const ReusableProgressCard({
-    super.key,
+/// StudySet 用：選択可能な進捗カード
+class StudySetSelectableCard extends StatelessWidget {
+  const StudySetSelectableCard({
+    Key? key,
     required this.iconData,
     required this.iconColor,
     required this.iconBgColor,
@@ -19,22 +19,24 @@ class ReusableProgressCard extends StatelessWidget {
     required this.count,
     required this.countSuffix,
     required this.onTap,
-    required this.onMorePressed,
-  });
+    required this.isSelected,
+    required this.onSelectionChanged,
+  }) : super(key: key);
 
-  // ------- 外から渡すプロパティ -------
-  final IconData      iconData;
-  final Color         iconColor;
-  final Color         iconBgColor;
-  final String        title;
-  final bool          isVerified;
-  final Map<String,int> memoryLevels;
-  final int           correctAnswers;
-  final int           totalAnswers;
-  final int           count;
-  final String        countSuffix;
-  final VoidCallback  onTap;
-  final VoidCallback  onMorePressed;
+  // ───── 外部から渡すプロパティ ─────
+  final IconData          iconData;
+  final Color             iconColor;
+  final Color             iconBgColor;
+  final String            title;
+  final bool              isVerified;
+  final Map<String,int>   memoryLevels;
+  final int               correctAnswers;
+  final int               totalAnswers;
+  final int               count;
+  final String            countSuffix;
+  final VoidCallback      onTap;
+  final bool              isSelected;
+  final ValueChanged<bool> onSelectionChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -49,7 +51,7 @@ class ReusableProgressCard extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+            padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -85,16 +87,24 @@ class ReusableProgressCard extends StatelessWidget {
                         maxLines: 2,
                       ),
                     ),
-                    SizedBox(
-                      width : 40,
-                      height: 40,
-                      child : IconButton(
-                        icon            : const Icon(Icons.more_horiz_outlined,
-                            color: Colors.grey),
-                        padding         : EdgeInsets.zero,
-                        constraints     : const BoxConstraints(),
-                        visualDensity   : VisualDensity.compact,
-                        onPressed       : onMorePressed,
+                    // ─── フォルダ用と同じサイズのチェックボックス ───
+                    Container(
+                      width: 20,
+                      height: 20,
+                      child: IconButton(
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        iconSize: 20,
+                        onPressed: () => onSelectionChanged(!isSelected),
+                        icon: Icon(
+                          isSelected
+                              ? Icons.check_box
+                              : Icons.check_box_outline_blank,
+                          color: isSelected
+                              ? AppColors.blue500
+                              : AppColors.gray600,
+                        ),
                       ),
                     ),
                   ],
@@ -112,7 +122,10 @@ class ReusableProgressCard extends StatelessWidget {
                 // ───── メモリーレベルバー ─────
                 Padding(
                   padding: const EdgeInsets.only(right: 8.0),
-                  child  : MemoryLevelProgressBar(memoryValues: memoryLevels, totalCount: count,),
+                  child: MemoryLevelProgressBar(
+                    memoryValues: memoryLevels,
+                    totalCount:   count,
+                  ),
                 ),
                 const SizedBox(height: 4),
               ],

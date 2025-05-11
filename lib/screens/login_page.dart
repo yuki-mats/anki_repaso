@@ -348,21 +348,6 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 24),
-                GestureDetector(
-                  onTap: () => Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(builder: (_) => const SignUpPage()),
-                  ),
-                  child: const Text(
-                    '新規登録はこちら',
-                    style: TextStyle(
-                      color: AppColors.blue600,
-                      decorationColor: AppColors.blue600,
-                      decoration: TextDecoration.none,
-                    ),
-                  ),
-                ),
                 const SizedBox(height: 40),
               ],
             ),

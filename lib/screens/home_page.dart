@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_sticky_header/flutter_sticky_header.dart';
+import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
 import 'package:repaso/screens/folder_edit_page.dart';
 import 'package:repaso/screens/question_set_list_page.dart';
 import 'package:repaso/screens/study_set_answer_page.dart';
@@ -9,10 +11,11 @@ import 'package:repaso/screens/folder_add_page.dart';
 import 'package:repaso/screens/study_set_edit_page.dart' as EditPage;
 import 'package:repaso/screens/study_set_add_page.dart' as AddPage;
 import 'package:repaso/widgets/list_page_widgets/rounded_icon_box.dart';
-import 'package:rxdart/rxdart.dart';
 import '../utils/app_colors.dart';
+import '../widgets/list_page_widgets/folder_item.dart';
 import '../widgets/list_page_widgets/reusable_progress_card.dart';
 import '../main.dart';
+import '../widgets/list_page_widgets/skeleton_card.dart';
 
 class FolderListPage extends StatefulWidget {
   const FolderListPage({super.key, required this.title});
@@ -26,10 +29,73 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
   List<DocumentSnapshot> folders = [];
   List<DocumentSnapshot> studySets = [];
   late TabController _tabController;
+  String? _licenseFilter;           // null = 全部
+  bool?   _officialFilter;          // null = 全部, true だけ, false だけ
+  final   Set<String> _collapsed = {};  // 折りたたみ状態保持
+  String? _sortBy;
+  late ScrollController _scrollController;
+  bool _showIconBar = true;
+  double _lastOffset = 0.0;
+  List<FolderItem> _folderItems = [];
+  bool _isLoading = true;
+  // ソートラベルのマッピング
+  final Map<String, String> _sortLabels = {
+    'correctRateAsc': '正答率（昇順）',
+    'correctRateDesc': '正答率（降順）',
+    'attemptCount': '試行回数順',
+    'nameAsc': 'フォルダ名（昇順）',
+    'nameDesc': 'フォルダ名（降順）',
+  };
+
+  String? _studySortBy;
+  final Map<String, String> _studySortLabels = {
+    'attemptAsc'      : '試行回数（昇順）',
+    'attemptDesc'     : '試行回数（降順）',
+    'nameAsc'         : '暗記セット名（昇順）',
+    'nameDesc'        : '暗記セット名（降順）',
+    'correctRateAsc'  : '正答率（昇順）',
+    'correctRateDesc' : '正答率（降順）',
+  };
+
+  /// 現在選択中のソート項目ラベルを取得
+  String get _currentSortLabel => _sortLabels[_sortBy] ?? '並び替え';
+
 
   @override
   void initState() {
     super.initState();
+    _sortBy = 'nameAsc';
+    _studySortBy = 'attemptAsc';
+
+    // スクロール検知用コントローラ
+    _scrollController = ScrollController()
+      ..addListener(() {
+        final offset = _scrollController.offset;
+        final delta = offset - _lastOffset;
+
+        // トップに戻ったら必ず表示
+        if (offset <= 0 && !_showIconBar) {
+          setState(() => _showIconBar = true);
+
+          // 20px以上スクロールダウンで非表示
+        } else if (delta > 20 && _showIconBar) {
+          setState(() => _showIconBar = false);
+
+          // 10px以上スクロールアップで表示
+        } else if (delta < -10 && !_showIconBar) {
+          setState(() => _showIconBar = true);
+        }
+
+        _lastOffset = offset;
+      });
+
+
+    fetchFirebaseData();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      FocusManager.instance.primaryFocus?.unfocus();
+    });
+    requestTrackingPermission();
+
     _tabController = TabController(length: 2, vsync: this);
     fetchFirebaseData();
 
@@ -39,58 +105,136 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
     requestTrackingPermission();
   }
 
-
   @override
   void dispose() {
     _tabController.dispose();
     super.dispose();
+    _scrollController.dispose();
   }
 
-  void fetchFirebaseData() async {
+  Future<void> fetchFirebaseData() async {
+    setState(() => _isLoading = true);
+
     try {
+      /* 0) 認証 */
       final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        setState(() => _isLoading = false);
+        return;
+      }
+      final uid     = user.uid;
+      final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
 
-      if (user != null) {
-        final userId = user.uid;
+      /* 1) 選択ライセンス */
+      final userDoc  = await userRef.get();
+      final licenses = List<String>.from(userDoc.data()?['selectedLicenseNames'] ?? []);
 
-        // Collection Group Query を使用して、ユーザーがアクセス可能なフォルダを取得
-        final folderPermissionsSnapshot = await FirebaseFirestore.instance
-            .collectionGroup('permissions')
-            .where('userRef', isEqualTo: FirebaseFirestore.instance.collection('users').doc(userId))
-            .get();
-
-        List<DocumentSnapshot> accessibleFolders = [];
-
-        for (var permission in folderPermissionsSnapshot.docs) {
-          final role = permission['role'];
-
-          if (role == 'owner' || role == 'editor' || role == 'viewer') {
-            // `permission.ref.parent.parent` を使用してフォルダのドキュメント参照を取得
-            final folderRef = permission.reference.parent.parent;
-            if (folderRef != null) {
-              final folderSnapshot = await folderRef.get();
-              if (folderSnapshot.exists) {
-                accessibleFolders.add(folderSnapshot);
-              }
-            }
-          }
+      /* 2) 公式フォルダ (30 件ずつ whereIn) */
+      final List<Future<QuerySnapshot<Map<String, dynamic>>>> officialFutures = [];
+      if (licenses.isNotEmpty) {
+        for (var i = 0; i < licenses.length; i += 30) {
+          final chunk = licenses.sublist(
+            i,
+            i + 30 > licenses.length ? licenses.length : i + 30,
+          );
+          officialFutures.add(
+            FirebaseFirestore.instance
+                .collection('folders')
+                .where('isOfficial',  isEqualTo: true)
+                .where('licenseName', whereIn: chunk)
+                .where('isDeleted',   isEqualTo: false)
+                .get(),
+          );
         }
+      }
 
-        // 暗記セットデータを取得
-        final studySetSnapshot = await FirebaseFirestore.instance
-            .collection("users")
-            .doc(userId)
-            .collection("studySets")
-            .where('isDeleted', isEqualTo: false)
-            .get();
+      /* 3) 権限フォルダ & 暗記セット */
+      final permFuture  = FirebaseFirestore.instance
+          .collectionGroup('permissions')
+          .where('userRef', isEqualTo: userRef)
+          .where('role',    whereIn: ['owner', 'editor', 'viewer'])
+          .get();
 
+      final studyFuture = FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('studySets')
+          .where('isDeleted', isEqualTo: false)
+          .get();
+
+      /* 4) 並列実行 */
+      final List<dynamic> results = await Future.wait([
+        ...officialFutures,
+        permFuture,
+        studyFuture,
+      ]);
+
+      /* 5) 公式フォルダを結合 */
+      final folderDocs = <String, DocumentSnapshot<Map<String, dynamic>>>{};
+      int idx = 0;
+      for (; idx < officialFutures.length; idx++) {
+        final QuerySnapshot<Map<String, dynamic>> snap =
+        results[idx] as QuerySnapshot<Map<String, dynamic>>;
+        for (final QueryDocumentSnapshot<Map<String, dynamic>> d in snap.docs) {
+          folderDocs[d.id] = d;
+        }
+      }
+
+      /* 6) 権限フォルダを追加 */
+      final QuerySnapshot<Map<String, dynamic>> permSnap =
+      results[idx++] as QuerySnapshot<Map<String, dynamic>>;
+
+      for (final QueryDocumentSnapshot<Map<String, dynamic>> p in permSnap.docs) {
+        final folderRef = p.reference.parent.parent;
+        if (folderRef == null || folderDocs.containsKey(folderRef.id)) continue;
+
+        final DocumentSnapshot<Map<String, dynamic>> folderSnap = await folderRef.get();
+        if (!folderSnap.exists || (folderSnap.data()?['isDeleted'] ?? false)) continue;
+
+        folderDocs[folderSnap.id] = folderSnap;
+      }
+
+      /* 7-A) フォルダ本体だけ先に UI へ */
+      final placeholder = {'again': 0, 'hard': 0, 'good': 0, 'easy': 0};
+      final initialItems = folderDocs.values
+          .map((doc) => FolderItem(folderDoc: doc, memoryLevels: placeholder))
+          .toList();
+
+      final QuerySnapshot<Map<String, dynamic>> studySnap =
+      results.last as QuerySnapshot<Map<String, dynamic>>;
+
+      if (mounted) {
         setState(() {
-          folders = accessibleFolders;
-          studySets = studySetSnapshot.docs;
+          _folderItems = initialItems;
+          studySets    = studySnap.docs;
+          _isLoading   = false;   // スピナー停止
         });
       }
-    } catch (e) {
-      print("Error fetching data: $e");
+
+      /* 7-B) 記憶度をバックグラウンドで取得し上書き */
+      Future<FolderItem> _withStats(DocumentSnapshot<Map<String, dynamic>> doc) async {
+        final stat = await doc.reference
+            .collection('folderSetUserStats')
+            .doc(uid)
+            .get();
+
+        final mem = {'again': 0, 'hard': 0, 'good': 0, 'easy': 0};
+        if (stat.exists) {
+          final ml = stat.data()?['memoryLevels'] as Map<String, dynamic>? ?? {};
+          ml.forEach((_, lvl) {
+            if (mem.containsKey(lvl)) mem[lvl] = mem[lvl]! + 1;
+          });
+        }
+        return FolderItem(folderDoc: doc, memoryLevels: mem);
+      }
+
+      final updatedItems = await Future.wait(folderDocs.values.map(_withStats));
+      if (mounted) {
+        setState(() => _folderItems = updatedItems);
+      }
+    } catch (e, st) {
+      debugPrint('fetchFirebaseData error: $e\n$st');
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -196,6 +340,65 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
       fetchFirebaseData();
     }
   }
+
+  // ── ★ 追加：共通の追加メニュー ──
+  void _showAddOptionsModal(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+      ),
+      builder: (_) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // ハンドル
+          Padding(
+            padding: const EdgeInsets.only(top: 12, bottom: 8),
+            child: Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.gray200,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+          ),
+          // ──── ① フォルダ追加 ────
+          ListTile(
+            leading: const Icon(Icons.folder_outlined, color: AppColors.blue500),
+            title : const Text('フォルダを追加', style: TextStyle(fontSize: 16)),
+            onTap : () {
+              Navigator.pop(context);
+              navigateToFolderAddPage(context);
+            },
+          ),
+          // ──── ② 資格（ライセンス）追加 ────
+          ListTile(
+            leading: const Icon(Icons.badge_outlined, color: AppColors.blue500),
+            title : const Text('資格を追加', style: TextStyle(fontSize: 16)),
+            onTap : () {
+              Navigator.pop(context);
+              //navigateToAddLicensePage(context); // ← 下で定義
+            },
+          ),
+          // ──── ③ 問題集追加 ────
+          ListTile(
+            leading: const Icon(Icons.quiz_outlined, color: AppColors.blue500),
+            title : const Text('問題集を追加', style: TextStyle(fontSize: 16)),
+            onTap : () {
+              Navigator.pop(context);
+              //navigateToQuestionSetAddPage(context); // ← 下で定義
+            },
+          ),
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+
 
   // --- フォルダ編集 ---
   void navigateToFolderEditPage(BuildContext context, DocumentSnapshot folder) async {
@@ -598,114 +801,381 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
       return const Center(child: Text('ログインしてください'));
     }
 
-    final folderPermissionsStream = FirebaseFirestore.instance
-        .collectionGroup('permissions')
-        .where('userRef',
-        isEqualTo:
-        FirebaseFirestore.instance.collection('users').doc(user.uid))
-        .where('role', whereIn: ['owner', 'editor', 'viewer'])
-        .snapshots();
-
-    return StreamBuilder<QuerySnapshot>(
-      stream: folderPermissionsStream,
-      builder: (context, permSnap) {
-        if (permSnap.hasError) {
-          return Center(child: Text('エラー: ${permSnap.error}'));
-        }
-        if (!permSnap.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        // ── 各フォルダ DocumentSnapshot の Stream を束ねる ──
-        final streams = permSnap.data!.docs
-            .map((p) => p.reference.parent.parent!.snapshots())
-            .toList();
-
-        // ← ここを追加：権限が一件もなければ即座にメッセージ表示
-        if (streams.isEmpty) {
-          return const Center(
-            child: Text(
-              'フォルダがまだありません',
-              style: TextStyle(fontSize: 16, color: Colors.grey),
-            ),
-          );
-        }
-
-        return StreamBuilder<List<DocumentSnapshot>>(
-          stream: CombineLatestStream.list(streams),
-          builder: (context, folderSnap) {
-            if (!folderSnap.hasData) {
-              return const Center(child: CircularProgressIndicator());
-            }
-
-            final docs = folderSnap.data!
-                .where((d) => !(d['isDeleted'] ?? false))
-                .toList()
-              ..sort((a, b) => (a['name'] ?? '').compareTo(a['name'] ?? ''));
-
-            if (docs.isEmpty) {
-              return const Center(
-                child: Text(
-                  'フォルダがまだありません',
-                  style: TextStyle(fontSize: 16, color: Colors.grey),
+    // ───────── アイコンバー用ヘルパー ─────────
+    Widget _buildIconBar(List<String> allLicenses) => Container(
+      color: Colors.white,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Row(
+        children: [
+          InkWell(
+            onTap: () {
+              showModalBottomSheet(
+                context: context,
+                backgroundColor: Colors.white,
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
                 ),
-              );
-            }
-
-            return ListView.builder(
-              padding: const EdgeInsets.only(top: 16, bottom: 80),
-              itemCount: docs.length,
-              itemBuilder: (context, i) {
-                final doc = docs[i];
-                final data = doc.data() as Map<String, dynamic>;
-                final name = data['name'] ?? '未設定';
-                final qCount = data['questionCount'] ?? 0;
-                final isPublic = data['isPublic'] ?? false;
-
-                // ── ユーザー統計を取得 ──
-                return StreamBuilder<DocumentSnapshot>(
-                  stream: doc.reference
-                      .collection('folderSetUserStats')
-                      .doc(user.uid)
-                      .snapshots(),
-                  builder: (ctx, statSnap) {
-                    final base = {'again': 0, 'hard': 0, 'good': 0, 'easy': 0};
-                    if (statSnap.hasData && statSnap.data!.exists) {
-                      final m = statSnap.data!['memoryLevels'] ?? {};
-                      for (var v in m.values) {
-                        if (base.containsKey(v)) base[v] = base[v]! + 1;
-                      }
+                builder: (ctx) => StatefulBuilder(
+                  builder: (ctx2, setModalState) {
+                    // ラジオボタン項目を返すヘルパー
+                    Widget _buildSortOption(String label, String value) {
+                      return RadioListTile<String>(
+                        activeColor: AppColors.blue500,
+                        title: Text(label),
+                        value: value,
+                        groupValue: _sortBy,
+                        onChanged: (v) {
+                          if (v == null) return;
+                          // 外側とモーダル内の両方で更新
+                          setState(() => _sortBy = v);
+                          setModalState(() => _sortBy = v);
+                          Navigator.pop(ctx);
+                        },
+                      );
                     }
-                    final correct =
-                        base['easy']! + base['good']! + base['hard']!;
-                    final total = correct + base['again']!;
-                    base['unanswered'] =
-                    qCount > correct ? qCount - correct : 0;
 
-                    return ReusableProgressCard(
-                      iconData: Icons.folder_outlined,
-                      iconColor: AppColors.blue500,
-                      iconBgColor: AppColors.blue100,
-                      title: name,
-                      isVerified: isPublic,
-                      memoryLevels: base,
-                      correctAnswers: correct,
-                      totalAnswers: total,
-                      count: qCount,
-                      countSuffix: ' 問',
-                      onTap: () => navigateToQuestionSetsListPage(doc),
-                      onMorePressed: () =>
-                          showFolderOptionsModal(context, doc),
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(top: 12, bottom: 8),
+                          child: Center(
+                            child: Container(
+                              width: 40, height: 4,
+                              decoration: BoxDecoration(
+                                color: AppColors.gray200,
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                          ),
+                        ),
+                        _buildSortOption('正答率（昇順）', 'correctRateAsc'),
+                        _buildSortOption('正答率（降順）', 'correctRateDesc'),
+                        _buildSortOption('フォルダ名（昇順）','nameAsc'),
+                        _buildSortOption('フォルダ名（降順）','nameDesc'),
+                        const SizedBox(height: 24),
+                      ],
                     );
                   },
-                );
-              },
+                ),
+              );
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6.0),
+              child: Row(
+                children: [
+                  Icon(
+                    _sortBy == null
+                        ? Icons.sort
+                        : (_sortBy!.contains('Asc') ? Icons.arrow_upward : Icons.arrow_downward),
+                    size: 18,
+                    color: AppColors.gray700,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    _currentSortLabel,
+                    style: const TextStyle(fontSize: 13, color: AppColors.gray900),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // ── 中央の空間 ──
+          const Spacer(),
+          // ── 右端：漏斗アイコン ──
+          InkWell(
+            onTap: () {
+              showModalBottomSheet(
+                context: context,
+                backgroundColor: Colors.white,
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+                ),
+                builder: (ctx) => StatefulBuilder(
+                  builder: (ctx2, setModalState) {
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // 上部のドラッグ用ハンドル
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8, bottom: 4),
+                          child: Container(
+                            width: 40,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: Colors.grey[300],
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                        ),
+                        RadioListTile<bool?>(
+                          activeColor: AppColors.blue500,
+                          title: const Text('全て'),
+                          value: null,
+                          groupValue: _officialFilter,
+                          onChanged: (v) {
+                            setState(() => _officialFilter = v);
+                            setModalState(() => _officialFilter = v);
+                            Navigator.pop(ctx);
+                          },
+                        ),
+                        RadioListTile<bool?>(
+                          activeColor: AppColors.blue500,
+                          title: const Text('公式問題のみ'),
+                          value: true,
+                          groupValue: _officialFilter,
+                          onChanged: (v) {
+                            setState(() => _officialFilter = v);
+                            setModalState(() => _officialFilter = v);
+                            Navigator.pop(ctx);
+                          },
+                        ),
+                        RadioListTile<bool?>(
+                          activeColor: AppColors.blue500,
+                          title: const Text('自作のみ'),
+                          value: false,
+                          groupValue: _officialFilter,
+                          onChanged: (v) {
+                            setState(() => _officialFilter = v);
+                            setModalState(() => _officialFilter = v);
+                            Navigator.pop(ctx);
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                    );
+                  },
+                ),
+              );
+            },
+            child: Container(
+              padding: const EdgeInsets.all(3.0),      // 円の内側余白
+              decoration: BoxDecoration(
+                color: Colors.white,                   // 背景色
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: AppColors.gray200,            // 枠線の色
+                  width: 1.0,                          // 枠線の太さ
+                ),
+              ),
+              child: Icon(
+                MdiIcons.filterOutline,
+                size: 18,
+                color: AppColors.gray600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    // ───────── ロード中はスケルトンスクリーン ─────────
+    if (_isLoading) {
+      final licenses = _folderItems
+          .map((e) => (e.folderDoc['licenseName'] ?? '') as String)
+          .toSet()
+          .toList();
+
+      return Padding(
+        padding: const EdgeInsets.only(top: 10.0),
+        child: CustomScrollView(
+          controller: _scrollController,
+          slivers: [
+            SliverList(
+              delegate: SliverChildBuilderDelegate(
+                    (_, __) => const SkeletonCard(),
+                childCount: 5,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // ───────── フォルダ一覧フィルタ＆ソート ─────────
+    final licenses = _folderItems
+        .map((e) => (e.folderDoc['licenseName'] ?? '') as String)
+        .toSet()
+        .toList();
+
+    var items = _folderItems.where((item) {
+      final lic = (item.folderDoc['licenseName'] ?? '') as String;
+      if (_licenseFilter != null && lic != _licenseFilter) return false;
+      final isOfficialVal = item.folderDoc['isOfficial'] ?? false;                // ★ 修正ポイント
+      if (_officialFilter != null && isOfficialVal != _officialFilter) return false; // ★ 修正ポイント
+      return true;
+    }).toList();
+
+    if (items.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 10.0),
+        child: CustomScrollView(
+          controller: _scrollController,
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                child: _buildIconBar(licenses),
+              ),
+            ),
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: const Center(
+                child: Text(
+                  '該当フォルダがありません',
+                  style: TextStyle(fontSize: 16, color: Colors.grey),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // ───────── ソート ─────────
+    switch (_sortBy) {
+      case 'correctRateAsc':
+        items.sort((a, b) => a.rate.compareTo(b.rate));
+        break;
+      case 'correctRateDesc':
+        items.sort((a, b) => b.rate.compareTo(a.rate));
+        break;
+      case 'attemptCount':
+        items.sort((a, b) {
+          final aCount = a.folderDoc['questionCount'] as int;
+          final bCount = b.folderDoc['questionCount'] as int;
+          return bCount.compareTo(aCount);
+        });
+        break;
+      case 'nameAsc':
+        items.sort((a, b) {
+          final aName = (a.folderDoc['name'] ?? '') as String;
+          final bName = (b.folderDoc['name'] ?? '') as String;
+          return aName.compareTo(bName);
+        });
+        break;
+      case 'nameDesc':
+        items.sort((a, b) {
+          final aName = (a.folderDoc['name'] ?? '') as String;
+          final bName = (b.folderDoc['name'] ?? '') as String;
+          return bName.compareTo(aName);
+        });
+        break;
+      default:
+      // デフォルトの名称順（昇順）
+        items.sort((a, b) {
+          final aName = (a.folderDoc['name'] ?? '') as String;
+          final bName = (b.folderDoc['name'] ?? '') as String;
+          return aName.compareTo(bName);
+        });
+    }
+
+    // ───────── グループ化 ─────────
+    final groups = <String, List<FolderItem>>{};
+    for (var item in items) {
+      final key = (item.folderDoc['licenseName'] ?? '') as String;
+      groups.putIfAbsent(key, () => []).add(item);
+    }
+    final sortedEntries = groups.entries.toList()
+      ..sort((a, b) {
+        if (a.key.isEmpty && b.key.isEmpty) return 0;
+        if (a.key.isEmpty) return 1;
+        if (b.key.isEmpty) return -1;
+        return a.key.compareTo(b.key);
+      });
+
+    // ───────── UI描画 ─────────
+    return Padding(
+      padding: const EdgeInsets.only(top: 10.0),
+      child: CustomScrollView(
+        controller: _scrollController,
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: _buildIconBar(licenses),
+            ),
+          ),
+          ...sortedEntries.map((entry) {
+            final lic = entry.key.isEmpty ? 'その他' : entry.key;
+            final list = entry.value;
+            final isCollapsed = _collapsed.contains(lic);
+
+            return SliverStickyHeader(
+              header: Material(
+                color: Colors.white,
+                child: InkWell(
+                  highlightColor: Colors.transparent,
+                  splashColor: Colors.transparent,
+                  onTap: () => setState(() {
+                    isCollapsed
+                        ? _collapsed.remove(lic)
+                        : _collapsed.add(lic);
+                  }),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Row(
+                      children: [
+                        Icon(
+                          isCollapsed
+                              ? Icons.keyboard_arrow_right
+                              : Icons.keyboard_arrow_down,
+                          size: 20,
+                          color: AppColors.gray700,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            lic,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                              color: Colors.black87,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                      (context, i) {
+                    final item = list[i];
+                    final doc = item.folderDoc;
+                    final qCount = doc['questionCount'] as int;
+                    return AnimatedSize(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                      child: isCollapsed
+                          ? const SizedBox.shrink()
+                          : ReusableProgressCard(
+                        iconData: Icons.folder_outlined,
+                        iconColor: AppColors.blue500,
+                        iconBgColor: AppColors.blue100,
+                        title: doc['name'] as String,
+                        isVerified: doc['isOfficial'] ?? false, // ★ 修正ポイント
+                        memoryLevels: item.memoryLevels,
+                        correctAnswers: item.correct,
+                        totalAnswers: item.total,
+                        count: qCount,
+                        countSuffix: ' 問',
+                        onTap: () => navigateToQuestionSetsListPage(doc),
+                        onMorePressed: () => showFolderOptionsModal(context, doc),
+                      ),
+                    );
+                  },
+                  childCount: list.length,
+                ),
+              ),
             );
-          },
-        );
-      },
+          }).toList(),
+        ],
+      ),
     );
   }
+
 
   Widget buildStudySetList() {
     final user = FirebaseAuth.instance.currentUser;
@@ -736,56 +1206,152 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
           ),
         );
 
-        return ListView.builder(
-          padding: const EdgeInsets.only(top: 16, bottom: 80),
-          itemCount: docs.length,
-          itemBuilder: (context, i) {
-            final doc = docs[i];
-            final d = doc.data() as Map<String, dynamic>;
+        // ───────── ソートバー ─────────
+        return Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(left: 16, right: 16, top: 16),
+              child: InkWell(
+                onTap: () {
+                  showModalBottomSheet(
+                    context: context,
+                    backgroundColor: Colors.white,
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+                    ),
+                    builder: (ctx) => StatefulBuilder(
+                      builder: (ctx2, setModalState) {
+                        Widget _buildSortOption(String label, String value) {
+                          return RadioListTile<String>(
+                            activeColor: AppColors.blue500,
+                            title: Text(label),
+                            value: value,
+                            groupValue: _studySortBy,
+                            onChanged: (v) {
+                              if (v == null) return;
+                              setState(()    => _studySortBy = v);
+                              setModalState(() => _studySortBy = v);
+                              Navigator.pop(ctx);
+                            },
+                          );
+                        }
 
-            // ── メモリーレベル統計値を取得 ──
-            final stats = d['memoryLevelStats'] ?? {};
-            final again = stats['again'] ?? 0;
-            final hard  = stats['hard']  ?? 0;
-            final good  = stats['good']  ?? 0;
-            final easy  = stats['easy']  ?? 0;
+                        return Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const SizedBox(height: 12),
+                            _buildSortOption('試行回数（昇順）', 'attemptAsc'),
+                            _buildSortOption('試行回数（降順）', 'attemptDesc'),
+                            _buildSortOption('暗記セット名（昇順）', 'nameAsc'),
+                            _buildSortOption('暗記セット名（降順）', 'nameDesc'),
+                            _buildSortOption('正答率（昇順）', 'correctRateAsc'),
+                            _buildSortOption('正答率（降順）', 'correctRateDesc'),
+                            const SizedBox(height: 12),
+                          ],
+                        );
+                      },
+                    ),
+                  );
+                },
+                child: Row(
+                  children: [
+                    Icon(
+                      _studySortBy!.contains('Asc')
+                          ? Icons.arrow_upward
+                          : Icons.arrow_downward,
+                      size: 18,
+                      color: AppColors.gray700,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      _studySortLabels[_studySortBy]!,
+                      style: const TextStyle(fontSize: 13, color: AppColors.gray900),
+                    ),
+                  ],
+                ),
+              ),
+            ),
 
-            final correct = hard + good + easy;
-            final total   = again + correct;
-            final attempts = d['totalAttemptCount'] ?? 0;
-            final unanswered =
-            attempts > total ? attempts - total : 0;
+            // ───────── 並び替え後のリスト ─────────
+            Expanded(
+              child: Builder(
+                builder: (_) {
+                  final list = docs.toList();
+                  list.sort((a, b) {
+                    final da = a.data()! as Map<String, dynamic>;
+                    final db = b.data()! as Map<String, dynamic>;
+                    final aCount = da['totalAttemptCount'] as int? ?? 0;
+                    final bCount = db['totalAttemptCount'] as int? ?? 0;
+                    final statsA = da['memoryLevelStats'] as Map<String, dynamic>? ?? {};
+                    final statsB = db['memoryLevelStats'] as Map<String, dynamic>? ?? {};
+                    final correctA = (statsA['hard'] ?? 0) + (statsA['good'] ?? 0) + (statsA['easy'] ?? 0);
+                    final correctB = (statsB['hard'] ?? 0) + (statsB['good'] ?? 0) + (statsB['easy'] ?? 0);
+                    final rateA = aCount > 0 ? correctA / aCount : 0;
+                    final rateB = bCount > 0 ? correctB / bCount : 0;
+                    final nameA = (da['name'] ?? '') as String;
+                    final nameB = (db['name'] ?? '') as String;
 
-            final levels = <String, int>{
-              'again'     : again,
-              'hard'      : hard,
-              'good'      : good,
-              'easy'      : easy,
-              'unanswered': unanswered,
-            };
+                    switch (_studySortBy) {
+                      case 'attemptAsc':      return aCount.compareTo(bCount);
+                      case 'attemptDesc':     return bCount.compareTo(aCount);
+                      case 'nameAsc':         return nameA.compareTo(nameB);
+                      case 'nameDesc':        return nameB.compareTo(nameA);
+                      case 'correctRateAsc':  return rateA.compareTo(rateB);
+                      case 'correctRateDesc': return rateB.compareTo(rateA);
+                      default:                return 0;
+                    }
+                  });
 
-            return ReusableProgressCard(
-              iconData       : Icons.school_outlined,
-              iconColor      : AppColors.blue600,
-              iconBgColor    : AppColors.blue100,
-              title          : d['name'] ?? '未設定',
-              isVerified     : false,
-              memoryLevels   : levels,
-              correctAnswers : correct,
-              totalAnswers   : total,
-              count          : attempts,
-              countSuffix    : ' 回',
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => StudySetAnswerPage(studySetId: doc.id),
-                  ),
-                );
-              },
-              onMorePressed: () => showStudySetOptionsModal(context, doc),
-            );
-          },
+                  return ListView.builder(
+                    padding: const EdgeInsets.only(top: 8, bottom: 80),
+                    itemCount: list.length,
+                    itemBuilder: (context, i) {
+                      final doc = list[i];
+                      final d = doc.data() as Map<String, dynamic>;
+                      final stats = d['memoryLevelStats'] ?? {};
+                      final again = stats['again'] ?? 0;
+                      final hard  = stats['hard']  ?? 0;
+                      final good  = stats['good']  ?? 0;
+                      final easy  = stats['easy']  ?? 0;
+                      final correct = hard + good + easy;
+                      final total   = again + correct;
+                      final attempts = d['totalAttemptCount'] ?? 0;
+                      final unanswered = attempts > total ? attempts - total : 0;
+                      final levels = <String, int>{
+                        'again'     : again,
+                        'hard'      : hard,
+                        'good'      : good,
+                        'easy'      : easy,
+                        'unanswered': unanswered,
+                      };
+
+                      return ReusableProgressCard(
+                        iconData       : Icons.school_outlined,
+                        iconColor      : AppColors.blue600,
+                        iconBgColor    : AppColors.blue100,
+                        title          : d['name'] ?? '未設定',
+                        isVerified     : false,
+                        memoryLevels   : levels,
+                        correctAnswers : correct,
+                        totalAnswers   : total,
+                        count          : attempts,
+                        countSuffix    : ' 回',
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => StudySetAnswerPage(studySetId: doc.id),
+                            ),
+                          );
+                        },
+                        onMorePressed: () => showStudySetOptionsModal(context, doc),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
         );
       },
     );
@@ -805,6 +1371,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
     return DefaultTabController(
       length: 2,
       child: Scaffold(
+        backgroundColor: Colors.white,
         appBar: AppBar(
           title: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -814,31 +1381,49 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                 children: [
                   Icon(
                     Icons.notifications_none_outlined,
-                    color: AppColors.gray700,
-                    size: 24,
+                    color: AppColors.gray600,
+                    size: 23,
                   ),
-                  const SizedBox(width: 8),
                 ],
               ),
             ],
           ),
-          bottom: TabBar(
-            controller: _tabController,
-            labelColor: AppColors.blue700,
-            overlayColor: WidgetStateProperty.all(Colors.transparent),
-            unselectedLabelColor: Colors.black54,
-            labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-            unselectedLabelStyle: const TextStyle(fontSize: 14),
-            indicator: const UnderlineTabIndicator(
-              borderSide: BorderSide(color: AppColors.blue700, width: 2),
-              insets: EdgeInsets.symmetric(horizontal: 16.0),
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(32),
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(
+                    color: Color(0xFFEEEEEE), // Colors.grey[200]
+                    width: 0.1,                  // 1px
+                  ),
+                ),
+              ),
+              height: 32,  // タブ自体の高さ
+              child: TabBar(
+                controller: _tabController,
+                indicatorSize: TabBarIndicatorSize.tab,
+                indicatorPadding: const EdgeInsets.symmetric(horizontal: 36),
+                indicatorWeight: 2.5,
+                indicatorColor: AppColors.blue500,
+                overlayColor: WidgetStateProperty.all(Colors.transparent),
+                // 選択中のテキスト
+                labelStyle: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+                // 非選択時のテキスト
+                unselectedLabelStyle: const TextStyle(
+                  fontSize: 14,
+                ),
+                labelColor: Colors.black,
+                unselectedLabelColor: Colors.black87,
+                tabs: const [
+                  Tab(text: 'フォルダ'),
+                  Tab(text: '暗記セット'),
+                ],
+              ),
             ),
-            tabs: const [
-              Tab(child: Center(child: Text('フォルダ',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)))),
-              Tab(child: Center(child: Center(child: Text('暗記セット',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold))))),
-            ],
           ),
         ),
         body: TabBarView(
@@ -848,13 +1433,12 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
             buildStudySetList(),
           ],
         ),
-        backgroundColor: Colors.white,
         floatingActionButton: Padding(
           padding: const EdgeInsets.only(bottom: 8.0, right: 16.0),
           child: FloatingActionButton(
             onPressed: () {
               if (_tabController.index == 0) {
-                navigateToFolderAddPage(context);
+                _showAddOptionsModal(context);
               } else if (_tabController.index == 1) {
                 navigateToAddStudySetPage(context);
               }

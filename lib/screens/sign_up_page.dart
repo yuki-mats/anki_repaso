@@ -14,7 +14,12 @@ import '../utils/app_colors.dart';
 import 'login_page.dart';
 
 class SignUpPage extends StatefulWidget {
-  const SignUpPage({Key? key}) : super(key: key);
+  /// ★必須 → 任意に変更し、デフォルトで空リストを入れる
+  final List<String> selectedLicenseNames;
+  const SignUpPage({
+    Key? key,
+    this.selectedLicenseNames = const [],
+  }) : super(key: key);
 
   @override
   SignUpPageState createState() => SignUpPageState();
@@ -52,6 +57,7 @@ class SignUpPageState extends State<SignUpPage> {
             await userRef.set({
               'name': 'user_${user.uid.substring(0, 8)}',
               'profileImageUrl': defaultProfileImageUrl,
+              'selectedLicenseNames': widget.selectedLicenseNames,
               'joinedGroups': [],
               'createdAt': FieldValue.serverTimestamp(),
             }, SetOptions(merge: true));
@@ -85,6 +91,7 @@ class SignUpPageState extends State<SignUpPage> {
             await userRef.set({
               'name': 'user_${user.uid.substring(0, 8)}',
               'profileImageUrl': defaultProfileImageUrl,
+              'selectedLicenseNames': widget.selectedLicenseNames,
               'joinedGroups': [],
               'createdAt': FieldValue.serverTimestamp(),
             }, SetOptions(merge: true));
@@ -123,6 +130,7 @@ class SignUpPageState extends State<SignUpPage> {
             await userRef.set({
               'name': 'user_${user.uid.substring(0, 8)}',
               'profileImageUrl': defaultProfileImageUrl,
+              'selectedLicenseNames': widget.selectedLicenseNames,
               'joinedGroups': [],
               'createdAt': FieldValue.serverTimestamp(),
             }, SetOptions(merge: true));
@@ -157,6 +165,7 @@ class SignUpPageState extends State<SignUpPage> {
             await userRef.set({
               'name': 'user_${user.uid.substring(0, 8)}',
               'profileImageUrl': defaultProfileImageUrl,
+              'selectedLicenseNames': widget.selectedLicenseNames,
               'joinedGroups': [],
               'createdAt': FieldValue.serverTimestamp(),
             }, SetOptions(merge: true));
@@ -210,6 +219,7 @@ class SignUpPageState extends State<SignUpPage> {
             .set({
           'name': 'user_${user.uid.substring(0, 8)}',
           'profileImageUrl': defaultProfileImageUrl,
+          'selectedLicenseNames': widget.selectedLicenseNames,
           'joinedGroups': [],
           'createdAt': FieldValue.serverTimestamp(),
         });
@@ -421,22 +431,6 @@ class SignUpPageState extends State<SignUpPage> {
                     ),
                     child: const Text('登録する',
                         style: TextStyle(fontSize: 16, color: Colors.white)),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                GestureDetector(
-                  onTap: () => Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(
-                        builder: (context) => const LoginPage()),
-                  ),
-                  child: const Text(
-                    'ログインする',
-                    style: TextStyle(
-                      color: AppColors.blue600,
-                      decorationColor: AppColors.blue600,
-                      decoration: TextDecoration.none,
-                    ),
                   ),
                 ),
                 const SizedBox(height: 24),

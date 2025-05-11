@@ -110,15 +110,21 @@ class CommonQuestionFooter extends StatelessWidget {
                               padding: const EdgeInsets.only(left: 16.0),
                               child: Text(
                                 'Anki AI',
-                                style: const TextStyle(fontSize: 18, color: Colors.black87),
+                                style: const TextStyle(fontSize: 18, color: Colors.black87, fontWeight: FontWeight.bold),
                               ),
                             ),
-                            Container(
-                              height: 50,
-                              alignment: Alignment.centerRight,
-                              child: IconButton(
-                                icon: const Icon(Icons.close, size: 28, color: Colors.grey),
-                                onPressed: () => Navigator.of(context).pop(),
+                            Padding(
+                              padding: const EdgeInsets.only(right: 8.0),
+                              child: Container(
+                                height: 40,
+                                alignment: Alignment.centerRight,
+                                child: IconButton(
+                                  icon: const Icon(Icons.close, size: 24, color: Colors.grey),
+                                  onPressed: () => Navigator.of(context).pop(),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  visualDensity: VisualDensity.compact,
+                                ),
                               ),
                             ),
                           ],

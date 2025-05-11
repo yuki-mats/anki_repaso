@@ -357,44 +357,58 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
     });
   }
 
+  /// 画像を 256 px までリサイズ＋JPEG 品質60で圧縮し、Firebase Storage へアップロード
   Future<List<String>> _uploadImagesToStorage(
       String questionId, String field, List<Uint8List> images) async {
     if (images.isEmpty) return [];
 
-    List<String> uploadedUrls = [];
-    final storageRef = FirebaseStorage.instance.ref().child('question_images');
+    final List<String> uploadedUrls = [];
+    final storageRef   = FirebaseStorage.instance.ref().child('question_images');
+
+    const int maxSize = 256; // 長辺 256px に統一（ProfileEditPage と同じ方針）
+    const int jpegQuality = 60;
 
     for (int i = 0; i < images.length; i++) {
       try {
-        // 画像をデコードして圧縮
-        img.Image? decodedImage = img.decodeImage(images[i]);
-        if (decodedImage == null) {
-          print("❌ 画像のデコードに失敗しました");
+        /* ① デコード */
+        img.Image? decoded = img.decodeImage(images[i]);
+        if (decoded == null) {
+          print('❌ 画像デコード失敗');
           continue;
         }
 
-        // JPEG圧縮（品質80を適用、リサイズなし）
-        Uint8List compressedImage = Uint8List.fromList(
-            img.encodeJpg(decodedImage, quality: 10));
+        /* ② リサイズ（長辺256px未満ならスキップ） */
+        if (decoded.width > maxSize || decoded.height > maxSize) {
+          decoded = decoded.width >= decoded.height
+              ? img.copyResize(decoded, width: maxSize)
+              : img.copyResize(decoded, height: maxSize);
+        }
 
-        // Firestoreに保存するファイル名を設定
-        String fileName = '$questionId-$field-$i.jpg';
-        Reference imageRef = storageRef.child(fileName);
+        /* ③ JPEG へ再エンコード（品質60） */
+        final Uint8List compressed =
+        Uint8List.fromList(img.encodeJpg(decoded, quality: jpegQuality));
 
-        // Firebase Storageにアップロード
-        UploadTask uploadTask = imageRef.putData(compressedImage);
-        TaskSnapshot snapshot = await uploadTask;
-        String downloadUrl = await snapshot.ref.getDownloadURL();
-        uploadedUrls.add(downloadUrl);
+        /* ④ Firebase Storage へアップロード */
+        final String fileName = '$questionId-$field-$i.jpg';
+        final Reference ref   = storageRef.child(fileName);
 
-        print("✅ 画像アップロード成功: $downloadUrl");
+        final TaskSnapshot snap = await ref.putData(
+          compressed,
+          SettableMetadata(contentType: 'image/jpeg'),
+        );
+
+        final String url = await snap.ref.getDownloadURL();
+        uploadedUrls.add(url);
+
+        print('✅ 画像アップロード成功: $url');
       } catch (e) {
-        print("❌ 画像アップロード失敗: $e");
+        print('❌ 画像アップロード失敗: $e');
       }
     }
 
     return uploadedUrls;
   }
+
 
   Future<void> _addQuestion() async {
     _updateExamDateFromInput();
