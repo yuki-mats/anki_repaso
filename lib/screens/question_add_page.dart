@@ -10,13 +10,13 @@ import 'package:image_picker/image_picker.dart';
 import 'package:repaso/services/import_questions.dart';
 import 'package:repaso/utils/app_colors.dart';
 import 'package:repaso/services/question_count.dart';
+import 'package:file_picker/file_picker.dart';
 import 'dart:typed_data';
 import 'package:image/image.dart' as img;
 import 'package:repaso/widgets/add_page_widgets/question_widgets.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../widgets/add_page_widgets/image_generation_tab.dart';
-import '../widgets/add_page_widgets/ocr_icon_button.dart';
 
 class QuestionAddPage extends StatefulWidget {
   final String folderId;
@@ -222,7 +222,7 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
       final res = await FirebaseFunctions
           .instanceFor(region: "us-central1")
           .httpsCallable('callGeminiOCR')({
-        'imageBase64': base64Encode(data),
+        'base64Image': base64Encode(data),
         'mimeType'   : mime,
       });
       Navigator.pop(context);
@@ -359,70 +359,76 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
 
   /// **画像を挿入するメソッド**
   void _insertImage() async {
-    // ① フォーカス中のコントローラー取得
-    final ctrl = _currentFocusedController ?? _getFocusedController();
-    if (ctrl == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('画像を挿入するフィールドを選択してください')),
-      );
-      return;
-    }
+    // 現在のフォーカスされているコントローラーを取得
+    TextEditingController? targetController = _currentFocusedController ?? _getFocusedController();
 
-    // ② 誤答／非フラッシュカード正答には禁止
-    if (ctrl == _incorrectChoice1TextController ||
-        ctrl == _incorrectChoice2TextController ||
-        ctrl == _incorrectChoice3TextController) {
+    // 誤答フィールドや正答フィールド（フラッシュカード以外）の場合は処理を中断
+    if (targetController == _incorrectChoice1TextController ||
+        targetController == _incorrectChoice2TextController ||
+        targetController == _incorrectChoice3TextController) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('誤答には画像を挿入できません')),
       );
       return;
     }
-    if (_selectedQuestionType != 'flash_card' && ctrl == _correctChoiceTextController) {
+
+    if (_selectedQuestionType != 'flash_card' &&
+        targetController == _correctChoiceTextController) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('正答の画像はフラッシュカードでのみ追加可能です')),
       );
       return;
     }
 
-    // ③ キーボードを閉じる
+    if (targetController == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('画像を挿入するテキストフィールドを選択してください')),
+      );
+      return;
+    }
+
+    // ここでフォーカスを解除し、キーボードを閉じる
     FocusScope.of(context).unfocus();
 
-    // ④ ギャラリーから画像を選択
-    final XFile? picked = await _picker.pickImage(source: ImageSource.gallery);
-    if (picked == null) return;
+    // 既存の画像枚数を確認
+    List<Uint8List> existingImages = _localImagesMap[targetController] ?? [];
+    if (existingImages.length >= 2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('1つのフィールドには最大2枚まで画像を追加できます')),
+      );
+      return;
+    }
 
-    // ⑤ トリミング（不要ならこのブロック全部を削除して OK）
-    final cropped = await ImageCropper().cropImage(
-      sourcePath: picked.path,
-      uiSettings: [
-        AndroidUiSettings(
-          toolbarTitle: '画像をトリミング',
-          toolbarColor: AppColors.blue500,
-          toolbarWidgetColor: Colors.white,
-          lockAspectRatio: false,
-        ),
-        IOSUiSettings(
-          title: '画像をトリミング',
-          cancelButtonTitle: 'キャンセル',
-          doneButtonTitle: '完了',
-          aspectRatioLockEnabled: false,
-        ),
-      ],
-    );
-    if (cropped == null) return;
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        withData: true,
+      );
 
-    // ⑥ バイト列を状態に追加
-    final bytes = await cropped.readAsBytes();
-    setState(() {
-      final list = _localImagesMap.putIfAbsent(ctrl, () => []);
-      if (list.length < 2) {
-        list.add(bytes);
-      } else {
+      if (result == null || result.files.isEmpty) return;
+
+      Uint8List? imageData = result.files.first.bytes;
+      if (imageData == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('1つのフィールドには最大2枚まで画像を追加できます')),
+          const SnackBar(content: Text('画像の読み込みに失敗しました')),
         );
+        return;
       }
-    });
+
+      setState(() {
+        _localImagesMap.putIfAbsent(targetController, () => []).add(imageData);
+      });
+
+      // 必要に応じてフレーム完了後の再描画を実行
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        setState(() {});
+      });
+    } catch (e) {
+      print("❌ 画像選択エラー: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('画像の選択に失敗しました')),
+      );
+    }
   }
 
   /// 画像削除メソッド
@@ -791,7 +797,11 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
                     ),
                     onPressed: _insertImage,
                   ),
-                  const OcrIconButton(),
+                  IconButton(
+                    icon: const Icon(Icons.document_scanner_outlined,
+                        color: AppColors.blue500, size: 32),
+                    onPressed: _scanTextFromImage,
+                  ),
                 ],
               ),
               const SizedBox(width: 16),
