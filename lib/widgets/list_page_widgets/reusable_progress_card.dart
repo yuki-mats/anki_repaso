@@ -20,24 +20,38 @@ class ReusableProgressCard extends StatelessWidget {
     required this.countSuffix,
     required this.onTap,
     required this.onMorePressed,
+    required this.selectionMode,    // 追加
+    required this.cardId,           // 追加
+    this.selectedId,                // 追加
+    this.onSelected,                // 追加
   });
 
   // ------- 外から渡すプロパティ -------
-  final IconData      iconData;
-  final Color         iconColor;
-  final Color         iconBgColor;
-  final String        title;
-  final bool          isVerified;
-  final Map<String,int> memoryLevels;
-  final int           correctAnswers;
-  final int           totalAnswers;
-  final int           count;
-  final String        countSuffix;
-  final VoidCallback  onTap;
-  final VoidCallback  onMorePressed;
+  final IconData           iconData;
+  final Color              iconColor;
+  final Color              iconBgColor;
+  final String             title;
+  final bool               isVerified;
+  final Map<String, int>   memoryLevels;
+  final int                correctAnswers;
+  final int                totalAnswers;
+  final int                count;
+  final String             countSuffix;
+  final VoidCallback       onTap;
+  final VoidCallback       onMorePressed;
+
+  // 追加: ラジオ選択用プロパティ
+  final bool               selectionMode;
+  final String             cardId;
+  final String?            selectedId;
+  final ValueChanged<String?>? onSelected;
 
   @override
   Widget build(BuildContext context) {
+    // ★ デバッグ出力
+    print('[ReusableProgressCard] build  '
+        'cardId=$cardId  selectionMode=$selectionMode  selectedId=$selectedId');
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Container(
@@ -85,18 +99,33 @@ class ReusableProgressCard extends StatelessWidget {
                         maxLines: 2,
                       ),
                     ),
-                    SizedBox(
-                      width : 40,
-                      height: 40,
-                      child : IconButton(
-                        icon            : const Icon(Icons.more_horiz_outlined,
-                            color: Colors.grey),
-                        padding         : EdgeInsets.zero,
-                        constraints     : const BoxConstraints(),
-                        visualDensity   : VisualDensity.compact,
-                        onPressed       : onMorePressed,
+                    // ───── ここをラジオ or アイコンボタンに切り替え ─────
+                    if (selectionMode)
+                      Radio<String>(
+                        value       : cardId,
+                        groupValue  : selectedId,
+                        activeColor : AppColors.blue500,
+                        onChanged   : (val) {
+                          // ★ デバッグ出力
+                          print('[ReusableProgressCard] Radio onChanged → $val');
+                          if (onSelected != null) onSelected!(val);
+                        },
+                      )
+                    else
+                      SizedBox(
+                        width : 40,
+                        height: 40,
+                        child : IconButton(
+                          icon            : const Icon(
+                            Icons.more_horiz_outlined,
+                            color: Colors.grey,
+                          ),
+                          padding       : EdgeInsets.zero,
+                          constraints   : const BoxConstraints(),
+                          visualDensity : VisualDensity.compact,
+                          onPressed     : onMorePressed,
+                        ),
                       ),
-                    ),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -112,7 +141,10 @@ class ReusableProgressCard extends StatelessWidget {
                 // ───── メモリーレベルバー ─────
                 Padding(
                   padding: const EdgeInsets.only(right: 8.0),
-                  child  : MemoryLevelProgressBar(memoryValues: memoryLevels, totalCount: count,),
+                  child  : MemoryLevelProgressBar(
+                    memoryValues: memoryLevels,
+                    totalCount  : count,
+                  ),
                 ),
                 const SizedBox(height: 4),
               ],

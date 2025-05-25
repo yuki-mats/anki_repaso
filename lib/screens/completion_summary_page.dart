@@ -1,15 +1,17 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';               // ← PlatformException 用
+import 'package:in_app_review/in_app_review.dart';    // ← In-App Review
 import 'package:repaso/utils/app_colors.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
-class CompletionSummaryPage extends StatelessWidget {
+class CompletionSummaryPage extends StatefulWidget {
   final int totalQuestions;
   final int correctAnswers;
   final int incorrectAnswers;
   final VoidCallback onViewResults;
   final VoidCallback onExit;
-
-  // ProgressBar 用に必要なデータ
   final List<Map<String, dynamic>> answerResults;
 
   const CompletionSummaryPage({
@@ -22,7 +24,153 @@ class CompletionSummaryPage extends StatelessWidget {
     required this.answerResults,
   }) : super(key: key);
 
-  // メモリレベルごとの色設定
+  @override
+  _CompletionSummaryPageState createState() => _CompletionSummaryPageState();
+}
+
+class _CompletionSummaryPageState extends State<CompletionSummaryPage> {
+  final _inAppReview = InAppReview.instance;
+  bool _dialogShown = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeShowReviewDialog();
+    });
+  }
+
+  Future<void> _maybeShowReviewDialog() async {
+    if (_dialogShown) return;
+
+    // 正答率チェック
+    if (widget.totalQuestions == 0) return;
+    final rate = widget.correctAnswers / widget.totalQuestions;
+    if (rate < 0.90) return;
+
+    // 評価済みチェック
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final userDoc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .get();
+    final hasRated = (userDoc.data()?['hasRated'] ?? false) as bool;
+    if (hasRated) return;
+
+    _dialogShown = true;
+    await _showReviewDialog();
+  }
+
+  Future<void> _showReviewDialog() async {
+    if (!mounted) return;
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        int selectedStars = 0;
+        return StatefulBuilder(
+          builder: (ctx2, setState) => Dialog(
+            backgroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    '暗記プラスの評価は？',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(5, (i) {
+                      final filled = i < selectedStars;
+                      return IconButton(
+                        icon: Icon(
+                          filled ? Icons.star : Icons.star_border,
+                          size: 32,
+                          color: filled ? Colors.amber : Colors.grey,
+                        ),
+                        onPressed: () async {
+                          setState(() {
+                            selectedStars = i + 1;
+                          });
+                          Navigator.of(ctx2).pop();
+
+                          if (selectedStars >= 4) {
+                            final u = FirebaseAuth.instance.currentUser;
+                            try {
+                              if (await _inAppReview.isAvailable()) {
+                                await _inAppReview.requestReview();
+                              } else {
+                                await _inAppReview.openStoreListing(
+                                  appStoreId: '6740453092',
+                                );
+                              }
+                              // フラグを保存して再表示を防止
+                              if (u != null) {
+                                await FirebaseFirestore.instance
+                                    .collection('users')
+                                    .doc(u.uid)
+                                    .set(
+                                  {'hasRated': true},
+                                  SetOptions(merge: true),
+                                );
+                              }
+                            } on PlatformException catch (e) {
+                              debugPrint('In-App review error: $e');
+                            }
+                          }
+                        },
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('1から5の星をタップしてください。'),
+                  const SizedBox(height: 4),
+                  const Text('もっと便利にしていきます👍'),
+                  const SizedBox(height: 16),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: TextButton(
+                        style: TextButton.styleFrom(
+                          backgroundColor: AppColors.blue200,
+                          shape: const StadiumBorder(),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                        onPressed: () {
+                          _dialogShown = false;
+                          Navigator.of(ctx).pop();
+                        },
+                        child: const Text(
+                          '後で',
+                          style: TextStyle(color: AppColors.blue600),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // 以下は変更なし……
+
   Color _getMemoryLevelColor(String level) {
     switch (level) {
       case 'unanswered':
@@ -40,47 +188,36 @@ class CompletionSummaryPage extends StatelessWidget {
     }
   }
 
-  // プログレスバーの色を計算
   List<Color> _getProgressColors() {
-    // 質問数が0なら灰色のみ
-    if (totalQuestions == 0) {
+    if (widget.totalQuestions == 0) {
       return [Colors.grey[300]!];
     }
-
-    // メモリレベルをカウント
-    final Map<String, int> memoryLevelCounts = {
+    final counts = {
       'easy': 0,
       'good': 0,
       'hard': 0,
       'again': 0,
-      'unanswered': totalQuestions - answerResults.length,
+      'unanswered': widget.totalQuestions - widget.answerResults.length,
     };
-
-    for (var result in answerResults) {
-      final level = result['memoryLevel'] ?? 'unanswered';
-      if (memoryLevelCounts.containsKey(level)) {
-        memoryLevelCounts[level] = memoryLevelCounts[level]! + 1;
+    for (var r in widget.answerResults) {
+      final lvl = r['memoryLevel'] ?? 'unanswered';
+      if (counts.containsKey(lvl)) {
+        counts[lvl] = counts[lvl]! + 1;
       } else {
-        memoryLevelCounts[level] = 1;
+        counts[lvl] = 1;
       }
     }
-
-    // 表示順を定義
-    List<String> levelOrder = ['again', 'hard', 'good', 'easy', 'unanswered'];
-
-    // レベルごとのカラーをまとめて生成
-    List<Color> colors = [];
-    for (String level in levelOrder) {
-      final count = memoryLevelCounts[level] ?? 0;
-      if (count > 0) {
-        colors.addAll(List.filled(count, _getMemoryLevelColor(level)));
-      }
+    final order = ['again', 'hard', 'good', 'easy', 'unanswered'];
+    final colors = <Color>[];
+    for (var lvl in order) {
+      final c = counts[lvl] ?? 0;
+      if (c > 0) colors.addAll(List.filled(c, _getMemoryLevelColor(lvl)));
     }
     return colors;
   }
 
   String getRandomMessageByAccuracy(double accuracy) {
-    final random = Random();
+    final rnd = Random();
     if (accuracy <= 20) {
       return [
         '少しずつ慣れていこう！最初は誰でも難しいけれど、続けることが大切だよ。',
@@ -88,7 +225,7 @@ class CompletionSummaryPage extends StatelessWidget {
         '少しずつ覚えていけば大丈夫！今は基礎を固める時期だよ。',
         '最初は誰でも難しいもの。一緒に乗り越えよう！',
         '学び始めたばかりだね。次のチャレンジで成長を感じよう！',
-      ][random.nextInt(5)];
+      ][rnd.nextInt(5)];
     } else if (accuracy <= 40) {
       return [
         '良いスタートだね！次はもっとできるようになるよ。',
@@ -96,7 +233,7 @@ class CompletionSummaryPage extends StatelessWidget {
         '良い兆しだね！次はもっとできるようになるよ。',
         '成長が感じられるよ！次も挑戦してみよう。',
         'ここまで来たね！次の一歩でさらに自信がつくよ。',
-      ][random.nextInt(5)];
+      ][rnd.nextInt(5)];
     } else if (accuracy <= 60) {
       return [
         '半分以上覚えられているよ！あと少しで目標に近づくね。',
@@ -104,7 +241,7 @@ class CompletionSummaryPage extends StatelessWidget {
         '順調だね！さらに高みを目指していこう。',
         '素晴らしい進歩だよ！この勢いを大切にしよう。',
         'もう少しで目標達成だね！次も期待してるよ！',
-      ][random.nextInt(5)];
+      ][rnd.nextInt(5)];
     } else if (accuracy <= 80) {
       return [
         'かなり良い成績だね！この調子で進めよう！',
@@ -112,7 +249,7 @@ class CompletionSummaryPage extends StatelessWidget {
         '素晴らしい成果だね！もっと上を目指せるよ。',
         '努力の成果がしっかり出ているね！',
         'この調子ならすぐに完璧に近づけるよ！',
-      ][random.nextInt(5)];
+      ][rnd.nextInt(5)];
     } else if (accuracy < 100) {
       return [
         'ほぼ完璧！あと少しで完璧な結果が見えてくるね。',
@@ -120,7 +257,7 @@ class CompletionSummaryPage extends StatelessWidget {
         'ここまで来たのはすごいね！最終調整をしてみよう。',
         '自信を持っていいよ！次は全問正解を目指そう。',
         '惜しい！でもここまでの成果は十分誇れるよ！',
-      ][random.nextInt(5)];
+      ][rnd.nextInt(5)];
     } else {
       return [
         '完璧！本当におめでとう！',
@@ -128,14 +265,14 @@ class CompletionSummaryPage extends StatelessWidget {
         '素晴らしい結果だよ！自分を褒めてあげよう！',
         '最高のパフォーマンス！次もこの調子で！',
         '完璧な結果！君ならやれると思ってたよ！',
-      ][random.nextInt(5)];
+      ][rnd.nextInt(5)];
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final accuracy = (correctAnswers / totalQuestions * 100).toStringAsFixed(1);
-    final accuracyValue = correctAnswers / totalQuestions * 100;
+    final accuracyValue = widget.correctAnswers / widget.totalQuestions * 100;
+    final accuracy = accuracyValue.toStringAsFixed(1);
     final message = getRandomMessageByAccuracy(accuracyValue);
 
     return Scaffold(
@@ -145,105 +282,78 @@ class CompletionSummaryPage extends StatelessWidget {
           style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
         ),
       ),
-      // AnswerPage と同じように Column を使って、上部にプログレスバーを表示
       body: Column(
         children: [
-          // 上部のプログレスバー
           Row(
-            children: _getProgressColors().map((color) {
-              return Expanded(
-                child: Container(
-                  height: 10,
-                  color: color,
-                ),
-              );
-            }).toList(),
+            children: _getProgressColors()
+                .map((c) => Expanded(child: Container(height: 10, color: c)))
+                .toList(),
           ),
-
-          // 残りのコンテンツをまとめてスクロール可能にする
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.only(top: 16.0, left: 32.0, right: 32.0),
+              padding: const EdgeInsets.only(top: 16, left: 32, right: 32),
               child: Column(
                 children: [
-                  // 正答率の円グラフ表示
                   Padding(
-                    padding: const EdgeInsets.only(top:48.0),
-                    child: Container(
-                      margin: const EdgeInsets.only(bottom: 24.0),
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          SizedBox(
-                            width: 160,
-                            height: 160,
-                            child: CircularProgressIndicator(
-                              value: correctAnswers / totalQuestions,
-                              backgroundColor: Colors.grey.shade300,
-                              color: correctAnswers == totalQuestions
-                                  ? AppColors.blue400
-                                  : AppColors.blue400,
-                              strokeWidth: 10,
-                            ),
+                    padding: const EdgeInsets.only(top: 48, bottom: 24),
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        SizedBox(
+                          width: 160,
+                          height: 160,
+                          child: CircularProgressIndicator(
+                            value: widget.correctAnswers /
+                                widget.totalQuestions,
+                            backgroundColor: Colors.grey.shade300,
+                            color: AppColors.blue400,
+                            strokeWidth: 10,
                           ),
-                          Text(
-                            accuracy.replaceAll(RegExp(r'\.0'), '') + '%',
-                            style: const TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black,
-                            ),
+                        ),
+                        Text(
+                          accuracy.replaceAll(RegExp(r'\.0'), '') + '%',
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black,
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                   Text(
                     message,
                     style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.grey,
-                    ),
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.grey),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 32),
-
-                  // ボタンエリア
-                  Column(
-                    children: [
-                      ElevatedButton(
-                        onPressed: onViewResults,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.blue600,
-                          padding: const EdgeInsets.symmetric(vertical: 16.0),
-                          minimumSize: const Size(double.infinity, 48),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        child: const Text(
-                          '結果を確認',
-                          style: TextStyle(fontSize: 16, color: Colors.white),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      OutlinedButton(
-                        onPressed: onExit,
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16.0),
-                          minimumSize: const Size(double.infinity, 48),
-                          side: BorderSide(color: AppColors.blue600),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        child: const Text(
-                          '終了',
-                          style: TextStyle(fontSize: 16, color: AppColors.blue600),
-                        ),
-                      ),
-                    ],
+                  ElevatedButton(
+                    onPressed: widget.onViewResults,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.blue600,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      minimumSize: const Size(double.infinity, 48),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: const Text('結果を確認',
+                        style: TextStyle(fontSize: 16, color: Colors.white)),
+                  ),
+                  const SizedBox(height: 16),
+                  OutlinedButton(
+                    onPressed: widget.onExit,
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      minimumSize: const Size(double.infinity, 48),
+                      side: BorderSide(color: AppColors.blue600),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: const Text('終了',
+                        style: TextStyle(fontSize: 16, color: AppColors.blue600)),
                   ),
                 ],
               ),

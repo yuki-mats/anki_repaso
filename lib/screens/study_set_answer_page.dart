@@ -501,7 +501,7 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
                                     ),
                                   ),
                                 ),
-                                const SizedBox(height: 8),
+                                SizedBox(height: 8),
                                 Expanded(
                                   child: Scrollbar(
                                     controller: _scrollController,
@@ -563,6 +563,7 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
                                     final question = _questionsWithStats[_currentQuestionIndex];
                                     final statsData = question['statsData'] as Map<String, dynamic>? ?? {};
                                     final double correctRate = statsData['correctRate'] ?? 0.0;
+                                    final int    attemptCount = statsData['attemptCount'] ?? 0;
 
                                     return CommonQuestionFooter(
                                       questionId: question['questionId'] as String,
@@ -571,6 +572,7 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
                                       explanationText  : question['explanationText']  ?? '',
                                       aiMemoId  : null,
                                       correctRate: correctRate,
+                                      totalAnswers   : attemptCount,
                                       hintText: question['hintText'],
                                       footerButtonType: _footerButtonType,
                                       flashCardHasBeenRevealed: _flashCardHasBeenRevealed,
@@ -664,11 +666,6 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
                       return const SizedBox.shrink();
                     }),
                   ),
-                  if (_selectedAnswer == null)
-                    Padding(
-                      padding: const EdgeInsets.only(top:16.0),
-                      child: const BannerAdWidget(),
-                    ),
                 ],
               ),
             ),

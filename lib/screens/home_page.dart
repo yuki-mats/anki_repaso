@@ -1,9 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_sticky_header/flutter_sticky_header.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
+import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:repaso/screens/folder_edit_page.dart';
+import 'package:repaso/screens/paywall_page.dart';
 import 'package:repaso/screens/question_set_list_page.dart';
 import 'package:repaso/screens/study_set_answer_page.dart';
 import 'package:repaso/screens/question_set_add_page.dart';
@@ -16,6 +19,7 @@ import '../widgets/list_page_widgets/folder_item.dart';
 import '../widgets/list_page_widgets/reusable_progress_card.dart';
 import '../main.dart';
 import '../widgets/list_page_widgets/skeleton_card.dart';
+import 'licensee_edit_page.dart';
 
 class FolderListPage extends StatefulWidget {
   const FolderListPage({super.key, required this.title});
@@ -37,7 +41,13 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
   bool _showIconBar = true;
   double _lastOffset = 0.0;
   List<FolderItem> _folderItems = [];
+  List<String> _selectedLicenseNames = [];
   bool _isLoading = true;
+  bool  _selectFolderMode = false;
+  String? _selectedFolderId;
+  bool _isPro = false;
+  late final void Function(CustomerInfo) _customerInfoListener;
+
   // ソートラベルのマッピング
   final Map<String, String> _sortLabels = {
     'correctRateAsc': '正答率（昇順）',
@@ -89,28 +99,61 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
         _lastOffset = offset;
       });
 
-
+    // Firebase からのデータ取得
     fetchFirebaseData();
+
+    // キーボードを閉じる
     WidgetsBinding.instance.addPostFrameCallback((_) {
       FocusManager.instance.primaryFocus?.unfocus();
     });
+
+    // ATTトラッキング許可リクエスト
     requestTrackingPermission();
 
+    // タブコントローラ初期化
     _tabController = TabController(length: 2, vsync: this);
-    fetchFirebaseData();
 
+    // 再度キーボード閉じ＆トラッキング許可（重複でも問題なし）
     WidgetsBinding.instance.addPostFrameCallback((_) {
       FocusManager.instance.primaryFocus?.unfocus();
     });
     requestTrackingPermission();
+
+    // ── ★ RevenueCat の購読状態取得＋リスナー登録 ──
+
+    // 1) 一度だけ現在の購読状態を取得
+    Purchases.getCustomerInfo().then((info) {
+      final active = info.entitlements.active['Pro']?.isActive ?? false;
+      setState(() => _isPro = active);
+    });
+
+    // 2) 更新ごとに購読状態を反映するリスナーを定義
+    _customerInfoListener = (CustomerInfo info) {
+      final active = info.entitlements.active['Pro']?.isActive ?? false;
+      if (_isPro != active) {
+        setState(() => _isPro = active);
+      }
+    };
+
+    // 3) リスナーを登録
+    Purchases.addCustomerInfoUpdateListener(_customerInfoListener);
+    // ── ★ ここまで ──
   }
+
+
 
   @override
   void dispose() {
+    // RevenueCat のリスナー解除
+    Purchases.removeCustomerInfoUpdateListener(_customerInfoListener);
+
+    // タブコントローラ・スクロールコントローラ破棄
     _tabController.dispose();
-    super.dispose();
     _scrollController.dispose();
+
+    super.dispose();
   }
+
 
   Future<void> fetchFirebaseData() async {
     setState(() => _isLoading = true);
@@ -128,6 +171,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
       /* 1) 選択ライセンス */
       final userDoc  = await userRef.get();
       final licenses = List<String>.from(userDoc.data()?['selectedLicenseNames'] ?? []);
+      setState(() => _selectedLicenseNames = licenses);
 
       /* 2) 公式フォルダ (30 件ずつ whereIn) */
       final List<Future<QuerySnapshot<Map<String, dynamic>>>> officialFutures = [];
@@ -278,9 +322,24 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
     }
   }
 
+  Future<void> navigateToAddLicensePage(BuildContext context) async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LicenseeEditPage(
+          initialSelected: _selectedLicenseNames,
+        ),
+      ),
+    );
+    if (result is List<String>) {
+      setState(() {
+        _selectedLicenseNames = result;
+      });
+      fetchFirebaseData();
+    }
+  }
 
-
-    void navigateToFolderAddPage(BuildContext context) async {
+  void navigateToFolderAddPage(BuildContext context) async {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => FolderAddPage()),
@@ -290,7 +349,6 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
       fetchFirebaseData();
     }
   }
-
 // --- 暗記セット追加 ---
   void navigateToAddStudySetPage(BuildContext context) async {
     final studySet = AddPage.StudySet(
@@ -344,60 +402,79 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
   // ── ★ 追加：共通の追加メニュー ──
   void _showAddOptionsModal(BuildContext context) {
     showModalBottomSheet(
+      isScrollControlled: true,
       context: context,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+        borderRadius: BorderRadius.only(
+          topLeft : Radius.circular(12.0),
+          topRight: Radius.circular(12.0),
+        ),
       ),
-      builder: (_) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // ハンドル
-          Padding(
-            padding: const EdgeInsets.only(top: 12, bottom: 8),
-            child: Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.gray200,
-                  borderRadius: BorderRadius.circular(2),
+      builder: (BuildContext context) {
+        return Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Container(
+            height: 180,
+            child: Column(
+              children: [
+                // ドラッグハンドル
+                Center(
+                  child: Container(
+                    width : 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
                 ),
-              ),
+                const SizedBox(height: 12),
+                // ──── ① フォルダ追加 ────
+                ListTile(
+                  leading: Container(
+                    width : 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: AppColors.gray100,
+                      borderRadius: BorderRadius.circular(100),
+                    ),
+                    child: const Icon(Icons.folder_outlined,
+                        size: 22, color: AppColors.gray600),
+                  ),
+                  title : const Text('フォルダを追加', style: TextStyle(fontSize: 16)),
+                  onTap : () {
+                    Navigator.pop(context);
+                    navigateToFolderAddPage(context);
+                  },
+                ),
+                const SizedBox(height: 8),
+                // ──── ② 資格（ライセンス）追加 ────
+                ListTile(
+                  leading: Container(
+                    width : 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: AppColors.gray100,
+                      borderRadius: BorderRadius.circular(100),
+                    ),
+                    child: const Icon(Icons.assignment_turned_in_outlined,
+                        size: 22, color: AppColors.gray600),
+                  ),
+                  title : const Text('資格を登録', style: TextStyle(fontSize: 16)),
+                  onTap : () {
+                    Navigator.pop(context);
+                    navigateToAddLicensePage(context);
+                  },
+                ),
+              ],
             ),
           ),
-          // ──── ① フォルダ追加 ────
-          ListTile(
-            leading: const Icon(Icons.folder_outlined, color: AppColors.blue500),
-            title : const Text('フォルダを追加', style: TextStyle(fontSize: 16)),
-            onTap : () {
-              Navigator.pop(context);
-              navigateToFolderAddPage(context);
-            },
-          ),
-          // ──── ② 資格（ライセンス）追加 ────
-          ListTile(
-            leading: const Icon(Icons.badge_outlined, color: AppColors.blue500),
-            title : const Text('資格を追加', style: TextStyle(fontSize: 16)),
-            onTap : () {
-              Navigator.pop(context);
-              //navigateToAddLicensePage(context); // ← 下で定義
-            },
-          ),
-          // ──── ③ 問題集追加 ────
-          ListTile(
-            leading: const Icon(Icons.quiz_outlined, color: AppColors.blue500),
-            title : const Text('問題集を追加', style: TextStyle(fontSize: 16)),
-            onTap : () {
-              Navigator.pop(context);
-              //navigateToQuestionSetAddPage(context); // ← 下で定義
-            },
-          ),
-          const SizedBox(height: 16),
-        ],
-      ),
+        );
+      },
     );
   }
+
 
 
   // --- フォルダ編集 ---
@@ -795,6 +872,38 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
     );
   }
 
+  Future<Offerings?> _fetchOfferings() async {
+    try {
+      return await Purchases.getOfferings();
+    } catch (e) {
+      debugPrint('Offerings取得エラー: $e');
+      return null;
+    }
+  }
+
+  /// 月額 Pro を購入
+  Future<void> _purchaseMonthly(BuildContext context) async {
+    final offerings = await _fetchOfferings();
+    final pkg = offerings?.current?.monthly;
+    if (pkg == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('購入プランが見つかりません')),
+      );
+      return;
+    }
+    try {
+      final result = await Purchases.purchasePackage(pkg);
+      final isActive = result.entitlements.active['Pro']?.isActive ?? false;
+      if (isActive) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Pro 購読が有効になりました！')),
+        );
+      }
+    } on PlatformException catch (e) {
+      debugPrint('購入エラー: $e');
+    }
+  }
+
   Widget buildFolderList() {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
@@ -1163,6 +1272,10 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                         countSuffix: ' 問',
                         onTap: () => navigateToQuestionSetsListPage(doc),
                         onMorePressed: () => showFolderOptionsModal(context, doc),
+                        selectionMode : false,
+                        cardId        : doc.id,
+                        selectedId    : null,
+                        onSelected    : null,
                       ),
                     );
                   },
@@ -1171,6 +1284,9 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
               ),
             );
           }).toList(),
+          SliverToBoxAdapter(
+            child: const SizedBox(height: 100),
+          ),
         ],
       ),
     );
@@ -1336,6 +1452,10 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                         totalAnswers   : total,
                         count          : attempts,
                         countSuffix    : ' 回',
+                        selectionMode : false,
+                        cardId        : doc.id,
+                        selectedId    : null,
+                        onSelected    : null,
                         onTap: () {
                           Navigator.push(
                             context,
@@ -1343,6 +1463,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                               builder: (_) => StudySetAnswerPage(studySetId: doc.id),
                             ),
                           );
+
                         },
                         onMorePressed: () => showStudySetOptionsModal(context, doc),
                       );
@@ -1376,15 +1497,11 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
           title: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('ホーム',),
-              Row(
-                children: [
-                  Icon(
-                    Icons.notifications_none_outlined,
-                    color: AppColors.gray600,
-                    size: 23,
-                  ),
-                ],
+              Text(widget.title),
+              const Icon(
+                Icons.notifications_none_outlined,
+                color: AppColors.gray600,
+                size: 23,
               ),
             ],
           ),
@@ -1394,12 +1511,12 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
               decoration: BoxDecoration(
                 border: Border(
                   bottom: BorderSide(
-                    color: Color(0xFFEEEEEE), // Colors.grey[200]
-                    width: 0.1,                  // 1px
+                    color: const Color(0xFFEEEEEE),
+                    width: 0.1,
                   ),
                 ),
               ),
-              height: 32,  // タブ自体の高さ
+              height: 32,
               child: TabBar(
                 controller: _tabController,
                 indicatorSize: TabBarIndicatorSize.tab,
@@ -1407,17 +1524,10 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                 indicatorWeight: 2.5,
                 indicatorColor: AppColors.blue500,
                 overlayColor: WidgetStateProperty.all(Colors.transparent),
-                // 選択中のテキスト
-                labelStyle: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                ),
-                // 非選択時のテキスト
-                unselectedLabelStyle: const TextStyle(
-                  fontSize: 14,
-                ),
+                labelStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                unselectedLabelStyle: const TextStyle(fontSize: 16),
                 labelColor: Colors.black,
-                unselectedLabelColor: Colors.black87,
+                unselectedLabelColor: Colors.black54,
                 tabs: const [
                   Tab(text: 'フォルダ'),
                   Tab(text: '暗記セット'),

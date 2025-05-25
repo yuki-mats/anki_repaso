@@ -1,15 +1,22 @@
+import 'dart:convert';
+
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:image_cropper/image_cropper.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:repaso/services/import_questions.dart';
 import 'package:repaso/utils/app_colors.dart';
 import 'package:repaso/services/question_count.dart';
-import 'package:file_picker/file_picker.dart';
 import 'dart:typed_data';
 import 'package:image/image.dart' as img;
 import 'package:repaso/widgets/add_page_widgets/question_widgets.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+import '../widgets/add_page_widgets/image_generation_tab.dart';
+import '../widgets/add_page_widgets/ocr_icon_button.dart';
 
 class QuestionAddPage extends StatefulWidget {
   final String folderId;
@@ -56,6 +63,7 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
   bool _trueFalseAnswer = true;
   bool _isSaveEnabled = false;
   bool _isSaving = false;
+  final ImagePicker _picker = ImagePicker();
 
   // ローカル画像を保持するマップ（各TextField毎に）
   Map<TextEditingController, List<Uint8List>> _localImagesMap = {};
@@ -152,6 +160,112 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
     super.dispose();
   }
 
+// 画像圧縮＋MIME判定
+  Uint8List _compress(Uint8List raw, {required bool asPng}) {
+    var decoded = img.decodeImage(raw)!;
+    if (decoded.width > 2048 || decoded.height > 2048) {
+      decoded = decoded.width >= decoded.height
+          ? img.copyResize(decoded, width: 2048)
+          : img.copyResize(decoded, height: 2048);
+    }
+    return asPng
+        ? Uint8List.fromList(img.encodePng(decoded, level: 6))
+        : Uint8List.fromList(img.encodeJpg(decoded, quality: 70));
+  }
+  String _guessMime(String path) =>
+      path.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
+
+  Future<void> _scanTextFromImage() async {
+    print("[DEBUG] _scanTextFromImage start");
+
+    // ① ソース選択
+    final ImageSource? src = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (_) => SafeArea(
+        child: Wrap(children: [
+          ListTile(
+            leading: const Icon(Icons.camera_alt),
+            title : const Text('カメラ'),
+            onTap : () => Navigator.pop(context, ImageSource.camera),
+          ),
+          ListTile(
+            leading: const Icon(Icons.photo),
+            title : const Text('ギャラリー'),
+            onTap : () => Navigator.pop(context, ImageSource.gallery),
+          ),
+        ]),
+      ),
+    );
+    if (src == null) return;
+
+    // ② 取得＋トリミング
+    final XFile? picked = await _picker.pickImage(source: src);
+    if (picked == null) return;
+    final CroppedFile? cropped = await ImageCropper().cropImage(
+      sourcePath: picked.path,
+      uiSettings: [
+        AndroidUiSettings(lockAspectRatio: false),
+        IOSUiSettings(),
+      ],
+    );
+    if (cropped == null) return;
+
+    // ③ 圧縮＋MIME
+    final raw = await cropped.readAsBytes();
+    final mime = _guessMime(cropped.path);
+    final data = _compress(raw, asPng: mime == "image/png");
+    print("[DEBUG] raw=${raw.length} compressed=${data.length} mime=$mime");
+
+    // ④ 呼び出し
+    _showLoadingDialog();
+    try {
+      final res = await FirebaseFunctions
+          .instanceFor(region: "us-central1")
+          .httpsCallable('callGeminiOCR')({
+        'imageBase64': base64Encode(data),
+        'mimeType'   : mime,
+      });
+      Navigator.pop(context);
+
+      final extracted = (res.data['text'] ?? '').toString();
+      print("[DEBUG] extracted.len=${extracted.length}");
+      if (extracted.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('文字が検出できませんでした')),
+        );
+        return;
+      }
+
+      final ctrl = _currentFocusedController ?? _getFocusedController();
+      if (ctrl == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('テキストフィールドを選択してください')),
+        );
+        return;
+      }
+      final pos = ctrl.selection.baseOffset;
+      if (pos >= 0) {
+        ctrl.text = ctrl.text.replaceRange(pos, pos, extracted);
+        ctrl.selection = TextSelection.collapsed(offset: pos + extracted.length);
+      } else {
+        ctrl.text += extracted;
+      }
+    } on FirebaseFunctionsException catch (e) {
+      Navigator.pop(context);
+      print("[DEBUG] FFE code=${e.code}, msg=${e.message}");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('OCR 失敗: ${e.code}')),
+      );
+    } catch (e) {
+      Navigator.pop(context);
+      print("[DEBUG] Unexpected error: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('OCR に失敗しました')),
+      );
+    }
+  }
+
+
   void _onQuestionTextChanged() {
     setState(() {
       _isSaveEnabled = _questionTextController.text.trim().isNotEmpty;
@@ -245,76 +359,70 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
 
   /// **画像を挿入するメソッド**
   void _insertImage() async {
-    // 現在のフォーカスされているコントローラーを取得
-    TextEditingController? targetController = _currentFocusedController ?? _getFocusedController();
+    // ① フォーカス中のコントローラー取得
+    final ctrl = _currentFocusedController ?? _getFocusedController();
+    if (ctrl == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('画像を挿入するフィールドを選択してください')),
+      );
+      return;
+    }
 
-    // 誤答フィールドや正答フィールド（フラッシュカード以外）の場合は処理を中断
-    if (targetController == _incorrectChoice1TextController ||
-        targetController == _incorrectChoice2TextController ||
-        targetController == _incorrectChoice3TextController) {
+    // ② 誤答／非フラッシュカード正答には禁止
+    if (ctrl == _incorrectChoice1TextController ||
+        ctrl == _incorrectChoice2TextController ||
+        ctrl == _incorrectChoice3TextController) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('誤答には画像を挿入できません')),
       );
       return;
     }
-
-    if (_selectedQuestionType != 'flash_card' &&
-        targetController == _correctChoiceTextController) {
+    if (_selectedQuestionType != 'flash_card' && ctrl == _correctChoiceTextController) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('正答の画像はフラッシュカードでのみ追加可能です')),
       );
       return;
     }
 
-    if (targetController == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('画像を挿入するテキストフィールドを選択してください')),
-      );
-      return;
-    }
-
-    // ここでフォーカスを解除し、キーボードを閉じる
+    // ③ キーボードを閉じる
     FocusScope.of(context).unfocus();
 
-    // 既存の画像枚数を確認
-    List<Uint8List> existingImages = _localImagesMap[targetController] ?? [];
-    if (existingImages.length >= 2) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('1つのフィールドには最大2枚まで画像を追加できます')),
-      );
-      return;
-    }
+    // ④ ギャラリーから画像を選択
+    final XFile? picked = await _picker.pickImage(source: ImageSource.gallery);
+    if (picked == null) return;
 
-    try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.image,
-        withData: true,
-      );
+    // ⑤ トリミング（不要ならこのブロック全部を削除して OK）
+    final cropped = await ImageCropper().cropImage(
+      sourcePath: picked.path,
+      uiSettings: [
+        AndroidUiSettings(
+          toolbarTitle: '画像をトリミング',
+          toolbarColor: AppColors.blue500,
+          toolbarWidgetColor: Colors.white,
+          lockAspectRatio: false,
+        ),
+        IOSUiSettings(
+          title: '画像をトリミング',
+          cancelButtonTitle: 'キャンセル',
+          doneButtonTitle: '完了',
+          aspectRatioLockEnabled: false,
+        ),
+      ],
+    );
+    if (cropped == null) return;
 
-      if (result == null || result.files.isEmpty) return;
-
-      Uint8List? imageData = result.files.first.bytes;
-      if (imageData == null) {
+    // ⑥ バイト列を状態に追加
+    final bytes = await cropped.readAsBytes();
+    setState(() {
+      final list = _localImagesMap.putIfAbsent(ctrl, () => []);
+      if (list.length < 2) {
+        list.add(bytes);
+      } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('画像の読み込みに失敗しました')),
+          const SnackBar(content: Text('1つのフィールドには最大2枚まで画像を追加できます')),
         );
-        return;
       }
-
-      setState(() {
-        _localImagesMap.putIfAbsent(targetController, () => []).add(imageData);
-      });
-
-      // 必要に応じてフレーム完了後の再描画を実行
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        setState(() {});
-      });
-    } catch (e) {
-      print("❌ 画像選択エラー: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('画像の選択に失敗しました')),
-      );
-    }
+    });
   }
 
   /// 画像削除メソッド
@@ -621,7 +729,6 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
     final bool isKeyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
     final bool canSave = _isSaveEnabled && !_isSaving && !_isExamDateError;
 
-    // 🔹 どのテキストフィールドにフォーカスがあるかを判定
     final bool isAnyTextFieldFocused =
         _questionTextFocusNode.hasFocus ||
             _correctChoiceTextFocusNode.hasFocus ||
@@ -633,271 +740,307 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
             _explanationTextFocusNode.hasFocus ||
             _hintTextFocusNode.hasFocus;
 
-    // 🔹 showBottomSaveButton の条件を変更
     final bool showBottomSaveButton = isKeyboardOpen && isAnyTextFieldFocused;
 
-    return Scaffold(
-      backgroundColor: AppColors.gray50,
-      appBar: AppBar(
-        title: Text(_appBarTitle),
-        actions: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                icon: const Icon(
-                  Icons.upload_file_rounded,
-                  color: Colors.black54,
-                  size: 24,
-                ),
-                // ここを実装
-                onPressed: () => _showImportModal(context), // 無名関数を使ってcontextを渡す
-              ),
-              const SizedBox(width: 16),
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        backgroundColor: AppColors.gray50,
+        appBar: AppBar(
+          title: Text(_appBarTitle),
+          bottom: const TabBar(
+            tabs: [
+              Tab(text: '手入力'),
+              Tab(text: '画像から生成'),
             ],
+            labelColor: Colors.black87,
+            unselectedLabelColor: Colors.black45,
+            indicatorColor: AppColors.blue500,
           ),
-        ],
-      ),
-      bottomSheet: showBottomSaveButton
-          ? Container(
-        color: AppColors.gray50,
-        padding: const EdgeInsets.only(bottom: 0.0, right: 16.0, left: 16.0),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            // 画像挿入ボタン
-            IconButton(
-              icon: const Icon(
-                Icons.photo_size_select_actual_outlined,
-                color: AppColors.blue500,
-                size: 32,
-              ),
-              onPressed: _insertImage,
-            ),
-            const SizedBox(width: 16),
-            // 保存ボタン
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: canSave ? AppColors.blue500 : Colors.grey,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                minimumSize: const Size(0, 0),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              onPressed: canSave ? _addQuestion : null,
-              child: Text(
-                '保存',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: canSave ? Colors.white : Colors.black45,
+          actions: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(
+                    Icons.upload_file_rounded,
+                    color: Colors.black54,
+                    size: 24,
+                  ),
+                  onPressed: () => _showImportModal(context),
                 ),
-              ),
+                const SizedBox(width: 16),
+              ],
             ),
           ],
         ),
-      )
-          : null,
-      body: GestureDetector(
-        onTap: () {
-          FocusScope.of(context).unfocus();
-          setState(() {});
-        },
-        behavior: HitTestBehavior.translucent,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.only(left: 16.0, right: 16.0, top: 24.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        bottomSheet: showBottomSaveButton
+            ? Container(
+          color: AppColors.gray50,
+          padding: const EdgeInsets.only(bottom: 0.0, right: 16.0, left: 16.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    ChipWidget(
-                      label: '正誤問題',
-                      icon: Icons.check_circle_outline,
-                      isSelected: _selectedQuestionType == 'true_false',
-                      onTap: () {
-                        setState(() {
-                          _selectedQuestionType = 'true_false';
-                        });
-                      },
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(
+                      Icons.photo_size_select_actual_outlined,
+                      color: AppColors.blue500,
+                      size: 32,
                     ),
-                    const SizedBox(width: 8),
-                    ChipWidget(
-                      label: 'カード',
-                      icon: Icons.filter_none_rounded,
-                      isSelected: _selectedQuestionType == 'flash_card',
-                      onTap: () {
-                        setState(() {
-                          _selectedQuestionType = 'flash_card';
-                        });
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    ChipWidget(
-                      label: '四択問題',
-                      icon: Icons.list_alt,
-                      isSelected: _selectedQuestionType == 'single_choice',
-                      onTap: () {
-                        setState(() {
-                          _selectedQuestionType = 'single_choice';
-                        });
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              ExpandableTextField(
-                controller: _questionTextController,
-                focusNode: _questionTextFocusNode,
-                labelText: '問題文',
-                textFieldHeight: 80,
-                focusedHintText: '例）日本の首都は東京である。',
-                imageUrls: [], // Firebase Storage から取得した URL をここに渡す（後で更新）
-                localImageBytes: _localImagesMap[_questionTextController] ?? [], // ローカル画像を渡す
-                onRemoveLocalImage: (image) {_removeImage(_questionTextController, image);},
-              ),
-              const SizedBox(height: 16),
-              if (_selectedQuestionType == 'true_false')
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    TrueFalseTile(
-                      label: '正しい',
-                      value: true,
-                      groupValue: _trueFalseAnswer,
-                      onTap: () {
-                        setState(() {
-                          _trueFalseAnswer = true;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 8),
-                    TrueFalseTile(
-                      label: '間違い',
-                      value: false,
-                      groupValue: _trueFalseAnswer,
-                      onTap: () {
-                        setState(() {
-                          _trueFalseAnswer = false;
-                        });
-                      },
-                    ),
-                  ],
-                ),
-              if (_selectedQuestionType == 'flash_card') ...[
-                GestureDetector(
-                  child: ExpandableTextField(
-                    controller: _correctChoiceTextController,
-                    focusNode: _correctChoiceTextFocusNode,
-                    labelText: '正答の選択肢',
-                    textFieldHeight: 80,
-                    focusedHintText: '例）東京である。',
-                    imageUrls: [],
-                    localImageBytes: _localImagesMap[_correctChoiceTextController] ?? [],
-                    onRemoveLocalImage: (image) {_removeImage(_correctChoiceTextController, image);},
+                    onPressed: _insertImage,
                   ),
-                ),
-              ],
-              if (_selectedQuestionType == 'single_choice') ...[
-                ExpandableTextField(
-                  controller: _correctChoiceTextController,
-                  focusNode: _correctChoiceTextFocusNode,
-                  labelText: '正答の選択肢',
-                  textFieldHeight: 18,
-                  focusedHintText: '例）東京である。',
-                  imageUrls: [],
-                  localImageBytes: _localImagesMap[_correctChoiceTextController] ?? [],
-                  onRemoveLocalImage: (image) {_removeImage(_correctChoiceTextController, image);},
-                ),
-                const SizedBox(height: 16),
-                ExpandableTextField(
-                  controller: _incorrectChoice1TextController,
-                  focusNode: _incorrectChoice1TextFocusNode,
-                  labelText: '誤答1',
-                  textFieldHeight: 18,
-                  focusedHintText: '例）大阪である。',
-                ),
-                const SizedBox(height: 16),
-                ExpandableTextField(
-                  controller: _incorrectChoice2TextController,
-                  focusNode: _incorrectChoice2TextFocusNode,
-                  labelText: '誤答2',
-                  textFieldHeight: 16,
-                  focusedHintText: '例）京都である。',
-                ),
-                const SizedBox(height: 16),
-                ExpandableTextField(
-                  controller: _incorrectChoice3TextController,
-                  focusNode: _incorrectChoice3TextFocusNode,
-                  labelText: '誤答3',
-                  textFieldHeight: 18,
-                  focusedHintText: '例）名古屋である。',
-                ),
-              ],
-              const SizedBox(height: 16),
-              GestureDetector(
-                child: ExpandableTextField(
-                  controller: _explanationTextController,
-                  focusNode: _explanationTextFocusNode,
-                  labelText: '解説',
-                  textFieldHeight: 24,
-                  focusedHintText: '例）東京は、1869年（明治2年）に首都となりました',
-                  localImageBytes: _localImagesMap[_explanationTextController] ?? [],
-                  onRemoveLocalImage: (image) {_removeImage(_explanationTextController, image);},
-                ),
+                  const OcrIconButton(),
+                ],
               ),
-              const SizedBox(height: 16),
-              ExpandableTextField(
-                controller: _hintTextController,
-                focusNode: _hintTextFocusNode,
-                labelText: 'ヒント',
-                textFieldHeight: 24,
-                focusedHintText: '関東地方にある都道府県です。',
-                localImageBytes: _localImagesMap[_hintTextController] ?? [],
-                onRemoveLocalImage: (image) {_removeImage(_hintTextController, image);},
-              ),
-              const SizedBox(height: 16),
-              QuestionTagsInput(
-                tags: _questionTags,
-                aggregatedTags: _aggregatedTags,  // 追加
-                tagController: _tagController,
-                onTagAdded: _addTag,
-                onTagDeleted: _removeTag,
-              ),
-              const SizedBox(height: 16),
-              ExamDateField(
-                examYearController: _examYearController,
-                examMonthController: _examMonthController,
-                examYearFocusNode: _examYearFocusNode,
-                examMonthFocusNode: _examMonthFocusNode,
-                isExamDateError: _isExamDateError,
-                onExamDateChanged: _updateExamDateFromInput, // 日付更新メソッドを指定
-              ),
-              const SizedBox(height: 32),
-              Container(
-                width: double.infinity,
-                color: AppColors.gray50,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: canSave ? AppColors.blue500 : Colors.grey,
-                    padding: const EdgeInsets.symmetric(vertical: 9),
-                    minimumSize: const Size(0, 0),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  onPressed: canSave ? _addQuestion : null,
-                  child: Text(
-                    '保存',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: canSave ? Colors.white : Colors.black45,
-                    ),
+              const SizedBox(width: 16),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: canSave ? AppColors.blue500 : Colors.grey,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                  minimumSize: const Size(0, 0),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                onPressed: canSave ? _addQuestion : null,
+                child: Text(
+                  '保存',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: canSave ? Colors.white : Colors.black45,
                   ),
                 ),
               ),
-              const SizedBox(height: 300),
             ],
           ),
+        )
+            : null,
+        body: TabBarView(
+          children: [
+            // 手入力タブ
+            GestureDetector(
+              onTap: () {
+                FocusScope.of(context).unfocus();
+                setState(() {});
+              },
+              behavior: HitTestBehavior.translucent,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.only(left: 16.0, right: 16.0, top: 24.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          ChipWidget(
+                            label: '正誤問題',
+                            icon: Icons.check_circle_outline,
+                            isSelected: _selectedQuestionType == 'true_false',
+                            onTap: () {
+                              setState(() {
+                                _selectedQuestionType = 'true_false';
+                              });
+                            },
+                          ),
+                          const SizedBox(width: 8),
+                          ChipWidget(
+                            label: 'カード',
+                            icon: Icons.filter_none_rounded,
+                            isSelected: _selectedQuestionType == 'flash_card',
+                            onTap: () {
+                              setState(() {
+                                _selectedQuestionType = 'flash_card';
+                              });
+                            },
+                          ),
+                          const SizedBox(width: 8),
+                          ChipWidget(
+                            label: '四択問題',
+                            icon: Icons.list_alt,
+                            isSelected: _selectedQuestionType == 'single_choice',
+                            onTap: () {
+                              setState(() {
+                                _selectedQuestionType = 'single_choice';
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    ExpandableTextField(
+                      controller: _questionTextController,
+                      focusNode: _questionTextFocusNode,
+                      labelText: '問題文',
+                      textFieldHeight: 80,
+                      focusedHintText: '例）日本の首都は東京である。',
+                      imageUrls: [],
+                      localImageBytes: _localImagesMap[_questionTextController] ?? [],
+                      onRemoveLocalImage: (image) {
+                        _removeImage(_questionTextController, image);
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    if (_selectedQuestionType == 'true_false')
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          TrueFalseTile(
+                            label: '正しい',
+                            value: true,
+                            groupValue: _trueFalseAnswer,
+                            onTap: () {
+                              setState(() {
+                                _trueFalseAnswer = true;
+                              });
+                            },
+                          ),
+                          const SizedBox(height: 8),
+                          TrueFalseTile(
+                            label: '間違い',
+                            value: false,
+                            groupValue: _trueFalseAnswer,
+                            onTap: () {
+                              setState(() {
+                                _trueFalseAnswer = false;
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                    if (_selectedQuestionType == 'flash_card') ...[
+                      GestureDetector(
+                        child: ExpandableTextField(
+                          controller: _correctChoiceTextController,
+                          focusNode: _correctChoiceTextFocusNode,
+                          labelText: '正答の選択肢',
+                          textFieldHeight: 80,
+                          focusedHintText: '例）東京である。',
+                          imageUrls: [],
+                          localImageBytes: _localImagesMap[_correctChoiceTextController] ?? [],
+                          onRemoveLocalImage: (image) {
+                            _removeImage(_correctChoiceTextController, image);
+                          },
+                        ),
+                      ),
+                    ],
+                    if (_selectedQuestionType == 'single_choice') ...[
+                      ExpandableTextField(
+                        controller: _correctChoiceTextController,
+                        focusNode: _correctChoiceTextFocusNode,
+                        labelText: '正答の選択肢',
+                        textFieldHeight: 18,
+                        focusedHintText: '例）東京である。',
+                        imageUrls: [],
+                        localImageBytes: _localImagesMap[_correctChoiceTextController] ?? [],
+                        onRemoveLocalImage: (image) {
+                          _removeImage(_correctChoiceTextController, image);
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      ExpandableTextField(
+                        controller: _incorrectChoice1TextController,
+                        focusNode: _incorrectChoice1TextFocusNode,
+                        labelText: '誤答1',
+                        textFieldHeight: 18,
+                        focusedHintText: '例）大阪である。',
+                      ),
+                      const SizedBox(height: 16),
+                      ExpandableTextField(
+                        controller: _incorrectChoice2TextController,
+                        focusNode: _incorrectChoice2TextFocusNode,
+                        labelText: '誤答2',
+                        textFieldHeight: 16,
+                        focusedHintText: '例）京都である。',
+                      ),
+                      const SizedBox(height: 16),
+                      ExpandableTextField(
+                        controller: _incorrectChoice3TextController,
+                        focusNode: _incorrectChoice3TextFocusNode,
+                        labelText: '誤答3',
+                        textFieldHeight: 18,
+                        focusedHintText: '例）名古屋である。',
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    GestureDetector(
+                      child: ExpandableTextField(
+                        controller: _explanationTextController,
+                        focusNode: _explanationTextFocusNode,
+                        labelText: '解説',
+                        textFieldHeight: 24,
+                        focusedHintText: '例）東京は、1869年（明治2年）に首都となりました',
+                        localImageBytes: _localImagesMap[_explanationTextController] ?? [],
+                        onRemoveLocalImage: (image) {
+                          _removeImage(_explanationTextController, image);
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    ExpandableTextField(
+                      controller: _hintTextController,
+                      focusNode: _hintTextFocusNode,
+                      labelText: 'ヒント',
+                      textFieldHeight: 24,
+                      focusedHintText: '関東地方にある都道府県です。',
+                      localImageBytes: _localImagesMap[_hintTextController] ?? [],
+                      onRemoveLocalImage: (image) {
+                        _removeImage(_hintTextController, image);
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    QuestionTagsInput(
+                      tags: _questionTags,
+                      aggregatedTags: _aggregatedTags,
+                      tagController: _tagController,
+                      onTagAdded: _addTag,
+                      onTagDeleted: _removeTag,
+                    ),
+                    const SizedBox(height: 16),
+                    ExamDateField(
+                      examYearController: _examYearController,
+                      examMonthController: _examMonthController,
+                      examYearFocusNode: _examYearFocusNode,
+                      examMonthFocusNode: _examMonthFocusNode,
+                      isExamDateError: _isExamDateError,
+                      onExamDateChanged: _updateExamDateFromInput,
+                    ),
+                    const SizedBox(height: 32),
+                    Container(
+                      width: double.infinity,
+                      color: AppColors.gray50,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: canSave ? AppColors.blue500 : Colors.grey,
+                          padding: const EdgeInsets.symmetric(vertical: 9),
+                          minimumSize: const Size(0, 0),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        onPressed: canSave ? _addQuestion : null,
+                        child: Text(
+                          '保存',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: canSave ? Colors.white : Colors.black45,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 300),
+                  ],
+                ),
+              ),
+            ),
+
+            // 画像生成タブ
+            ImageGenerationTab(
+              onGeneratePressed: (Uint8List bytes) {
+                // OCRやAI連携の処理をここに記述
+                print("画像から問題生成：${bytes.lengthInBytes}バイト");
+              },
+            ),
+          ],
         ),
       ),
     );

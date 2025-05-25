@@ -9,15 +9,26 @@ import 'package:repaso/data/license_items.dart';
 import 'package:repaso/utils/app_colors.dart';
 
 class LicenseSelectPage extends StatefulWidget {
-  const LicenseSelectPage({Key? key}) : super(key: key);
+  /// すでに選択済みの資格名を渡す
+  final List<String> initialSelected;
+  const LicenseSelectPage({
+    Key? key,
+    this.initialSelected = const [],
+  }) : super(key: key);
 
   @override
   State<LicenseSelectPage> createState() => _LicenseSelectPageState();
 }
 
 class _LicenseSelectPageState extends State<LicenseSelectPage> {
-  final _selected = <String>{};
+  late final Set<String> _selected;
   String _query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = widget.initialSelected.toSet();
+  }
 
   List<LicenseItem> get _filteredList {
     final q = _query.toLowerCase();
@@ -45,14 +56,14 @@ class _LicenseSelectPageState extends State<LicenseSelectPage> {
         primaryContainer: AppColors.blue100,
         onPrimaryContainer: AppColors.blue900,
         surface: Colors.white,
-        surfaceVariant: AppColors.gray100,
+        surfaceContainerHighest: Colors.white,
         outlineVariant: AppColors.blue100,
       ),
       checkboxTheme: CheckboxThemeData(
         fillColor: MaterialStateProperty.resolveWith<Color>((states) {
           return states.contains(MaterialState.selected)
               ? AppColors.blue600
-              : AppColors.gray300;
+              : Colors.white;
         }),
       ),
       textSelectionTheme: const TextSelectionThemeData(
@@ -84,8 +95,8 @@ class _LicenseSelectPageState extends State<LicenseSelectPage> {
                     borderRadius: BorderRadius.circular(8)),
                 child: const ListTile(
                   dense: true,
-                  leading: Icon(Icons.info_outline,
-                      color: AppColors.blue600),
+                  leading:
+                  Icon(Icons.info_outline, color: AppColors.blue600),
                   title: Text('公開中の場合、過去問で学習できます。'),
                   subtitle: Text('その他の資格についても、順次、過去問を整備予定です！ぜひご登録ください。'),
                 ),
@@ -114,7 +125,8 @@ class _LicenseSelectPageState extends State<LicenseSelectPage> {
                 child: _filteredList.isEmpty
                     ? const Center(child: Text('該当する資格がありません'))
                     : ListView.separated(
-                  padding: const EdgeInsets.only(top: 4, bottom: 80),
+                  padding:
+                  const EdgeInsets.only(top: 4, bottom: 80),
                   itemCount: _filteredList.length,
                   separatorBuilder: (_, __) => const Divider(
                       height: 0, indent: 16, endIndent: 16),
@@ -156,7 +168,8 @@ class _LicenseSelectPageState extends State<LicenseSelectPage> {
                                 children: [
                                   Text(lic.name,
                                       style: const TextStyle(
-                                          fontWeight: FontWeight.w600)),
+                                          fontWeight:
+                                          FontWeight.w600)),
                                   const SizedBox(height: 2),
                                   Text(
                                     lic.furigana,

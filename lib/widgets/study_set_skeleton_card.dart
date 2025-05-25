@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shimmer/shimmer.dart';
 import 'list_page_widgets/skeleton_card.dart';
 
 /// フォルダヘッダー用スケルトン
@@ -7,43 +8,49 @@ class FolderHeaderSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Row(
-          children: [
-            // フォルダアイコン枠スケルトン
-            Container(
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(6),
-              ),
+    // 共通シャマーラッパー
+    Widget shimmer(Widget child) => Shimmer.fromColors(
+      baseColor: Colors.grey[300]!,
+      highlightColor: Colors.grey[100]!,
+      period: const Duration(milliseconds: 1200),
+      child: child,
+    );
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          // フォルダアイコン枠スケルトン
+          shimmer(Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(6),
             ),
-            const SizedBox(width: 8),
-            // フォルダ名テキストスケルトン
-            Expanded(
-              child: Container(
-                height: 14,
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            // 選択チェックボックス枠スケルトン
-            Container(
-              width: 24,
-              height: 24,
+          )),
+          const SizedBox(width: 8),
+          // フォルダ名テキストスケルトン
+          Expanded(
+            child: shimmer(Container(
+              height: 14,
               decoration: BoxDecoration(
                 color: Colors.grey[300],
                 borderRadius: BorderRadius.circular(4),
               ),
+            )),
+          ),
+          const SizedBox(width: 8),
+          // 選択チェックボックス枠スケルトン
+          shimmer(Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(4),
             ),
-          ],
-        ),
+          )),
+        ],
       ),
     );
   }
@@ -69,19 +76,19 @@ class StudySetSkeletonCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
+      children: const [
         // フォルダヘッダー
-        const FolderHeaderSkeleton(),
-        const FolderHeaderSkeleton(),
-        const QuestionSetSkeleton(),
-        const QuestionSetSkeleton(),
-        const QuestionSetSkeleton(),
-        const FolderHeaderSkeleton(),
-        const QuestionSetSkeleton(),
-        const QuestionSetSkeleton(),
-        const FolderHeaderSkeleton(),
-        const QuestionSetSkeleton(),
-        ],
+        FolderHeaderSkeleton(),
+        FolderHeaderSkeleton(),
+        QuestionSetSkeleton(),
+        QuestionSetSkeleton(),
+        QuestionSetSkeleton(),
+        FolderHeaderSkeleton(),
+        QuestionSetSkeleton(),
+        QuestionSetSkeleton(),
+        FolderHeaderSkeleton(),
+        QuestionSetSkeleton(),
+      ],
     );
   }
 }

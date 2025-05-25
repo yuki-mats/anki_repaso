@@ -480,6 +480,10 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                         onMorePressed: () =>
                             showQuestionSetOptionsModal(
                                 context, widget.folder, qs),
+                        selectionMode  : false,
+                        cardId         : qs.id,
+                        selectedId     : null,
+                        onSelected     : null,
                       );
                     },
                   );

@@ -1,7 +1,6 @@
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class ChatGPTScreen extends StatefulWidget {
@@ -151,15 +150,16 @@ ${widget.explanationText}
                       style: const TextStyle(fontSize: 12, color: Colors.grey)),
                 ]),
                 const SizedBox(height: 8),
-                ..._buildTextWithMath(m.text),
+                // **数式部分を全て Text に置き換え**
+                ..._buildTextWithoutMath(m.text),
                 if (!m.isUser) ...[
                   const SizedBox(height: 8),
                   IconButton(
                     icon: const Icon(Icons.copy, size: 16, color: Colors.black54),
                     onPressed: () {
                       Clipboard.setData(ClipboardData(text: m.text));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('コピーしました')));
+                      ScaffoldMessenger.of(context)
+                          .showSnackBar(const SnackBar(content: Text('コピーしました')));
                     },
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
@@ -174,17 +174,13 @@ ${widget.explanationText}
     );
   }
 
-  List<Widget> _buildTextWithMath(String text) {
+  /// 修正：Math.tex を使わず、すべて Text で表示する
+  List<Widget> _buildTextWithoutMath(String text) {
     return text.split('\n').map((line) {
-      final t = line.trim();
-      if (t.startsWith(r'$') && t.endsWith(r'$')) {
-        return Math.tex(
-          t.substring(1, t.length - 1),
-          textStyle: const TextStyle(fontSize: 14, height: 1.4),
-        );
-      } else {
-        return Text(line, style: const TextStyle(fontSize: 14, height: 1.4));
-      }
+      return Text(
+        line,
+        style: const TextStyle(fontSize: 14, height: 1.4),
+      );
     }).toList();
   }
 
@@ -206,14 +202,12 @@ ${widget.explanationText}
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: const [
-                  Icon(Icons.info_outline,
-                      size: 40, color: Colors.orange),
+                  Icon(Icons.info_outline, size: 40, color: Colors.orange),
                   SizedBox(height: 12),
                   Text(
                     'この会話はフォーラムで公開されます。',
                     textAlign: TextAlign.center,
-                    style:
-                    TextStyle(fontSize: 16, color: Colors.orange),
+                    style: TextStyle(fontSize: 16, color: Colors.orange),
                   ),
                 ],
               ),
@@ -240,16 +234,14 @@ ${widget.explanationText}
             mainAxisSize: MainAxisSize.min,
             children: [
               const Padding(
-                padding:
-                EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 0),
                 child: Text(
                   'AI解説の回答は必ずしも正しいとは限りません。',
                   style: TextStyle(fontSize: 12, color: Colors.grey),
                 ),
               ),
               Container(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 color: Colors.white,
                 child: Row(children: [
                   Expanded(
@@ -260,22 +252,22 @@ ${widget.explanationText}
                       cursorColor: Colors.blue,
                       decoration: InputDecoration(
                         hintText: 'メッセージを入力',
-                        contentPadding: const EdgeInsets.symmetric(
-                            vertical: 10, horizontal: 12),
+                        contentPadding:
+                        const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
                         filled: true,
                         fillColor: Colors.white,
                         border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8.0),
-                            borderSide: BorderSide(
-                                color: Colors.blue.shade300, width: 2)),
+                            borderSide:
+                            BorderSide(color: Colors.blue.shade300, width: 2)),
                         enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8.0),
-                            borderSide: BorderSide(
-                                color: Colors.blue.shade300, width: 2)),
+                            borderSide:
+                            BorderSide(color: Colors.blue.shade300, width: 2)),
                         focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8.0),
-                            borderSide: BorderSide(
-                                color: Colors.blue.shade500, width: 2)),
+                            borderSide:
+                            BorderSide(color: Colors.blue.shade500, width: 2)),
                       ),
                     ),
                   ),
@@ -284,14 +276,11 @@ ${widget.explanationText}
                       ? const SizedBox(
                     width: 28,
                     height: 28,
-                    child:
-                    CircularProgressIndicator(strokeWidth: 2),
+                    child: CircularProgressIndicator(strokeWidth: 2),
                   )
                       : IconButton(
-                    icon: const Icon(
-                        Icons.arrow_circle_up_rounded,
-                        size: 36,
-                        color: Colors.blue),
+                    icon: const Icon(Icons.arrow_circle_up_rounded,
+                        size: 36, color: Colors.blue),
                     onPressed: _onSendPressed,
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),

@@ -1,12 +1,13 @@
+import 'dart:io';
 import 'package:app_tracking_transparency/app_tracking_transparency.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:repaso/screens/home_page.dart';
 import 'package:repaso/screens/lobby_page.dart';
-import 'package:repaso/screens/official_list_page.dart';
 import 'package:repaso/utils/update_checker.dart';
 import 'screens/forum_page.dart';
 import 'utils/app_colors.dart';
@@ -14,7 +15,6 @@ import 'screens/firebase_options.dart';
 import 'screens/my_page.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'ads/app_open_ad_manager.dart';
-import 'ads/banner_ad_widget.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_analytics/observer.dart';
 
@@ -85,12 +85,23 @@ Future<void> main() async {
   // 日付ローカライズ
   await initializeDateFormatting('ja_JP', null);
 
-  // AdMob 初期化（Webの場合はスキップする！）
+  // ── Web 以外で実行 ──
   if (!kIsWeb) {
+    // 1) AdMob 初期化
     await MobileAds.instance.updateRequestConfiguration(
       RequestConfiguration(testDeviceIds: ['01262462e4ee6bb499fd8becbef443f3']),
     );
     await MobileAds.instance.initialize();
+
+    // 2) RevenueCat SDK 初期化
+    Purchases.setLogLevel(LogLevel.debug);
+    const iosApiKey     = 'appl_aIuuLscAmVhWrSRAVFhUvpBnjpy';
+    const androidApiKey = 'goog_あなたの_Android_Public_SDK_Key';
+    final revenueCatKey = Platform.isIOS ? iosApiKey : androidApiKey;
+    await Purchases.configure(
+        PurchasesConfiguration(revenueCatKey)
+          ..appUserID = FirebaseAuth.instance.currentUser?.uid
+    );
   }
 
   runApp(const MyApp());
@@ -187,7 +198,6 @@ class _MainPageState extends State<MainPage> {
   int _currentIndex = 0;
   final List<Widget> _pages = [
     FolderListPage(title: 'ホーム'),
-    OfficialListPage(),
     ForumPage(),
     MyPage(),
   ];
@@ -210,7 +220,6 @@ class _MainPageState extends State<MainPage> {
         bottomNavigationBar: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const BannerAdWidget(),
             Container(
               decoration: BoxDecoration(
                 boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), spreadRadius: 1, blurRadius: 2.5, offset: const Offset(0, 3))],
@@ -222,7 +231,6 @@ class _MainPageState extends State<MainPage> {
                 onTap: (index) => setState(() => _currentIndex = index),
                 items: const [
                   BottomNavigationBarItem(icon: Icon(Icons.home), label: 'ホーム'),
-                  BottomNavigationBarItem(icon: Icon(Icons.search_rounded), label: '公式問題'),
                   BottomNavigationBarItem(icon: Icon(Icons.comment), label: 'フォーラム'),
                   BottomNavigationBarItem(icon: Icon(Icons.account_circle), label: 'マイページ'),
                 ],

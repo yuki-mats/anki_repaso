@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:repaso/screens/paywall_page.dart';
 import 'package:repaso/screens/privacy_policy_page.dart';
 import 'package:repaso/screens/profile_edit_page.dart';
 import 'package:repaso/screens/terms_of_service_page.dart';
@@ -192,13 +193,15 @@ class _MyPageState extends State<MyPage> {
       appBar: AppBar(title: const Text('マイページ'), centerTitle: true),
       body: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            _buildProfileSection(),
-            const SizedBox(height: 20),
-            _buildSettingsList(context),
-            const Spacer(),
-          ],
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildProfileSection(),
+              const SizedBox(height: 20),
+              _buildSettingsList(context),
+            ],
+          ),
         ),
       ),
     );
@@ -255,6 +258,17 @@ class _MyPageState extends State<MyPage> {
           title: const Text('利用規約', style: TextStyle(fontSize: 14)),
           onTap: () =>
               Navigator.push(context, MaterialPageRoute(builder: (_) => const TermsOfServicePage())),
+        ),
+        const Divider(),
+        ListTile(
+          leading: const Icon(Icons.shopping_cart_outlined, size: 22),
+          title : const Text('有料プラン (Pro) ', style: TextStyle(fontSize: 14)),
+          onTap : () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const PaywallPage()),
+            );
+          },
         ),
         const Divider(),
         ListTile(
