@@ -1,5 +1,4 @@
 import 'dart:convert';
-
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -77,6 +76,13 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
   // **現在フォーカスされているコントローラーを追跡**
   TextEditingController? _currentFocusedController;
 
+  /// 「最後にフォーカスされていた TextField のコントローラー」を保持する変数
+  TextEditingController? _lastFocusedController; // 〈変更〉常に最後のターゲットを記憶
+
+  /// フォーカスノードとコントローラーの逆引きマップ
+  late final Map<TextEditingController, FocusNode> _controllerToFocusNodeMap; // 〈変更〉initState でセット
+
+
   // フォーカスノードとコントローラーのマップ
   late final Map<FocusNode, TextEditingController> _focusToControllerMap;
 
@@ -93,36 +99,31 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
 
     _questionTextController.addListener(_onQuestionTextChanged);
 
+    // フォーカスノードとコントローラーのマップ
     _focusToControllerMap = {
       _questionTextFocusNode: _questionTextController,
       _correctChoiceTextFocusNode: _correctChoiceTextController,
       _explanationTextFocusNode: _explanationTextController,
       _hintTextFocusNode: _hintTextController,
+      // 必要に応じて他のノードも追加
     };
 
-    // 🔹 フォーカスリスナーを適切に設定
+    // 逆引きマップを生成（TextEditingController → FocusNode）
+    _controllerToFocusNodeMap =
+        _focusToControllerMap.map((focusNode, controller) => MapEntry(controller, focusNode));
+
+    // 🔹 フォーカスリスナーを設定（変更箇所）
     for (var entry in _focusToControllerMap.entries) {
       entry.key.addListener(() {
         if (entry.key.hasFocus) {
-          if (_currentFocusedController != entry.value) {
-            setState(() {
-              _currentFocusedController = entry.value;
-              print("🔹 フォーカスが変更されました: ${entry.value.text} (Controller HashCode: ${entry.value.hashCode})");
-            });
-          }
-        } else {
-          if (_currentFocusedController == entry.value) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              setState(() {
-                print("🔹 フォーカスが外れました: ${entry.value.text} (Controller HashCode: ${entry.value.hashCode})");
-                _currentFocusedController = null;
-              });
-            });
-          }
+          // フォーカス取得時のみ「最後にフォーカスされていたコントローラー」を更新
+          _lastFocusedController = entry.value; // 〈変更〉ここで保持
         }
+        // フォーカス喪失時は何もしない（_lastFocusedController はクリアしない）
       });
     }
   }
+
 
   @override
   void dispose() {
@@ -191,13 +192,21 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
   String _guessMime(String path) =>
       path.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
 
-  /// 画像を選択 → Gemini Vision OCR → フォーカス中の TextField に貼り付け
   Future<void> _scanTextFromImage() async {
     // ── ① 認証チェック ────────────────────────────────────────
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('OCR を利用するにはログインが必要です')),
+      );
+      return;
+    }
+
+    // ── ★★ ここでターゲットを「最後にフォーカスされていたコントローラー」に固定 ★★（変更）
+    final TextEditingController? target = _lastFocusedController; // 〈変更〉ここで保持済みのコントローラーを使う
+    if (target == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('まず貼り付け先のテキストフィールドをタップしてください')),
       );
       return;
     }
@@ -236,7 +245,7 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
 
     // ── ③ 読み込み＋オリジナルサイズチェック ─────────────────────────
     final Uint8List rawBytes = await cropped.readAsBytes();
-    final String mime = _guessMime(cropped.path); // "image/png" or "image/jpeg"
+    final String mime = _guessMime(cropped.path);
 
     // ④ リサイズ＆圧縮（Gemini 向け）
     final Uint8List compressedBytes = _compressForGemini(rawBytes, mimeType: mime);
@@ -261,25 +270,21 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
         return;
       }
 
-      // ⑥ フォーカス中の TextField に貼り付け
-      final TextEditingController? ctrl =
-          _currentFocusedController ?? _getFocusedController();
-      if (ctrl == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('テキストフィールドを選択してください')),
-        );
-        return;
+      // ── ★★ ⑥ 最後にフォーカスされていた TextField（target）に貼り付け ─────────────────
+      final int pos = target.selection.baseOffset;
+      if (pos >= 0) {
+        target.text = target.text.replaceRange(pos, pos, extracted);
+        target.selection = TextSelection.collapsed(offset: pos + extracted.length);
+      } else {
+        target.text += extracted;
       }
 
-      final int pos = ctrl.selection.baseOffset;
-      if (pos >= 0) {
-        ctrl.text = ctrl.text.replaceRange(pos, pos, extracted);
-        ctrl.selection =
-            TextSelection.collapsed(offset: pos + extracted.length);
-      } else {
-        // 未選択なら末尾に追加
-        ctrl.text += extracted;
+      // ── ★★ ⑦ 挿入後、フォーカスを視覚的に戻す ─────────────────────────────────
+      final focusNode = _controllerToFocusNodeMap[target]; // 〈変更〉逆引きマップ
+      if (focusNode != null) {
+        FocusScope.of(context).requestFocus(focusNode);
       }
+
     } on FirebaseFunctionsException catch (e) {
       if (mounted) Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -292,6 +297,7 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
       );
     }
   }
+
 
 
 

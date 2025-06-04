@@ -10,6 +10,7 @@ const { callGemini } = require("../lib"); // 先ほど修正した lib.js の ca
  * 「改行位置や記号を含めて正確に全文テキスト化せよ」というプロンプトと共に渡して OCR を行う。
  */
 module.exports = onCall({ region: "us-central1" }, async (req) => {
+  console.log("★★★ extractTextFromImage が呼ばれました ★★★");
   try {
     // 1) 認証チェック（必要なければ削除可）
     if (!req.auth) {
@@ -37,7 +38,7 @@ module.exports = onCall({ region: "us-central1" }, async (req) => {
           {
             inline_data: {
               mime_type: mimeType,
-              content: base64Image
+              data:base64Image
             }
           }
         ]
