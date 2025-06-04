@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:app_tracking_transparency/app_tracking_transparency.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -75,7 +76,6 @@ Future<void> main() async {
 
   // ─── Firebase 初期化（重複ガード付き） ───
   try {
-    // すでに初期化済みなら duplicate-app を投げるので、その場合は握りつぶす
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
@@ -86,6 +86,17 @@ Future<void> main() async {
     } else {
       rethrow;
     }
+  }
+
+  // ─── Emulator を使うかどうかを判定 ───
+  if (!kReleaseMode) {
+    // Debug ビルドのときだけローカル Emulator に向ける
+    FirebaseFunctions.instanceFor(region: "us-central1")
+        .useFunctionsEmulator("127.0.0.1", 5001);
+    debugPrint("▶︎ Functions Emulator を localhost:5001 に向けます (Debug mode)");
+  } else {
+    // Release ビルド (App Store 向け) のときは、Emulator 設定をしない。PUBNUB へそのまま本番を呼びます。
+    debugPrint("▶︎ Release build のため、本番 Firebase Functions を使います");
   }
 
   // ─── Analytics テストイベント ───
