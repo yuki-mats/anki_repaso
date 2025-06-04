@@ -788,7 +788,7 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
           bottom: const TabBar(
             tabs: [
               Tab(text: '手入力'),
-              Tab(text: '画像から生成'),
+              Tab(text: '画像から生成（開発中）'),
             ],
             labelColor: Colors.black87,
             unselectedLabelColor: Colors.black45,
