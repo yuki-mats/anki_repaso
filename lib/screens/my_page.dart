@@ -259,17 +259,17 @@ class _MyPageState extends State<MyPage> {
           onTap: () =>
               Navigator.push(context, MaterialPageRoute(builder: (_) => const TermsOfServicePage())),
         ),
-        const Divider(),
-        ListTile(
-          leading: const Icon(Icons.shopping_cart_outlined, size: 22),
-          title : const Text('有料プラン (Pro) ', style: TextStyle(fontSize: 14)),
-          onTap : () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const PaywallPage()),
-            );
-          },
-        ),
+        //const Divider(),
+        // ListTile(
+        //   leading: const Icon(Icons.shopping_cart_outlined, size: 22),
+        //   title : const Text('有料プラン (Pro) ', style: TextStyle(fontSize: 14)),
+        //   onTap : () {
+        //     Navigator.push(
+        //       context,
+        //       MaterialPageRoute(builder: (_) => const PaywallPage()),
+        //     );
+        //   },
+        // ),
         const Divider(),
         ListTile(
           leading: const Icon(Icons.logout, size: 22),

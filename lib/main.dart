@@ -9,9 +9,9 @@ import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:repaso/screens/home_page.dart';
 import 'package:repaso/screens/lobby_page.dart';
 import 'package:repaso/utils/update_checker.dart';
+import 'firebase_options.dart';
 import 'screens/forum_page.dart';
 import 'utils/app_colors.dart';
-import 'screens/firebase_options.dart';
 import 'screens/my_page.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'ads/app_open_ad_manager.dart';
@@ -73,34 +73,49 @@ Future<void> requestTrackingPermission() async {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Firebase 初期化
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  // ─── Firebase 初期化（重複ガード付き） ───
+  try {
+    // すでに初期化済みなら duplicate-app を投げるので、その場合は握りつぶす
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (e) {
+    final msg = e.toString();
+    if (msg.contains('already exists') || msg.contains('duplicate-app')) {
+      debugPrint('⚠️ Firebase already initialized, skipping…');
+    } else {
+      rethrow;
+    }
+  }
 
-  // Analytics テストイベント送信
+  // ─── Analytics テストイベント ───
   final analytics = FirebaseAnalytics.instance;
   await analytics.logEvent(name: 'app_launch');
 
-  // 日付ローカライズ
+  // ─── 日付ローカライズ ───
   await initializeDateFormatting('ja_JP', null);
 
-  // ── Web 以外で実行 ──
+  // ─── AdMob 初期化（Webではスキップ） ───
   if (!kIsWeb) {
-    // 1) AdMob 初期化
     await MobileAds.instance.updateRequestConfiguration(
-      RequestConfiguration(testDeviceIds: ['01262462e4ee6bb499fd8becbef443f3']),
+      RequestConfiguration(
+        testDeviceIds: ['01262462e4ee6bb499fd8becbef443f3'],
+      ),
     );
     await MobileAds.instance.initialize();
+  }
 
-    // 2) RevenueCat SDK 初期化
+  // ─── RevenueCat SDK 初期化（Webではスキップ＆Platform.isIOS の呼び出し安全化） ───
+  if (!kIsWeb) {
     Purchases.setLogLevel(LogLevel.debug);
+
     const iosApiKey     = 'appl_aIuuLscAmVhWrSRAVFhUvpBnjpy';
     const androidApiKey = 'goog_あなたの_Android_Public_SDK_Key';
     final revenueCatKey = Platform.isIOS ? iosApiKey : androidApiKey;
+
     await Purchases.configure(
-        PurchasesConfiguration(revenueCatKey)
-          ..appUserID = FirebaseAuth.instance.currentUser?.uid
+      PurchasesConfiguration(revenueCatKey)
+        ..appUserID = FirebaseAuth.instance.currentUser?.uid,
     );
   }
 

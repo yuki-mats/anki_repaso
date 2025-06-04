@@ -1,4 +1,5 @@
 /* eslint-disable */
+//..functions/handlers/callVertexAI.js
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { admin, db, callGemini } = require("../lib");   // ← 共通ライブラリ1本だけ
 

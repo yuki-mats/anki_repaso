@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:repaso/widgets/common_widgets/common_text_field.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
@@ -343,7 +344,20 @@ class SignUpPageState extends State<SignUpPage> {
                 CommonTextField(
                   controller: _emailController,
                   labelText: 'メールアドレス',
-                  onChanged: (_) => setState(() {}),
+                  onChanged: (value) {
+                    // 空白文字をすべて取り除く
+                    final sanitized = value.replaceAll(RegExp(r'\s'), '');
+                    if (sanitized != value) {
+                      // コントローラーのテキストを更新し、カーソルを末尾に移動
+                      _emailController.text = sanitized;
+                      _emailController.selection = TextSelection.fromPosition(
+                        TextPosition(offset: sanitized.length),
+                      );
+                    }
+                    setState(() {
+                      // ボタン有効/無効判定のための rebuild
+                    });
+                  },
                 ),
                 const SizedBox(height: 16),
                 CommonTextField(

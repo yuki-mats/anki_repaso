@@ -160,47 +160,71 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
     super.dispose();
   }
 
-// 画像圧縮＋MIME判定
-  Uint8List _compress(Uint8List raw, {required bool asPng}) {
-    var decoded = img.decodeImage(raw)!;
-    if (decoded.width > 2048 || decoded.height > 2048) {
-      decoded = decoded.width >= decoded.height
-          ? img.copyResize(decoded, width: 2048)
-          : img.copyResize(decoded, height: 2048);
+  /// ── 画像を「長辺 1024px・JPEG 品質 50」にリサイズ＆圧縮する例
+  Uint8List _compressForGemini(Uint8List rawBytes, { required String mimeType }) {
+    // image パッケージでデコード
+    img.Image? decoded = img.decodeImage(rawBytes);
+    if (decoded == null) {
+      // 万一デコードに失敗したら生データをそのまま返す
+      return rawBytes;
     }
-    return asPng
-        ? Uint8List.fromList(img.encodePng(decoded, level: 6))
-        : Uint8List.fromList(img.encodeJpg(decoded, quality: 70));
+
+    // 1) 長辺のサイズを 1024 に抑える
+    final int maxSide = 1024;
+    if (decoded.width > maxSide || decoded.height > maxSide) {
+      if (decoded.width >= decoded.height) {
+        decoded = img.copyResize(decoded, width: maxSide);
+      } else {
+        decoded = img.copyResize(decoded, height: maxSide);
+      }
+    }
+
+    // 2) MIME タイプに応じてエンコード品質を調整
+    if (mimeType == "image/png") {
+      // PNG 圧縮レベルを 6（デフォルト）から、やや強めにしておく例
+      return Uint8List.fromList(img.encodePng(decoded, level: 6));
+    } else {
+      // JPEG 品質を 50% にしておく
+      return Uint8List.fromList(img.encodeJpg(decoded, quality: 50));
+    }
   }
   String _guessMime(String path) =>
       path.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
 
+  /// 画像を選択 → Gemini Vision OCR → フォーカス中の TextField に貼り付け
   Future<void> _scanTextFromImage() async {
-    print("[DEBUG] _scanTextFromImage start");
+    // ── ① 認証チェック ────────────────────────────────────────
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('OCR を利用するにはログインが必要です')),
+      );
+      return;
+    }
 
-    // ① ソース選択
+    // ── ② 画像選択 → トリミング ─────────────────────────────────
     final ImageSource? src = await showModalBottomSheet<ImageSource>(
       context: context,
       builder: (_) => SafeArea(
         child: Wrap(children: [
           ListTile(
             leading: const Icon(Icons.camera_alt),
-            title : const Text('カメラ'),
-            onTap : () => Navigator.pop(context, ImageSource.camera),
+            title: const Text('カメラ'),
+            onTap: () => Navigator.pop(context, ImageSource.camera),
           ),
           ListTile(
             leading: const Icon(Icons.photo),
-            title : const Text('ギャラリー'),
-            onTap : () => Navigator.pop(context, ImageSource.gallery),
+            title: const Text('ギャラリー'),
+            onTap: () => Navigator.pop(context, ImageSource.gallery),
           ),
         ]),
       ),
     );
     if (src == null) return;
 
-    // ② 取得＋トリミング
     final XFile? picked = await _picker.pickImage(source: src);
     if (picked == null) return;
+
     final CroppedFile? cropped = await ImageCropper().cropImage(
       sourcePath: picked.path,
       uiSettings: [
@@ -210,25 +234,26 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
     );
     if (cropped == null) return;
 
-    // ③ 圧縮＋MIME
-    final raw = await cropped.readAsBytes();
-    final mime = _guessMime(cropped.path);
-    final data = _compress(raw, asPng: mime == "image/png");
-    print("[DEBUG] raw=${raw.length} compressed=${data.length} mime=$mime");
+    // ── ③ 読み込み＋オリジナルサイズチェック ─────────────────────────
+    final Uint8List rawBytes = await cropped.readAsBytes();
+    final String mime = _guessMime(cropped.path); // "image/png" or "image/jpeg"
 
-    // ④ 呼び出し
+    // ④ リサイズ＆圧縮（Gemini 向け）
+    final Uint8List compressedBytes = _compressForGemini(rawBytes, mimeType: mime);
+    debugPrint("[DEBUG] raw size=${rawBytes.lengthInBytes} bytes, compressed size=${compressedBytes.lengthInBytes} bytes, mime=$mime");
+
+    // ⑤ Gemini Vision に送信
     _showLoadingDialog();
     try {
-      final res = await FirebaseFunctions
-          .instanceFor(region: "us-central1")
-          .httpsCallable('callGeminiOCR')({
-        'base64Image': base64Encode(data),
+      final res = await FirebaseFunctions.instanceFor(region: "us-central1")
+          .httpsCallable('extractTextFromImage')({
+        'base64Image': base64Encode(compressedBytes),
         'mimeType'   : mime,
       });
-      Navigator.pop(context);
+      if (!mounted) return;
+      Navigator.pop(context); // ダイアログ閉じ
 
-      final extracted = (res.data['text'] ?? '').toString();
-      print("[DEBUG] extracted.len=${extracted.length}");
+      final extracted = (res.data['text'] ?? '').toString().trim();
       if (extracted.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('文字が検出できませんでした')),
@@ -236,34 +261,39 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
         return;
       }
 
-      final ctrl = _currentFocusedController ?? _getFocusedController();
+      // ⑥ フォーカス中の TextField に貼り付け
+      final TextEditingController? ctrl =
+          _currentFocusedController ?? _getFocusedController();
       if (ctrl == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('テキストフィールドを選択してください')),
         );
         return;
       }
-      final pos = ctrl.selection.baseOffset;
+
+      final int pos = ctrl.selection.baseOffset;
       if (pos >= 0) {
         ctrl.text = ctrl.text.replaceRange(pos, pos, extracted);
-        ctrl.selection = TextSelection.collapsed(offset: pos + extracted.length);
+        ctrl.selection =
+            TextSelection.collapsed(offset: pos + extracted.length);
       } else {
+        // 未選択なら末尾に追加
         ctrl.text += extracted;
       }
     } on FirebaseFunctionsException catch (e) {
-      Navigator.pop(context);
-      print("[DEBUG] FFE code=${e.code}, msg=${e.message}");
+      if (mounted) Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('OCR 失敗: ${e.code}')),
       );
     } catch (e) {
-      Navigator.pop(context);
-      print("[DEBUG] Unexpected error: $e");
+      if (mounted) Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('OCR に失敗しました')),
       );
     }
   }
+
+
 
 
   void _onQuestionTextChanged() {
@@ -471,7 +501,7 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
     });
   }
 
-  /// 画像を 256 px までリサイズ＋JPEG 品質60で圧縮し、Firebase Storage へアップロード
+  /// 画像をリサイズせず、JPEG 品質を95にして Firebase Storage へアップロード
   Future<List<String>> _uploadImagesToStorage(
       String questionId, String field, List<Uint8List> images) async {
     if (images.isEmpty) return [];
@@ -479,8 +509,8 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
     final List<String> uploadedUrls = [];
     final storageRef   = FirebaseStorage.instance.ref().child('question_images');
 
-    const int maxSize = 256; // 長辺 256px に統一（ProfileEditPage と同じ方針）
-    const int jpegQuality = 60;
+    // リサイズ処理を行わないため、maxSize は不要
+    const int jpegQuality = 40;   // 文字を読み取りやすくするため高品質に設定
 
     for (int i = 0; i < images.length; i++) {
       try {
@@ -491,14 +521,9 @@ class _QuestionAddPageState extends State<QuestionAddPage> {
           continue;
         }
 
-        /* ② リサイズ（長辺256px未満ならスキップ） */
-        if (decoded.width > maxSize || decoded.height > maxSize) {
-          decoded = decoded.width >= decoded.height
-              ? img.copyResize(decoded, width: maxSize)
-              : img.copyResize(decoded, height: maxSize);
-        }
+        /* ② リサイズを行わず、元のサイズをそのまま保持 */
 
-        /* ③ JPEG へ再エンコード（品質60） */
+        /* ③ JPEG へ再エンコード（品質95） */
         final Uint8List compressed =
         Uint8List.fromList(img.encodeJpg(decoded, quality: jpegQuality));
 
