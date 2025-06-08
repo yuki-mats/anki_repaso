@@ -10,6 +10,8 @@ import 'package:repaso/services/question_count.dart';
 import 'package:image/image.dart' as img;
 import 'package:repaso/widgets/add_page_widgets/question_widgets.dart';
 
+import '../widgets/add_page_widgets/question_type_selector.dart';
+
 class QuestionEditPage extends StatefulWidget {
   final DocumentSnapshot question; // 編集する問題のドキュメント
 
@@ -669,44 +671,10 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    ChipWidget(
-                      label: '正誤問題',
-                      icon: Icons.check_circle_outline,
-                      isSelected: _selectedQuestionType == 'true_false',
-                      onTap: () {
-                        setState(() {
-                          _selectedQuestionType = 'true_false';
-                        });
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    ChipWidget(
-                      label: 'カード',
-                      icon: Icons.filter_none_rounded,
-                      isSelected: _selectedQuestionType == 'flash_card',
-                      onTap: () {
-                        setState(() {
-                          _selectedQuestionType = 'flash_card';
-                        });
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    ChipWidget(
-                      label: '四択問題',
-                      icon: Icons.list_alt,
-                      isSelected: _selectedQuestionType == 'single_choice',
-                      onTap: () {
-                        setState(() {
-                          _selectedQuestionType = 'single_choice';
-                        });
-                      },
-                    ),
-                  ],
-                ),
+              // ───── 質問形式セレクタ ─────
+              QuestionTypeSelector(
+                selectedType: _selectedQuestionType,
+                onTypeChanged: (t) => setState(() => _selectedQuestionType = t),
               ),
               const SizedBox(height: 16),
               ExpandableTextField(

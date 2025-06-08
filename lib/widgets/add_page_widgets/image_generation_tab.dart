@@ -2,6 +2,7 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';   // ← 追加
 import '../../utils/app_colors.dart';
 
 class ImageGenerationTab extends StatefulWidget {
@@ -21,10 +22,23 @@ class _ImageGenerationTabState extends State<ImageGenerationTab> {
 
   Future<void> _pickImage(ImageSource source) async {
     try {
+      // ① 画像読み込み
       final XFile? picked =
       await _picker.pickImage(source: source, imageQuality: 80);
       if (picked == null) return;
-      final bytes = await picked.readAsBytes();
+
+      // ② トリミング UI を表示（自由トリミング）
+      final CroppedFile? cropped = await ImageCropper().cropImage(
+        sourcePath: picked.path,
+        uiSettings: [
+          AndroidUiSettings(lockAspectRatio: false),
+          IOSUiSettings(),
+        ],
+      );
+      if (cropped == null) return;
+
+      // ③ 完成バイト列を保持
+      final bytes = await cropped.readAsBytes();
       setState(() => _selectedBytes = bytes);
     } catch (_) {
       if (!mounted) return;
@@ -34,35 +48,78 @@ class _ImageGenerationTabState extends State<ImageGenerationTab> {
     }
   }
 
-  void _showImageSourceModal() {
-    showModalBottomSheet(
+  // ─────────────────────────────────────────────
+  // Image Source 選択モーダル（統一デザイン版）
+  // ─────────────────────────────────────────────
+  void _showImageSourceModal() async {
+    final ImageSource? src = await showModalBottomSheet<ImageSource>(
       context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (_) => SafeArea(
-        child: Wrap(
-          children: [
-            ListTile(
-              leading: const Icon(Icons.photo_library),
-              title: const Text('フォトライブラリから選択'),
-              onTap: () {
-                Navigator.pop(context);
-                _pickImage(ImageSource.gallery);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.camera_alt),
-              title: const Text('カメラで撮影'),
-              onTap: () {
-                Navigator.pop(context);
-                _pickImage(ImageSource.camera);
-              },
-            ),
-          ],
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(12.0),
+          topRight: Radius.circular(12.0),
         ),
       ),
+      builder: (BuildContext context) {
+        return Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: SizedBox(
+            height: 160,
+            child: Column(
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  leading: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: AppColors.gray100,
+                      borderRadius: BorderRadius.circular(100),
+                    ),
+                    child: const Icon(Icons.camera_alt_outlined,
+                        size: 22, color: AppColors.gray600),
+                  ),
+                  title: const Text('カメラで撮影', style: TextStyle(fontSize: 16)),
+                  onTap: () => Navigator.pop(context, ImageSource.camera),
+                ),
+                const SizedBox(height: 8),
+                ListTile(
+                  leading: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: AppColors.gray100,
+                      borderRadius: BorderRadius.circular(100),
+                    ),
+                    child: const Icon(Icons.photo_outlined,
+                        size: 22, color: AppColors.gray600),
+                  ),
+                  title:
+                  const Text('ギャラリーから選択', style: TextStyle(fontSize: 16)),
+                  onTap: () => Navigator.pop(context, ImageSource.gallery),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
+
+    if (src != null) {
+      _pickImage(src);
+    }
   }
 
   @override
@@ -79,10 +136,7 @@ class _ImageGenerationTabState extends State<ImageGenerationTab> {
               decoration: BoxDecoration(
                 color: AppColors.gray100,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: AppColors.gray300,
-                  width: 2,
-                ),
+                border: Border.all(color: AppColors.gray300, width: 2),
               ),
               child: _selectedBytes == null
                   ? Column(
@@ -91,14 +145,19 @@ class _ImageGenerationTabState extends State<ImageGenerationTab> {
                   Icon(Icons.cloud_upload_outlined,
                       size: 48, color: AppColors.gray600),
                   SizedBox(height: 8),
-                  Text('タップして画像をアップロード',
+                  Text('タップして画像をアップロード\n現在、開発中です。',
+                      textAlign: TextAlign.center,
                       style: TextStyle(color: AppColors.gray600)),
                 ],
               )
                   : ClipRRect(
                 borderRadius: BorderRadius.circular(10),
-                child: Image.memory(_selectedBytes!,
-                    fit: BoxFit.cover, width: double.infinity),
+                child: Image.memory(
+                  _selectedBytes!,
+                  fit: BoxFit
+                      .contain, // ← 全体が見えるように cover → contain に変更
+                  width: double.infinity,
+                ),
               ),
             ),
           ),

@@ -88,15 +88,15 @@ Future<void> main() async {
     }
   }
 
-  // // ─── Emulator を使うかどうかを判定 ───
-  // if (!kReleaseMode) {
-  //   // Debug ビルドのときだけローカル Emulator に向ける
-  //   FirebaseFunctions.instanceFor(region: "us-central1")
-  //       .useFunctionsEmulator("127.0.0.1", 5001);
-  //   debugPrint("▶︎ Functions Emulator を localhost:5001 に向けます (Debug mode)");
-  // } else {
-  //   // Release ビルド (App Store 向け) のときは、Emulator 設定をしない。PUBNUB へそのまま本番を呼びます。
-  // }
+  // ─── Emulator を使うかどうかを判定 ───
+  if (!kReleaseMode) {
+    // Debug ビルドのときだけローカル Emulator に向ける
+    FirebaseFunctions.instanceFor(region: "us-central1")
+        .useFunctionsEmulator("127.0.0.1", 5001);
+    debugPrint("▶︎ Functions Emulator を localhost:5001 に向けます (Debug mode)");
+  } else {
+    // Release ビルド (App Store 向け) のときは、Emulator 設定をしない。PUBNUB へそのまま本番を呼びます。
+  }
   debugPrint("▶︎ Release build のため、本番 Firebase Functions を使います");
 
   // ─── Analytics テストイベント ───

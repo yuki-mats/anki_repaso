@@ -134,9 +134,9 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
     );
   }
 
-  void showQuestionSetOptionsModal(
-      BuildContext context, DocumentSnapshot folder, DocumentSnapshot questionSet) {
-    bool isViewer = widget.folderPermission == 'viewer';
+  void showQuestionSetOptionsModal(BuildContext context, DocumentSnapshot folder, DocumentSnapshot questionSet) {
+    //owner / editor 以外はすべてビューワー扱い
+    final bool isViewer = widget.folderPermission != 'owner' && widget.folderPermission != 'editor';
 
     showModalBottomSheet(
       isScrollControlled: true,
@@ -367,6 +367,8 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
 
   @override
   Widget build(BuildContext context) {
+    final bool canEditFolder =
+        widget.folderPermission == 'owner' || widget.folderPermission == 'editor';
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -377,7 +379,12 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
         titleSpacing: 0,
         title: Padding(
           padding: const EdgeInsets.only(right: 16.0),
-          child: Text(widget.folder['name']),
+          child: Text(widget.folder['name'],
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              )),
         ),
         centerTitle: true,
         bottom: const PreferredSize(
@@ -493,17 +500,20 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
           ),
         ),
       ),
-      floatingActionButton: Padding(
+      floatingActionButton: canEditFolder
+          ? Padding(
         padding: const EdgeInsets.only(bottom: 8.0, right: 16.0),
         child: FloatingActionButton(
-          onPressed: () => navigateToQuestionSetAddPage(context, widget.folder),
+          onPressed: () =>
+              navigateToQuestionSetAddPage(context, widget.folder),
           backgroundColor: AppColors.blue500,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(30),
           ),
           child: const Icon(Icons.add, color: Colors.white, size: 40),
         ),
-      ),
+      )
+          : null, // ← 権限なしの場合はボタン自体を置かない
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
