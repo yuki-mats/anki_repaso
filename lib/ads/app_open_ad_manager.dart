@@ -6,7 +6,7 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 class AppOpenAdManager {
   // 2分間は連続して広告をロードしないようにする間隔設定
-  static const Duration _minLoadInterval = Duration(minutes: 2);
+  static const Duration _minLoadInterval = Duration(minutes: 25);
 
   // 最後に広告をロードした日時を保持
   DateTime? _lastLoadTime;
@@ -55,9 +55,14 @@ class AppOpenAdManager {
   ///
   /// テストデバイスの設定は main.dart 側で行っているため、
   /// ここでは常に本番IDを指定します。
-  String _getAdUnitId() {
-    return 'ca-app-pub-4495844115981683/6169233197'; // 本番広告ID
-  }
+   String _getAdUnitId() {
+       if (kDebugMode) {
+         return Platform.isAndroid
+             ? 'ca-app-pub-3940256099942544/3419835294' // Android テスト
+             : 'ca-app-pub-3940256099942544/5662855259'; // iOS テスト
+       }
+       return 'ca-app-pub-4495844115981683/6169233197'; // 本番
+     }
 
   /// エミュレーターかどうかを判定する（必要に応じて拡張可）
   bool _isEmulator() {
@@ -74,11 +79,13 @@ class AppOpenAdManager {
         _isShowingAd = false;
         _appOpenAd = null;
         loadAd();
+        ad.dispose();
       },
       onAdFailedToShowFullScreenContent: (ad, error) {
         // 表示に失敗しても次回のロードをトライ
         _isShowingAd = false;
         _appOpenAd = null;
+        ad.dispose();
         if (kDebugMode) {
           debugPrint('AppOpenAd show failed: $error');
         }
