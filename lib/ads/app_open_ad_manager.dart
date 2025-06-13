@@ -6,7 +6,7 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 class AppOpenAdManager {
   // 2分間は連続して広告をロードしないようにする間隔設定
-  static const Duration _minLoadInterval = Duration(minutes: 25);
+  static const Duration _minLoadInterval = Duration(minutes: 2);
 
   // 最後に広告をロードした日時を保持
   DateTime? _lastLoadTime;
@@ -19,84 +19,88 @@ class AppOpenAdManager {
 
   /// 起動時に広告をロードする
   void loadAd() {
-    // 直近のロードから2分未満ならスキップ
-    if (_lastLoadTime != null &&
-        DateTime.now().difference(_lastLoadTime!) < _minLoadInterval) {
-      if (kDebugMode) {
-        debugPrint('AppOpenAd load skipped: too soon since last load');
-      }
+    debugPrint('🔄 loadAd() called');
+    final now = DateTime.now();
+    if (_lastLoadTime != null) {
+      final diff = now.difference(_lastLoadTime!);
+      debugPrint('▶︎ lastLoadTime=$_lastLoadTime, now=$now, diff=${diff.inSeconds}s');
+    }
+    // ロード間隔チェック
+    if (_lastLoadTime != null && now.difference(_lastLoadTime!) < _minLoadInterval) {
+      debugPrint('⏱ load skipped (too soon)');
       return;
     }
-    _lastLoadTime = DateTime.now(); // ロード時間を更新
 
-    final adUnitId = _getAdUnitId(); // 広告ユニットIDを取得
+    _lastLoadTime = now;
+    debugPrint('✅ _lastLoadTime updated to $_lastLoadTime');
+
+    final adUnitId = _getAdUnitId();
+    debugPrint('🔑 loadAd using unitId=$adUnitId');
     AppOpenAd.load(
       adUnitId: adUnitId,
       request: const AdRequest(),
       adLoadCallback: AppOpenAdLoadCallback(
         onAdLoaded: (ad) {
-          // ロード成功時にインスタンスを保持
           _appOpenAd = ad;
-          if (kDebugMode) {
-            debugPrint('AppOpenAd loaded: $adUnitId');
-          }
+          debugPrint('✅ onAdLoaded! ad=$ad, unitId=$adUnitId');
+          showAdIfAvailable();
         },
         onAdFailedToLoad: (error) {
-          // ロード失敗時はログ出力のみ
-          if (kDebugMode) {
-            debugPrint('AppOpenAd failed to load: $error');
-          }
+          debugPrint('❌ onAdFailedToLoad: $error');
         },
       ),
     );
   }
 
-  /// 本番用の広告ユニットIDを返す
-  ///
-  /// テストデバイスの設定は main.dart 側で行っているため、
-  /// ここでは常に本番IDを指定します。
-   String _getAdUnitId() {
-       if (kDebugMode) {
-         return Platform.isAndroid
-             ? 'ca-app-pub-3940256099942544/3419835294' // Android テスト
-             : 'ca-app-pub-3940256099942544/5662855259'; // iOS テスト
-       }
-       return 'ca-app-pub-4495844115981683/6169233197'; // 本番
-     }
+  String _getAdUnitId() {
+    if (kDebugMode) {
+      final id = Platform.isAndroid
+          ? 'ca-app-pub-3940256099942544/3419835294'
+          : 'ca-app-pub-3940256099942544/5575463023';
+      debugPrint('⚙️ DEBUG mode adUnitId: $id');
+      return id;
+    }
+    const prodId = 'ca-app-pub-4495844115981683/6169233197';
+    debugPrint('⚙️ RELEASE mode adUnitId: $prodId');
+    return prodId;
+  }
 
-  /// エミュレーターかどうかを判定する（必要に応じて拡張可）
   bool _isEmulator() {
     return Platform.isIOS && !Platform.isMacOS && !Platform.isAndroid;
   }
 
-  /// 広告が準備できていて、まだ表示中でなければ表示する
   void showAdIfAvailable() {
-    if (_isShowingAd || _appOpenAd == null) return;
+    debugPrint('🔍 showAdIfAvailable() called: _isShowingAd=$_isShowingAd, _appOpenAd is ${_appOpenAd == null ? "null" : "ready"}');
+    if (_isShowingAd) {
+      debugPrint('⏱ show skipped (_isShowingAd==true)');
+      return;
+    }
+    if (_appOpenAd == null) {
+      debugPrint('⚠️ show skipped (_appOpenAd==null)');
+      return;
+    }
 
+    debugPrint('🔧 attaching FullScreenContentCallback');
     _appOpenAd!.fullScreenContentCallback = FullScreenContentCallback(
       onAdDismissedFullScreenContent: (ad) {
-        // 広告を閉じたあと、再度ロードできるようにリセット
+        debugPrint('✖️ Ad dismissed');
         _isShowingAd = false;
         _appOpenAd = null;
         loadAd();
         ad.dispose();
       },
       onAdFailedToShowFullScreenContent: (ad, error) {
-        // 表示に失敗しても次回のロードをトライ
+        debugPrint('❌ Ad failed to show: $error');
         _isShowingAd = false;
         _appOpenAd = null;
         ad.dispose();
-        if (kDebugMode) {
-          debugPrint('AppOpenAd show failed: $error');
-        }
         loadAd();
       },
     );
 
-    _isShowingAd = true;    // 表示中フラグをON
-    _appOpenAd!.show();      // 広告を表示
-    if (kDebugMode) {
-      debugPrint('AppOpenAd is shown.');
-    }
+    _isShowingAd = true;
+    debugPrint('▶︎ calling ad.show()');
+    _appOpenAd!.show();
+    debugPrint('✅ AppOpenAd is shown.');
   }
 }

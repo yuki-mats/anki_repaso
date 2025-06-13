@@ -2,6 +2,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 
 class ChatGPTScreen extends StatefulWidget {
   /// 下部シートのスクロールを制御するコントローラ
@@ -127,6 +128,7 @@ ${widget.explanationText}
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ―― アバター ――
           CircleAvatar(
             radius: 16,
             backgroundColor: Colors.grey.shade300,
@@ -137,10 +139,13 @@ ${widget.explanationText}
             ),
           ),
           const SizedBox(width: 8),
+
+          // ―― 吹き出し ――
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // ユーザー名＋時刻
                 Row(children: [
                   Text(m.userName,
                       style: const TextStyle(
@@ -150,16 +155,26 @@ ${widget.explanationText}
                       style: const TextStyle(fontSize: 12, color: Colors.grey)),
                 ]),
                 const SizedBox(height: 8),
-                // **数式部分を全て Text に置き換え**
-                ..._buildTextWithoutMath(m.text),
+
+                // ===== ここを MarkdownBody に置き換え =====
+                MarkdownBody(
+                  data: m.text,
+                  styleSheet:
+                  MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+                    p: const TextStyle(fontSize: 14, height: 1.4),
+                  ),
+                ),
+                // =======================================
+
                 if (!m.isUser) ...[
                   const SizedBox(height: 8),
                   IconButton(
-                    icon: const Icon(Icons.copy, size: 16, color: Colors.black54),
+                    icon: const Icon(Icons.copy,
+                        size: 16, color: Colors.black54),
                     onPressed: () {
                       Clipboard.setData(ClipboardData(text: m.text));
-                      ScaffoldMessenger.of(context)
-                          .showSnackBar(const SnackBar(content: Text('コピーしました')));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('コピーしました')));
                     },
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
@@ -174,15 +189,6 @@ ${widget.explanationText}
     );
   }
 
-  /// 修正：Math.tex を使わず、すべて Text で表示する
-  List<Widget> _buildTextWithoutMath(String text) {
-    return text.split('\n').map((line) {
-      return Text(
-        line,
-        style: const TextStyle(fontSize: 14, height: 1.4),
-      );
-    }).toList();
-  }
 
   String _fmt(DateTime d) =>
       '${d.year}.${d.month.toString().padLeft(2, '0')}.${d.day.toString().padLeft(2, '0')} '

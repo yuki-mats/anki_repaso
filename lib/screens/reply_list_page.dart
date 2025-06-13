@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:intl/intl.dart';
 import 'package:repaso/utils/app_colors.dart';
 import 'package:repaso/widgets/memo_page_widgets/memo_like_button.dart';
@@ -249,8 +250,12 @@ class _ReplyPageState extends State<ReplyListPage> {
                 const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
           if ((widget.memoData['title'] ?? '').toString().isNotEmpty)
             const SizedBox(height: 4),
-          Text(widget.memoData['content'] ?? '',
-              style: const TextStyle(fontSize: 14)),
+          MarkdownBody(
+            data: widget.memoData['content'] ?? '',
+            styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+              p: const TextStyle(fontSize: 14),   // 通常テキストサイズ
+            ),
+          ),
           const SizedBox(height: 8),
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -583,8 +588,12 @@ class ReplyItem extends StatelessWidget {
                         ),
                       ],
                     ),
-                    Text(content,
-                        style: const TextStyle(fontSize: 14), softWrap: true),
+                    MarkdownBody(
+                      data: content,
+                      styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+                        p: const TextStyle(fontSize: 14),
+                      ),
+                    ),
                     const SizedBox(height: 4),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
@@ -695,8 +704,12 @@ class ReplyItemLocal extends StatelessWidget {
                         ),
                       ],
                     ),
-                    Text(content,
-                        style: const TextStyle(fontSize: 14), softWrap: true),
+                    MarkdownBody(
+                      data: content,
+                      styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+                        p: const TextStyle(fontSize: 14),
+                      ),
+                    ),
                     const SizedBox(height: 4),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
