@@ -24,6 +24,7 @@ import 'package:firebase_analytics/observer.dart';
 class AppLifecycleListener extends StatefulWidget {
   final Widget child;
   final VoidCallback onResumed;
+
   const AppLifecycleListener({
     Key? key,
     required this.child,
@@ -34,7 +35,8 @@ class AppLifecycleListener extends StatefulWidget {
   _AppLifecycleListenerState createState() => _AppLifecycleListenerState();
 }
 
-class _AppLifecycleListenerState extends State<AppLifecycleListener> with WidgetsBindingObserver {
+class _AppLifecycleListenerState extends State<AppLifecycleListener>
+    with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
@@ -62,22 +64,20 @@ class _AppLifecycleListenerState extends State<AppLifecycleListener> with Widget
 
 Future<void> requestTrackingPermission() async {
   try {
-    final trackingStatus = await AppTrackingTransparency.trackingAuthorizationStatus;
-    if (trackingStatus == TrackingStatus.notDetermined) {
+    final status = await AppTrackingTransparency.trackingAuthorizationStatus;
+    if (status == TrackingStatus.notDetermined) {
       await Future.delayed(const Duration(milliseconds: 200));
       await AppTrackingTransparency.requestTrackingAuthorization();
     }
-    final newStatus = await AppTrackingTransparency.trackingAuthorizationStatus;
-    print('Tracking Status: $newStatus');
   } catch (e) {
-    print('トラッキング許可リクエスト中にエラーが発生しました: $e');
+    debugPrint('Error requesting tracking authorization: $e');
   }
 }
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // ─── Firebase 初期化（重複ガード付き） ───
+  // Firebase 初期化（重複ガード）
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
@@ -85,46 +85,40 @@ Future<void> main() async {
   } catch (e) {
     final msg = e.toString();
     if (msg.contains('already exists') || msg.contains('duplicate-app')) {
-      debugPrint('⚠️ Firebase already initialized, skipping…');
+      debugPrint('⚠️ Firebase already initialized, skipping.');
     } else {
       rethrow;
     }
   }
 
-  // // ─── Emulator を使うかどうかを判定 ───
-  // if (!kReleaseMode) {
-  //   FirebaseFunctions.instanceFor(region: "us-central1")
-  //       .useFunctionsEmulator("127.0.0.1", 5001);
-  //   debugPrint("▶︎ Functions Emulator を localhost:5001 に向けます (Debug mode)");
-  // } else {
-  //   debugPrint("▶︎ Release build のため、本番 Firebase Functions を使います");
-  // }
+  // ATT 要求（iOSのみ）
+  if (!kIsWeb && Platform.isIOS) {
+    await requestTrackingPermission();
+  }
 
-  // ─── Analytics テストイベント ───
+  // Analytics テストイベント
   final analytics = FirebaseAnalytics.instance;
   await analytics.logEvent(name: 'app_launch');
 
-  // ─── 日付ローカライズ ───
+  // 日付ローカライズ
   await initializeDateFormatting('ja_JP', null);
 
-  // ─── AdMob 初期化（Webではスキップ） ───
+  // AdMob 初期化（Webではスキップ）
   if (!kIsWeb) {
     await MobileAds.instance.updateRequestConfiguration(
-      RequestConfiguration(
-        testDeviceIds: ['01262462e4ee6bb499fd8becbef443f3'],
-      ),
+      RequestConfiguration(testDeviceIds: ['01262462e4ee6bb499fd8becbef443f3']),
     );
     await MobileAds.instance.initialize();
   }
 
-  // ─── RevenueCat SDK 初期化（Webではスキップ＆Platform.isIOS の呼び出し安全化） ───
+  // RevenueCat SDK 初期化（Webではスキップ）
   if (!kIsWeb) {
     Purchases.setLogLevel(LogLevel.debug);
-    const iosApiKey     = 'appl_aIuuLscAmVhWrSRAVFhUvpBnjpy';
+    const iosApiKey = 'appl_aIuuLscAmVhWrSRAVFhUvpBnjpy';
     const androidApiKey = 'goog_あなたの_Android_Public_SDK_Key';
-    final revenueCatKey = Platform.isIOS ? iosApiKey : androidApiKey;
+    final key = Platform.isIOS ? iosApiKey : androidApiKey;
     await Purchases.configure(
-      PurchasesConfiguration(revenueCatKey)
+      PurchasesConfiguration(key)
         ..appUserID = FirebaseAuth.instance.currentUser?.uid,
     );
   }
@@ -143,7 +137,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Themed App',
+      title: 'Repaso',
       theme: ThemeData(
         fontFamily: kIsWeb ? 'NotoSansJP' : null,
         appBarTheme: const AppBarTheme(
@@ -191,19 +185,17 @@ class _StartupScreenState extends State<StartupScreen> {
   @override
   void initState() {
     super.initState();
-    Future.delayed(Duration.zero, () async {
-      bool shouldNavigate = await UpdateChecker.checkForUpdate(context);
+    Future.microtask(() async {
+      final shouldNavigate = await UpdateChecker.checkForUpdate(context);
       if (!shouldNavigate) return;
-      final bool isLogin = FirebaseAuth.instance.currentUser != null;
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) =>
-            isLogin ? const MainPage() : const LobbyPage(),
-          ),
-        );
-      }
+      final isLogin = FirebaseAuth.instance.currentUser != null;
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => isLogin ? const MainPage() : const LobbyPage(),
+        ),
+      );
     });
   }
 
@@ -215,6 +207,7 @@ class _StartupScreenState extends State<StartupScreen> {
 
 class MainPage extends StatefulWidget {
   const MainPage({Key? key}) : super(key: key);
+
   @override
   _MainPageState createState() => _MainPageState();
 }
@@ -226,51 +219,42 @@ class _MainPageState extends State<MainPage> {
     ForumPage(),
     MyPage(),
   ];
-
-  final AppOpenAdManager _appOpenAdManager = AppOpenAdManager();
+  final AppOpenAdManager _adManager = AppOpenAdManager();
 
   @override
   void initState() {
     super.initState();
-    _appOpenAdManager.loadAd();
+    _adManager.loadAd();
   }
 
   @override
   Widget build(BuildContext context) {
     return AppLifecycleListener(
-      onResumed: () => _appOpenAdManager.showAdIfAvailable(),
+      onResumed: _adManager.showAdIfAvailable,
       child: Scaffold(
         body: IndexedStack(index: _currentIndex, children: _pages),
-        bottomNavigationBar: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              decoration: BoxDecoration(
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    spreadRadius: 1,
-                    blurRadius: 2.5,
-                    offset: const Offset(0, 3),
-                  )
-                ],
+        bottomNavigationBar: Container(
+          decoration: BoxDecoration(
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                spreadRadius: 1,
+                blurRadius: 2.5,
+                offset: const Offset(0, 3),
               ),
-              child: BottomNavigationBar(
-                type: BottomNavigationBarType.fixed,
-                backgroundColor: Colors.white,
-                currentIndex: _currentIndex,
-                onTap: (index) => setState(() => _currentIndex = index),
-                items: const [
-                  BottomNavigationBarItem(
-                      icon: Icon(Icons.home), label: 'ホーム'),
-                  BottomNavigationBarItem(
-                      icon: Icon(Icons.comment), label: 'フォーラム'),
-                  BottomNavigationBarItem(
-                      icon: Icon(Icons.account_circle), label: 'マイページ'),
-                ],
-              ),
-            ),
-          ],
+            ],
+          ),
+          child: BottomNavigationBar(
+            type: BottomNavigationBarType.fixed,
+            backgroundColor: Colors.white,
+            currentIndex: _currentIndex,
+            onTap: (i) => setState(() => _currentIndex = i),
+            items: const [
+              BottomNavigationBarItem(icon: Icon(Icons.home), label: 'ホーム'),
+              BottomNavigationBarItem(icon: Icon(Icons.comment), label: 'フォーラム'),
+              BottomNavigationBarItem(icon: Icon(Icons.account_circle), label: 'マイページ'),
+            ],
+          ),
         ),
       ),
     );

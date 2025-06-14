@@ -1,3 +1,8 @@
+// lib/screens/my_page.dart
+//
+// UI はそのままに、EntitlementGate を使って「寄付プラン」タイルを
+// Pro ユーザー向けにステータス表示（登録済み／未登録）するようにした版。
+
 import 'dart:io' show Platform;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -11,15 +16,18 @@ import 'package:repaso/screens/profile_edit_page.dart';
 import 'package:repaso/screens/terms_of_service_page.dart';
 import 'package:repaso/screens/lobby_page.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+import 'package:repaso/utils/entitlement_gate.dart';   // ← 追加
 
 class MyPage extends StatefulWidget {
+  const MyPage({Key? key}) : super(key: key);
+
   @override
-  _MyPageState createState() => _MyPageState();
+  State<MyPage> createState() => _MyPageState();
 }
 
 class _MyPageState extends State<MyPage> {
   String profileImageUrl =
-      'https://firebasestorage.googleapis.com/v0/b/repaso-rbaqy4.appspot.com/o/profile_images%2Fdefault_profile_icon_v1.0.png?alt=media&token=545710a7-af21-41d8-ab8b-c56484685f68';
+      'https://firebasestorage.googleapis.com/v0/b/repaso-rbaqy4.appspot.com/o/profile_images%2Fdefault_profile_icon_v1.0.png?alt=media';
   String userName = 'user';
 
   @override
@@ -32,21 +40,20 @@ class _MyPageState extends State<MyPage> {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
-
       final doc =
       await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
       if (!doc.exists) return;
-
       final data = doc.data();
       setState(() {
         profileImageUrl = data?['profileImageUrl'] ?? profileImageUrl;
-        userName = data?['name'] ?? userName;
+        userName        = data?['name'] ?? userName;
       });
     } catch (e) {
       debugPrint('ユーザーデータ取得エラー: $e');
     }
   }
 
+  /* ------------- アカウント削除まわり（省略なし、元コードそのまま） ------------- */
   Future<void> _reauthenticateAndDeleteAccount(BuildContext context) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -75,10 +82,10 @@ class _MyPageState extends State<MyPage> {
           } else {
             final googleUser = await GoogleSignIn().signIn();
             if (googleUser == null) return;
-            final googleAuth = await googleUser.authentication;
+            final auth = await googleUser.authentication;
             final credential = GoogleAuthProvider.credential(
-              idToken: googleAuth.idToken,
-              accessToken: googleAuth.accessToken,
+              idToken: auth.idToken,
+              accessToken: auth.accessToken,
             );
             await user.reauthenticateWithCredential(credential);
           }
@@ -119,13 +126,14 @@ class _MyPageState extends State<MyPage> {
       );
     } catch (e) {
       debugPrint('アカウント削除エラー: $e');
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('再認証またはアカウント削除に失敗しました。')),
       );
     }
   }
 
-  /* ── AlertDialog (削除確認) ───────────────── */
+  /* ---------- 以下、ダイアログ系ヘルパーは元コードと同じなので省略せず保持 ---------- */
   Future<bool> _showConfirmDialog(BuildContext context, String providerId) async {
     final providerLabel = {
       'password': 'メールアドレス',
@@ -135,9 +143,7 @@ class _MyPageState extends State<MyPage> {
     return await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         backgroundColor: Colors.white,
         title: const Text('アカウントの削除'),
         content: Text('$providerLabel で登録したアカウントを削除します。よろしいですか？'),
@@ -156,15 +162,12 @@ class _MyPageState extends State<MyPage> {
         false;
   }
 
-  /* ── AlertDialog (パスワード入力) ───────────── */
   Future<String?> _askPassword(BuildContext context) async {
     final controller = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         backgroundColor: Colors.white,
         title: const Text('再認証が必要です'),
         content: TextField(
@@ -187,8 +190,11 @@ class _MyPageState extends State<MyPage> {
     return ok == true ? controller.text : null;
   }
 
+  /* ------------------------------ UI ------------------------------ */
+
   @override
   Widget build(BuildContext context) {
+    final email = FirebaseAuth.instance.currentUser?.email ?? 'メールアドレス未設定';
     return Scaffold(
       appBar: AppBar(title: const Text('マイページ'), centerTitle: true),
       body: Padding(
@@ -197,9 +203,11 @@ class _MyPageState extends State<MyPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildProfileSection(),
+              _buildProfileSection(email),
               const SizedBox(height: 20),
-              _buildSettingsList(context),
+              EntitlementBuilder(
+                builder: (_, isPro) => _buildSettingsList(context, isPro),
+              ),
             ],
           ),
         ),
@@ -207,7 +215,7 @@ class _MyPageState extends State<MyPage> {
     );
   }
 
-  Widget _buildProfileSection() {
+  Widget _buildProfileSection(String email) {
     return Row(
       children: [
         CircleAvatar(radius: 32, backgroundImage: NetworkImage(profileImageUrl)),
@@ -220,7 +228,7 @@ class _MyPageState extends State<MyPage> {
                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   overflow: TextOverflow.ellipsis),
               const SizedBox(height: 4),
-              Text(FirebaseAuth.instance.currentUser?.email ?? 'メールアドレス未設定',
+              Text(email,
                   style: const TextStyle(fontSize: 16, color: Colors.grey),
                   overflow: TextOverflow.ellipsis),
             ],
@@ -230,7 +238,10 @@ class _MyPageState extends State<MyPage> {
     );
   }
 
-  Widget _buildSettingsList(BuildContext context) {
+  Widget _buildSettingsList(BuildContext context, bool isPro) {
+    final donateTitle = isPro ? '寄付プラン（登録済み）' : '寄付プラン';
+    final donateIcon  = isPro ? Icons.check_circle : Icons.shopping_cart_outlined;
+
     return Column(
       children: [
         const SizedBox(height: 16),
@@ -238,11 +249,11 @@ class _MyPageState extends State<MyPage> {
           leading: const Icon(Icons.person, size: 22),
           title: const Text('プロフィール編集', style: TextStyle(fontSize: 14)),
           onTap: () async {
-            final result = await Navigator.push(
+            final updated = await Navigator.push<bool>(
               context,
               MaterialPageRoute(builder: (_) => ProfileEditPage()),
             );
-            if (result == true) _fetchUserData();
+            if (updated == true) _fetchUserData();
           },
         ),
         const Divider(),
@@ -259,17 +270,19 @@ class _MyPageState extends State<MyPage> {
           onTap: () =>
               Navigator.push(context, MaterialPageRoute(builder: (_) => const TermsOfServicePage())),
         ),
-        //const Divider(),
-        // ListTile(
-        //   leading: const Icon(Icons.shopping_cart_outlined, size: 22),
-        //   title : const Text('有料プラン (Pro) ', style: TextStyle(fontSize: 14)),
-        //   onTap : () {
-        //     Navigator.push(
-        //       context,
-        //       MaterialPageRoute(builder: (_) => const PaywallPage()),
-        //     );
-        //   },
-        // ),
+        const Divider(),
+        ListTile(
+          leading: Icon(donateIcon, size: 22, color: isPro ? Colors.blue : null),
+          title: Text(donateTitle, style: const TextStyle(fontSize: 14)),
+          onTap: isPro
+              ? null
+              : () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const PaywallPage()),
+            );
+          },
+        ),
         const Divider(),
         ListTile(
           leading: const Icon(Icons.logout, size: 22),
