@@ -2,7 +2,6 @@
 
 import 'dart:io';
 import 'package:app_tracking_transparency/app_tracking_transparency.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -10,6 +9,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:repaso/screens/home_page.dart';
+import 'package:repaso/screens/library_page.dart';
 import 'package:repaso/screens/lobby_page.dart';
 import 'package:repaso/utils/update_checker.dart';
 import 'firebase_options.dart';
@@ -215,7 +215,8 @@ class MainPage extends StatefulWidget {
 class _MainPageState extends State<MainPage> {
   int _currentIndex = 0;
   final List<Widget> _pages = [
-    FolderListPage(title: 'ホーム'),
+    HomePage(),
+    FolderListPage(title: 'ライブラリ'),
     ForumPage(),
     MyPage(),
   ];
@@ -250,7 +251,8 @@ class _MainPageState extends State<MainPage> {
             currentIndex: _currentIndex,
             onTap: (i) => setState(() => _currentIndex = i),
             items: const [
-              BottomNavigationBarItem(icon: Icon(Icons.home), label: 'ホーム'),
+              //BottomNavigationBarItem(icon: Icon(Icons.home), label: 'ホーム'),
+              BottomNavigationBarItem(icon: Icon(Icons.source_rounded), label: 'ライブラリ'),
               BottomNavigationBarItem(icon: Icon(Icons.comment), label: 'フォーラム'),
               BottomNavigationBarItem(icon: Icon(Icons.account_circle), label: 'マイページ'),
             ],

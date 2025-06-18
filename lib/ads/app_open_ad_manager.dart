@@ -6,7 +6,7 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 class AppOpenAdManager {
   // 2分間は連続して広告をロードしないようにする間隔設定
-  static const Duration _minLoadInterval = Duration(minutes: 2);
+  static const Duration _minLoadInterval = Duration(minutes: 0);
 
   // 最後に広告をロードした日時を保持
   DateTime? _lastLoadTime;
@@ -36,6 +36,7 @@ class AppOpenAdManager {
 
     final adUnitId = _getAdUnitId();
     debugPrint('🔑 loadAd using unitId=$adUnitId');
+    // --- lib/ads/app_open_ad_manager.dart の該当箇所のみ抜粋 ---
     AppOpenAd.load(
       adUnitId: adUnitId,
       request: const AdRequest(),
@@ -43,13 +44,15 @@ class AppOpenAdManager {
         onAdLoaded: (ad) {
           _appOpenAd = ad;
           debugPrint('✅ onAdLoaded! ad=$ad, unitId=$adUnitId');
-          showAdIfAvailable();
+          // ↓ 以下をコメントアウトまたは削除し、
+          //    ロード完了時に即時表示しないようにする
         },
         onAdFailedToLoad: (error) {
           debugPrint('❌ onAdFailedToLoad: $error');
         },
       ),
     );
+    debugPrint('🔄 AppOpenAd.load() called with adUnitId=$adUnitId');
   }
 
   String _getAdUnitId() {
