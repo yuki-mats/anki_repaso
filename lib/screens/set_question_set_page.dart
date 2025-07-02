@@ -5,7 +5,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_sticky_header/flutter_sticky_header.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
-
+import 'package:purchases_flutter/purchases_flutter.dart';                  // ★ 追加
+import '../screens/paywall_page.dart';
 import '../utils/app_colors.dart';
 import '../widgets/list_page_widgets/rounded_icon_box.dart';
 import '../widgets/study_set_selectable_card.dart';
@@ -30,19 +31,43 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
   Map<String, bool?> folderSelection = {};
   Map<String, bool> questionSetSelection = {};
   Map<String, bool> expandedState = {};
+
+  // 選択中 QuestionSet の問題数を素早く参照するために保持
+  final Map<String, int> _questionCounts = {};
+
   bool isLoading = true;
+  bool _isPro = false;                                       // ★
+
+  late final void Function(CustomerInfo) _customerInfoListener; // ★
 
   // 画面に収まる目安のアイテム数
   static const int _visibleItemCount = 6;
 
-  /// whereIn 1 回あたりの最大値（Cloud Firestore は 30 まで可）:contentReference[oaicite:0]{index=0}
+  /// whereIn 1 回あたりの最大値（Cloud Firestore は 30 まで可）
   static const int _batchSize = 30;
 
   @override
   void initState() {
     super.initState();
 
-    // ── オフラインキャッシュを有効化
+    debugPrint('[DEBUG] SetQuestionSetPage opened for user: ${widget.userId}');
+
+    // ─── RevenueCat で isPro 初期化 ─── ★
+    Purchases.getCustomerInfo().then((info) {
+      final active = info.entitlements.active['Pro']?.isActive ?? false;
+      debugPrint('[DEBUG] initial isPro status: $active');
+      if (mounted) setState(() => _isPro = active);
+    });
+
+    _customerInfoListener = (CustomerInfo info) {
+      final active = info.entitlements.active['Pro']?.isActive ?? false;
+      debugPrint('[DEBUG] CustomerInfo updated isPro: $active');
+      if (mounted && _isPro != active) setState(() => _isPro = active);
+    };
+    Purchases.addCustomerInfoUpdateListener(_customerInfoListener);
+    // ─── ここまで ───
+
+    // オフラインキャッシュを有効化
     FirebaseFirestore.instance.settings = const Settings(
       persistenceEnabled: true,
       cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
@@ -51,9 +76,16 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
     _initializeSelections().then((_) => _fetchData());
   }
 
-  // ──────────────────────────────
+  @override
+  void dispose() {
+    Purchases.removeCustomerInfoUpdateListener(_customerInfoListener); // ★
+    super.dispose();
+  }
+
+  // 保存せずに閉じる
+  void _onCancel() => Navigator.pop(context);
+
   // 既存選択 QuestionSet をバッチで検証
-  // ──────────────────────────────
   Future<void> _initializeSelections() async {
     final validIds = <String>[];
     final ids = List<String>.from(widget.selectedQuestionSetIds);
@@ -63,7 +95,6 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
       final snap = await FirebaseFirestore.instance
           .collection('questionSets')
           .where(FieldPath.documentId, whereIn: batch)
-      // .select() は FlutterFire ではまだ未実装のため使用しない
           .get(const GetOptions(source: Source.serverAndCache));
 
       for (var doc in snap.docs) {
@@ -71,6 +102,7 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
         if ((data['isDeleted'] as bool? ?? false) == false) {
           questionSetSelection[doc.id] = true;
           validIds.add(doc.id);
+          _questionCounts[doc.id] = data['questionCount'] as int? ?? 0;
         }
       }
     }
@@ -81,14 +113,12 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
     });
   }
 
-  // ──────────────────────────────
   // メインデータ取得
-  // ──────────────────────────────
   Future<void> _fetchData() async {
     setState(() => isLoading = true);
 
     try {
-      // ① ユーザー情報をキャッシュ優先で取得
+      // ① ユーザー情報
       final userDoc = await FirebaseFirestore.instance
           .collection('users')
           .doc(widget.userId)
@@ -99,19 +129,21 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
           ? rawLicenses.whereType<String>().toList()
           : <String>[];
 
+      // Firestore 側の isPro は参考値とし、RevenueCat が優先される ★
+      debugPrint('[DEBUG] Firestore isPro (reference) = ${userData['isPro']}');
+
       final fetched = <String, Map<String, dynamic>>{};
       final folderState = <String, bool?>{};
       final expandInit = <String, bool>{};
       final processedIds = <String>{};
 
-      // ② 公式フォルダ取得
+      // ② 公式フォルダ
       final officialSnap = await FirebaseFirestore.instance
           .collection('folders')
           .where('isDeleted', isEqualTo: false)
           .where('isOfficial', isEqualTo: true)
           .get(const GetOptions(source: Source.serverAndCache));
 
-      // ③ 公式フォルダの QuestionSet を並列取得
       await Future.wait([
         for (final f in officialSnap.docs)
           _maybeCollectFolderData(
@@ -124,7 +156,7 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
           )
       ]);
 
-      // ④ 権限フォルダ取得 → 並列取得
+      // ③ 権限フォルダ
       final allFoldersSnap = await FirebaseFirestore.instance
           .collection('folders')
           .where('isDeleted', isEqualTo: false)
@@ -153,9 +185,7 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
     }
   }
 
-  // ──────────────────────────────
   // 公式フォルダ用フィルタ
-  // ──────────────────────────────
   Future<void> _maybeCollectFolderData(
       QueryDocumentSnapshot<Map<String, dynamic>> f,
       List<String> selectedLicenses,
@@ -171,9 +201,7 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
     await _collectFolderData(f, fetched, folderState, expandInit);
   }
 
-  // ──────────────────────────────
-  // 権限付きフォルダ (sub-collection) を確認
-  // ──────────────────────────────
+  // 権限付きフォルダ確認
   Future<void> _maybeCollectPermittedFolderData(
       QueryDocumentSnapshot<Map<String, dynamic>> f,
       Map<String, Map<String, dynamic>> fetched,
@@ -184,8 +212,7 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
         .collection('permissions')
         .where(
       'userRef',
-      isEqualTo:
-      FirebaseFirestore.instance.doc('users/${widget.userId}'),
+      isEqualTo: FirebaseFirestore.instance.doc('users/${widget.userId}'),
     )
         .where('role', whereIn: ['owner', 'editor', 'viewer'])
         .limit(1)
@@ -196,9 +223,7 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
     }
   }
 
-  // ──────────────────────────────
   // フォルダとその QuestionSet を取得
-  // ──────────────────────────────
   Future<void> _collectFolderData(
       QueryDocumentSnapshot<Map<String, dynamic>> f,
       Map<String, Map<String, dynamic>> fetched,
@@ -208,7 +233,6 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
     final fid = f.id;
     final folderName = f.data()['name'] as String? ?? '';
 
-    // QuestionSet 取得
     final qsSnap = await FirebaseFirestore.instance
         .collection('questionSets')
         .where('folderId', isEqualTo: fid)
@@ -231,21 +255,18 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
         'ref': dq.reference,
         'count': count,
       });
+      _questionCounts[id] = count;
     }
 
     fetched[fid] = {
       'name': folderName,
       'questionSets': qsList,
     };
-    folderState[fid] = _calcFolderSel(
-      qsList.map((e) => e['id'] as String),
-    );
+    folderState[fid] = _calcFolderSel(qsList.map((e) => e['id'] as String));
     expandInit.putIfAbsent(fid, () => false);
   }
 
-  // ──────────────────────────────
   // フォルダ選択状態を計算
-  // ──────────────────────────────
   bool? _calcFolderSel(Iterable<String> ids) {
     final allSel = ids.every((i) => questionSetSelection[i] == true);
     final noneSel = ids.every((i) => questionSetSelection[i] == false);
@@ -268,20 +289,26 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
     setState(() {
       questionSetSelection[qsId] = !(questionSetSelection[qsId] ?? false);
       folderSelection[fid] = _calcFolderSel(
-        (folderData[fid]!['questionSets'] as List)
-            .map((e) => e['id'] as String),
+        (folderData[fid]!['questionSets'] as List).map((e) => e['id'] as String),
       );
     });
   }
 
-  void _onBack() {
-    Navigator.pop(
-      context,
-      questionSetSelection.entries
-          .where((e) => e.value)
-          .map((e) => e.key)
-          .toList(),
-    );
+  void _onBack() => Navigator.pop(
+    context,
+    questionSetSelection.entries
+        .where((e) => e.value)
+        .map((e) => e.key)
+        .toList(),
+  );
+
+  // 選択済み問題数を算出
+  int _selectedQuestionCount() {
+    int total = 0;
+    questionSetSelection.forEach((id, sel) {
+      if (sel) total += _questionCounts[id] ?? 0;
+    });
+    return total;
   }
 
   @override
@@ -295,12 +322,56 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
         ? const NeverScrollableScrollPhysics()
         : const BouncingScrollPhysics();
 
+    // 各種計算
+    final int selectedCount = _selectedQuestionCount();
+    final int limit = _isPro ? 300 : 30;
+    final bool hasSelection = questionSetSelection.values.any((v) => v);
+    final bool overLimit = selectedCount > limit;
+
+    final String infoText = overLimit
+        ? (_isPro
+        ? '最大 $limit 問まで選択できます。現在 $selectedCount 問選択中です。'
+        : '無料プランでは最大 $limit 問まで選択できます。現在 $selectedCount 問選択中です。')
+        : '現在 $selectedCount / $limit 問を選択中です。';
+
+    VoidCallback? onSave;
+    String btnLabel;
+    Color btnColor;
+
+    if (!hasSelection) {
+      onSave = null;
+      btnLabel = '保存';
+      btnColor = Colors.grey;
+    } else if (overLimit) {
+      if (_isPro) {
+        onSave = null;
+        btnLabel = '保存';
+        btnColor = Colors.grey;
+      } else {
+        onSave = () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const PaywallPage(
+              subtitle:
+              '暗記プラス Proプランでは、最大300問まで選択できます。効率的に学習を進めましょう！',
+            ),
+          ),
+        );
+        btnLabel = 'プランを変更する';
+        btnColor = AppColors.blue500;
+      }
+    } else {
+      onSave = _onBack;
+      btnLabel = '保存';
+      btnColor = AppColors.blue500;
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('問題集の選択'),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, size: 18),
-          onPressed: _onBack,
+          icon: const Icon(Icons.close),
+          onPressed: _onCancel,
         ),
         bottom: const PreferredSize(
           preferredSize: Size.fromHeight(1),
@@ -335,11 +406,9 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
                 child: InkWell(
                   highlightColor: Colors.transparent,
                   splashColor: Colors.transparent,
-                  onTap: () =>
-                      setState(() => expandedState[fid] = !expanded),
+                  onTap: () => setState(() => expandedState[fid] = !expanded),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     child: Row(
                       children: [
                         RoundedIconBox(
@@ -356,17 +425,16 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
                           child: Text(
                             info['name'] as String,
                             style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14,
-                                color: Colors.black87),
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                              color: Colors.black87,
+                            ),
                           ),
                         ),
                         InkWell(
-                          onTap: () =>
-                              _toggleFolder(fid, folderSel != true),
+                          onTap: () => _toggleFolder(fid, folderSel != true),
                           child: Padding(
-                            padding:
-                            const EdgeInsets.only(right: 10.0),
+                            padding: const EdgeInsets.only(right: 10.0),
                             child: SizedBox(
                               width: 24,
                               height: 24,
@@ -374,10 +442,8 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
                                 folderSel == true
                                     ? Icons.check_box
                                     : (folderSel == false
-                                    ? Icons
-                                    .check_box_outline_blank
-                                    : Icons
-                                    .indeterminate_check_box),
+                                    ? Icons.check_box_outline_blank
+                                    : Icons.indeterminate_check_box),
                                 color: folderSel != false
                                     ? AppColors.blue500
                                     : AppColors.gray600,
@@ -401,74 +467,119 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
                     final sel = questionSetSelection[id] ?? false;
                     final ref = qsInfo['ref'] as DocumentReference;
 
-                    // 統計をストリームで監視
                     return StreamBuilder<DocumentSnapshot>(
                       stream: ref
                           .collection('questionSetUserStats')
-                          .doc(FirebaseAuth
-                          .instance.currentUser?.uid)
+                          .doc(FirebaseAuth.instance.currentUser?.uid)
                           .snapshots(),
                       builder: (ctx, statSnap) {
-                        final base = {
+                        // 1) 初期化
+                        final Map<String, int> lvl = {
                           'again': 0,
                           'hard': 0,
                           'good': 0,
                           'easy': 0,
                         };
-                        int correct = 0, total = 0;
 
-                        if (statSnap.hasData &&
-                            statSnap.data!.exists) {
-                          final raw =
-                              (statSnap.data!.data()
-                              as Map<String, dynamic>?)?[
-                              'memoryLevels'] as Map<String,
-                                  dynamic>? ??
-                                  {};
-                          for (var v in raw.values) {
-                            if (base.containsKey(v)) {
-                              base[v] = base[v]! + 1;
+                        // 2) Firestore データを反映
+                        if (statSnap.hasData && statSnap.data!.exists) {
+                          final data = statSnap.data!.data() as Map<String, dynamic>;
+
+                          // ── 集計版があれば優先
+                          final stats = data['memoryLevelStats'] as Map<String, dynamic>?;
+                          if (stats != null && stats.isNotEmpty) {
+                            stats.forEach((k, v) {
+                              if (lvl.containsKey(k) && v is num) {
+                                lvl[k] = v.toInt();
+                              }
+                            });
+                          } else {
+                            // ── 旧形式を走査
+                            final raw = (data['memoryLevels'] as Map<String, dynamic>? ?? {})
+                                .values
+                                .whereType<String>();
+                            for (final lv in raw) {
+                              if (lvl.containsKey(lv)) lvl[lv] = lvl[lv]! + 1;
                             }
                           }
-                          correct = base['easy']! +
-                              base['good']! +
-                              base['hard']!;
-                          total = correct + base['again']!;
                         }
-                        base['unanswered'] =
-                        count > correct
-                            ? count - correct
-                            : 0;
 
+                        // 3) answered / correct を算出
+                        final int correct = lvl['easy']! + lvl['good']! + lvl['hard']!;
+                        final int answered = correct + lvl['again']!;
+                        final int unanswered = count - answered;
+                        final memoryLevels = {
+                          ...lvl,
+                          'unanswered': max(unanswered, 0),
+                        };
+
+                        // 4) カード生成
                         return StudySetSelectableCard(
                           iconData: Icons.quiz_outlined,
                           iconColor: AppColors.blue500,
                           iconBgColor: AppColors.blue100,
                           title: qsInfo['name'] as String,
                           isVerified: false,
-                          memoryLevels:
-                          Map<String, int>.from(base),
+                          memoryLevels: memoryLevels,  // ← メーター用
                           correctAnswers: correct,
-                          totalAnswers: total,
+                          totalAnswers: count,         // ← 正答率用
                           count: count,
                           countSuffix: ' 問',
-                          onTap: () =>
-                              _toggleQuestionSet(fid, id),
+                          onTap: () => _toggleQuestionSet(fid, id),
                           isSelected: sel,
-                          onSelectionChanged: (_) =>
-                              _toggleQuestionSet(fid, id),
+                          onSelectionChanged: (_) => _toggleQuestionSet(fid, id),
                         );
                       },
                     );
-                  },
-                  childCount: expanded
-                      ? (info['questionSets'] as List).length
-                      : 0,
+
+                      },
+                  childCount:
+                  expanded ? (info['questionSets'] as List).length : 0,
                 ),
               ),
             );
           }).toList(),
         ],
+      ),
+      bottomNavigationBar: Padding(
+        padding: const EdgeInsets.only(left: 16.0, right: 16.0, bottom: 24.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.only(top: 12.0, left: 12.0, right: 12.0),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline, color: AppColors.gray600, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      infoText,
+                      style: TextStyle(color: AppColors.gray600, fontSize: 14),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.all(12.0),
+              child: ElevatedButton(
+                onPressed: onSave,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: btnColor,
+                  minimumSize: const Size.fromHeight(48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(32),
+                  ),
+                ),
+                child: Text(
+                  btnLabel,
+                  style: const TextStyle(fontSize: 16, color: Colors.white),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

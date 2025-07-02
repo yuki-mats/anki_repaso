@@ -2,7 +2,7 @@ name: repaso
 description: "A new Flutter project."
 
 publish_to: 'none'
-version: 2.7.3+1
+version: 2.9.3+1
 
 environment:
   sdk: ^3.5.3
@@ -40,12 +40,14 @@ dependencies:
   image_picker: ^1.1.2
   intl: ^0.19.0
   material_design_icons_flutter: ^7.0.7296
+  material_symbols_icons: ^4.2815.1
   package_info_plus: ^8.2.0
   path_drawing: ^1.0.1
   path_provider: ^2.1.5
   rxdart: ^0.28.0
   share_plus: ^10.1.2
   shimmer: ^3.0.0
+  shared_preferences: ^2.5.3
   sign_in_with_apple: ^6.1.4
   sliding_sheet2: ^2.0.1
   flutter_sticky_header: ^0.7.0
@@ -81,6 +83,7 @@ flutter_icons:
 flutter:
   uses-material-design: true
   assets:
+    - assets/paywall/paywall.png
     - assets/images/ios_neutral_rd_na@3x.png
   fonts:
     - family: NotoSansJP

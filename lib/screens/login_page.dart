@@ -187,172 +187,177 @@ class _LoginPageState extends State<LoginPage> {
         backgroundColor: Colors.white,
         elevation: 0,
       ),
-      body: SingleChildScrollView(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0),
-            child: Column(
-              children: [
-                const SizedBox(height: 8),
-                ElevatedButton(
-                  onPressed: _signInWithGoogle,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.blue600,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    minimumSize: const Size.fromHeight(48),
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                  ),
-                  child: const Row(
+      // ここから縦中央揃え実装
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                  child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.g_mobiledata_sharp, color: Colors.white, size: 36),
-                      Text('Googleでログイン', style: TextStyle(color: Colors.white, fontSize: 18)),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: _signInWithApple,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    minimumSize: const Size.fromHeight(48),
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                  ),
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.apple, color: Colors.white, size: 24),
-                      SizedBox(width: 8),
-                      Text('Appleでログイン', style: TextStyle(color: Colors.white, fontSize: 18)),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 32),
-                const Row(
-                  children: [
-                    Expanded(child: Divider(color: Colors.grey)),
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 8.0),
-                      child: Text('または、メールアドレスでログイン'),
-                    ),
-                    Expanded(child: Divider(color: Colors.grey)),
-                  ],
-                ),
-                const SizedBox(height: 32),
-                CommonTextField(
-                  controller: _emailController,
-                  labelText: 'メールアドレス',
-                  onChanged: (value) => setState(() => email = value),
-                ),
-                const SizedBox(height: 16),
-                CommonTextField(
-                  controller: _passwordController,
-                  labelText: 'パスワード',
-                  obscureText: !_isPasswordVisible,
-                  onChanged: (value) => setState(() => password = value),
-                  suffixIcon: IconButton(
-                    icon: Icon(_isPasswordVisible ? Icons.visibility : Icons.visibility_off),
-                    onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: _showPasswordResetDialog,
-                    child: const Text('パスワードを忘れた', style: TextStyle(color: AppColors.blue600)),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () async {
-                      final emailTrimmed = email.trim();
-                      final passwordTrimmed = password.trim();
-
-                      // メールアドレスの形式を事前チェック
-                      final emailRegex = RegExp(r"^[\w\.-]+@[\w\.-]+\.\w+$");
-                      if (!emailRegex.hasMatch(emailTrimmed)) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('メールアドレスの形式が正しくありません。')),
-                        );
-                        return;
-                      }
-
-                      try {
-                        final userCredential = await _auth.signInWithEmailAndPassword(
-                          email: emailTrimmed,
-                          password: passwordTrimmed,
-                        );
-                        final user = userCredential.user;
-                        if (user != null && !user.emailVerified) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('メールアドレスが確認されていません。確認してください。')),
-                          );
-                          await _auth.signOut();
-                          return;
-                        }
-
-                        await requestTrackingPermission();
-                        Navigator.pushAndRemoveUntil(
-                          context,
-                          MaterialPageRoute(builder: (context) => const MainPage()),
-                              (route) => false,
-                        );
-                      } on FirebaseAuthException catch (e) {
-                        String errorMessage;
-                        switch (e.code) {
-                          case 'user-disabled':
-                            errorMessage = 'このユーザーアカウントは無効化されています。';
-                            break;
-                          case 'user-not-found':
-                            errorMessage = 'ユーザーが見つかりません。メールアドレスを確認してください。';
-                            break;
-                          case 'wrong-password':
-                            errorMessage = 'パスワードが間違っています。';
-                            break;
-                          default:
-                            errorMessage = 'エラーが発生しました（${e.message}）';
-                            break;
-                        }
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(errorMessage)),
-                        );
-                      } catch (e) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('予期しないエラーが発生しました: $e')),
-                        );
-                      }
-                    },
-                    style: OutlinedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        side: const BorderSide(color: Colors.grey),
+                      const SizedBox(height: 8),
+                      ElevatedButton(
+                        onPressed: _signInWithGoogle,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.blue600,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          minimumSize: const Size.fromHeight(48),
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.g_mobiledata_sharp, color: Colors.white, size: 36),
+                            Text('Googleでログイン', style: TextStyle(color: Colors.white, fontSize: 18)),
+                          ],
+                        ),
                       ),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ).copyWith(
-                      overlayColor: WidgetStateProperty.resolveWith<Color?>((states) {
-                        if (states.contains(WidgetState.pressed)) {
-                          return AppColors.gray50;
-                        }
-                        return null;
-                      }),
-                    ),
-                    child: const Text(
-                      'ログインする',
-                      style: TextStyle(fontSize: 16, color: Colors.black87, fontWeight: FontWeight.bold),
-                    ),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: _signInWithApple,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.black,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          minimumSize: const Size.fromHeight(48),
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.apple, color: Colors.white, size: 24),
+                            SizedBox(width: 8),
+                            Text('Appleでログイン', style: TextStyle(color: Colors.white, fontSize: 18)),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+                      const Row(
+                        children: [
+                          Expanded(child: Divider(color: Colors.grey)),
+                          Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 8.0),
+                            child: Text('または、メールアドレスでログイン'),
+                          ),
+                          Expanded(child: Divider(color: Colors.grey)),
+                        ],
+                      ),
+                      const SizedBox(height: 32),
+                      CommonTextField(
+                        controller: _emailController,
+                        labelText: 'メールアドレス',
+                        onChanged: (value) => setState(() => email = value),
+                      ),
+                      const SizedBox(height: 16),
+                      CommonTextField(
+                        controller: _passwordController,
+                        labelText: 'パスワード',
+                        obscureText: !_isPasswordVisible,
+                        onChanged: (value) => setState(() => password = value),
+                        suffixIcon: IconButton(
+                          icon: Icon(_isPasswordVisible ? Icons.visibility : Icons.visibility_off),
+                          onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: _showPasswordResetDialog,
+                          child: const Text('パスワードを忘れた', style: TextStyle(color: AppColors.blue600)),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () async {
+                            final emailTrimmed = email.trim();
+                            final passwordTrimmed = password.trim();
+                            final emailRegex = RegExp(r"^[\w\.-]+@[\w\.-]+\.\w+$");
+                            if (!emailRegex.hasMatch(emailTrimmed)) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('メールアドレスの形式が正しくありません。')),
+                              );
+                              return;
+                            }
+                            try {
+                              final userCredential = await _auth.signInWithEmailAndPassword(
+                                email: emailTrimmed,
+                                password: passwordTrimmed,
+                              );
+                              final user = userCredential.user;
+                              if (user != null && !user.emailVerified) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('メールアドレスが確認されていません。確認してください。')),
+                                );
+                                await _auth.signOut();
+                                return;
+                              }
+                              await requestTrackingPermission();
+                              Navigator.pushAndRemoveUntil(
+                                context,
+                                MaterialPageRoute(builder: (context) => const MainPage()),
+                                    (route) => false,
+                              );
+                            } on FirebaseAuthException catch (e) {
+                              String errorMessage;
+                              switch (e.code) {
+                                case 'user-disabled':
+                                  errorMessage = 'このユーザーアカウントは無効化されています。';
+                                  break;
+                                case 'user-not-found':
+                                  errorMessage = 'ユーザーが見つかりません。メールアドレスを確認してください。';
+                                  break;
+                                case 'wrong-password':
+                                  errorMessage = 'パスワードが間違っています。';
+                                  break;
+                                default:
+                                  errorMessage = 'エラーが発生しました（${e.message}）';
+                                  break;
+                              }
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(errorMessage)),
+                              );
+                            } catch (e) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('予期しないエラーが発生しました: $e')),
+                              );
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              side: const BorderSide(color: Colors.grey),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ).copyWith(
+                            overlayColor: MaterialStateProperty.resolveWith<Color?>((states) {
+                              if (states.contains(MaterialState.pressed)) {
+                                return AppColors.gray50;
+                              }
+                              return null;
+                            }),
+                          ),
+                          child: const Text(
+                            'ログインする',
+                            style: TextStyle(fontSize: 16, color: Colors.black87, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 40),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 40),
-              ],
+              ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }

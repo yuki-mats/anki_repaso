@@ -40,7 +40,6 @@ class SignUpPageState extends State<SignUpPage> {
   String defaultProfileImageUrl =
       'https://firebasestorage.googleapis.com/v0/b/repaso-rbaqy4.appspot.com/o/profile_images%2Fdefault_profile_icon_v1.0.png?alt=media&token=545710a7-af21-41d8-ab8b-c56484685f68';
 
-
   Future<User?> signInWithGoogle() async {
     try {
       if (kIsWeb) {
@@ -66,7 +65,7 @@ class SignUpPageState extends State<SignUpPage> {
 
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (_) => MainPage()),
-                (_) => false,  // すべての既存ルートを削除
+                (_) => false,
           );
         }
         return user;
@@ -100,7 +99,7 @@ class SignUpPageState extends State<SignUpPage> {
 
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (_) => MainPage()),
-                (_) => false,  // すべての既存ルートを削除
+                (_) => false,
           );
         }
         return user;
@@ -139,7 +138,7 @@ class SignUpPageState extends State<SignUpPage> {
 
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (_) => MainPage()),
-                (_) => false,  // すべての既存ルートを削除
+                (_) => false,
           );
         }
         return user;
@@ -174,7 +173,7 @@ class SignUpPageState extends State<SignUpPage> {
 
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (_) => MainPage()),
-                (_) => false,  // すべての既存ルートを削除
+                (_) => false,
           );
         }
         return user;
@@ -229,8 +228,7 @@ class SignUpPageState extends State<SignUpPage> {
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-              content:
-              Text('確認メールを送信しました。メールを確認してください。')),
+              content: Text('確認メールを送信しました。メールを確認してください。')),
         );
 
         Navigator.pushReplacement(
@@ -277,181 +275,189 @@ class SignUpPageState extends State<SignUpPage> {
         backgroundColor: Colors.white,
         elevation: 0,
       ),
-      body: SingleChildScrollView(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0),
-            child: Column(
-              children: [
-                const SizedBox(height: 8),
-                ElevatedButton(
-                  onPressed: signInWithGoogle,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.blue600,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    minimumSize: const Size.fromHeight(48),
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment:
-                    CrossAxisAlignment.center, // ← 上下中央揃え！
-                    mainAxisSize: MainAxisSize.min,
-                    children: const [
-                      Icon(Icons.g_mobiledata_sharp,
-                          color: Colors.white, size: 36),
-                      Text('Googleで登録',
-                          style:
-                          TextStyle(color: Colors.white, fontSize: 18)),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center, // 縦中央揃え
+                    children: [
+                      const SizedBox(height: 8),
+                      ElevatedButton(
+                        onPressed: signInWithGoogle,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.blue600,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          minimumSize: const Size.fromHeight(48),
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(Icons.g_mobiledata_sharp,
+                                color: Colors.white, size: 36),
+                            Text('Googleで登録',
+                                style: TextStyle(
+                                    color: Colors.white, fontSize: 18)),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        height: 48,
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          icon:
+                          const Icon(Icons.apple, color: Colors.white, size: 24),
+                          label: const Text(
+                            'Appleで登録',
+                            style: TextStyle(color: Colors.white, fontSize: 18),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.black,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          onPressed: signInWithApple,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      const Row(
+                        children: [
+                          Expanded(child: Divider(color: Colors.grey)),
+                          Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 8.0),
+                            child: Text('または、メールアドレスで登録'),
+                          ),
+                          Expanded(child: Divider(color: Colors.grey)),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      CommonTextField(
+                        controller: _emailController,
+                        labelText: 'メールアドレス',
+                        onChanged: (value) {
+                          final sanitized = value.replaceAll(RegExp(r'\s'), '');
+                          if (sanitized != value) {
+                            _emailController.text = sanitized;
+                            _emailController.selection =
+                                TextSelection.fromPosition(
+                                    TextPosition(offset: sanitized.length));
+                          }
+                          setState(() {});
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      CommonTextField(
+                        controller: _passwordController,
+                        labelText: 'パスワード(8文字以上)',
+                        obscureText: !isPasswordVisible,
+                        onChanged: _validatePassword,
+                        suffixIcon: IconButton(
+                          icon: Icon(isPasswordVisible
+                              ? Icons.visibility
+                              : Icons.visibility_off),
+                          onPressed: () =>
+                              setState(() => isPasswordVisible = !isPasswordVisible),
+                        ),
+                        errorText: passwordError,
+                      ),
+                      const SizedBox(height: 16),
+                      CommonTextField(
+                        controller: _confirmPasswordController,
+                        labelText: 'パスワード確認',
+                        obscureText: !isConfirmPasswordVisible,
+                        onChanged: (_) => setState(() {}),
+                        suffixIcon: IconButton(
+                          icon: Icon(isConfirmPasswordVisible
+                              ? Icons.visibility
+                              : Icons.visibility_off),
+                          onPressed: () =>
+                              setState(() => isConfirmPasswordVisible = !isConfirmPasswordVisible),
+                        ),
+                        errorText: _passwordController.text !=
+                            _confirmPasswordController.text &&
+                            _confirmPasswordController.text.isNotEmpty
+                            ? 'パスワードが一致しません。'
+                            : null,
+                      ),
+                      const SizedBox(height: 24),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: RichText(
+                          textAlign: TextAlign.center,
+                          text: TextSpan(
+                            style: const TextStyle(
+                                color: Colors.black, fontSize: 12),
+                            children: [
+                              const TextSpan(text: '登録を続行すると、'),
+                              TextSpan(
+                                text: '利用規約',
+                                style: const TextStyle(
+                                    color: AppColors.blue600,
+                                    decoration: TextDecoration.none),
+                                recognizer: TapGestureRecognizer()
+                                  ..onTap = () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (_) =>
+                                        const TermsOfServicePage()),
+                                  ),
+                              ),
+                              const TextSpan(text: 'および'),
+                              TextSpan(
+                                text: 'プライバシーポリシー',
+                                style: const TextStyle(
+                                    color: AppColors.blue600,
+                                    decoration: TextDecoration.none),
+                                recognizer: TapGestureRecognizer()
+                                  ..onTap = () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (_) =>
+                                        const PrivacyPolicyPage()),
+                                  ),
+                              ),
+                              const TextSpan(text: 'に同意したものとみなされます。'),
+                            ],
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: isSignUpEnabled ? _signUpUser : null,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: isSignUpEnabled
+                                ? AppColors.blue600
+                                : Colors.grey,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8)),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          child: const Text('登録する',
+                              style: TextStyle(
+                                  fontSize: 16, color: Colors.white)),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  height: 48,
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    icon:
-                    const Icon(Icons.apple, color: Colors.white, size: 24),
-                    label: const Text(
-                      'Appleで登録',
-                      style: TextStyle(color: Colors.white, fontSize: 18),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.black,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                    onPressed: signInWithApple,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                const Row(
-                  children: [
-                    Expanded(child: Divider(color: Colors.grey)),
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 8.0),
-                      child: Text('または、メールアドレスで登録'),
-                    ),
-                    Expanded(child: Divider(color: Colors.grey)),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                CommonTextField(
-                  controller: _emailController,
-                  labelText: 'メールアドレス',
-                  onChanged: (value) {
-                    // 空白文字をすべて取り除く
-                    final sanitized = value.replaceAll(RegExp(r'\s'), '');
-                    if (sanitized != value) {
-                      // コントローラーのテキストを更新し、カーソルを末尾に移動
-                      _emailController.text = sanitized;
-                      _emailController.selection = TextSelection.fromPosition(
-                        TextPosition(offset: sanitized.length),
-                      );
-                    }
-                    setState(() {
-                      // ボタン有効/無効判定のための rebuild
-                    });
-                  },
-                ),
-                const SizedBox(height: 16),
-                CommonTextField(
-                  controller: _passwordController,
-                  labelText: 'パスワード(8文字以上)',
-                  obscureText: !isPasswordVisible,
-                  onChanged: _validatePassword,
-                  suffixIcon: IconButton(
-                    icon: Icon(isPasswordVisible
-                        ? Icons.visibility
-                        : Icons.visibility_off),
-                    onPressed: () =>
-                        setState(() => isPasswordVisible = !isPasswordVisible),
-                  ),
-                  errorText: passwordError,
-                ),
-                const SizedBox(height: 16),
-                CommonTextField(
-                  controller: _confirmPasswordController,
-                  labelText: 'パスワード確認',
-                  obscureText: !isConfirmPasswordVisible,
-                  onChanged: (_) => setState(() {}),
-                  suffixIcon: IconButton(
-                    icon: Icon(isConfirmPasswordVisible
-                        ? Icons.visibility
-                        : Icons.visibility_off),
-                    onPressed: () => setState(() =>
-                    isConfirmPasswordVisible = !isConfirmPasswordVisible),
-                  ),
-                  errorText: _passwordController.text !=
-                      _confirmPasswordController.text &&
-                      _confirmPasswordController.text.isNotEmpty
-                      ? 'パスワードが一致しません。'
-                      : null,
-                ),
-                const SizedBox(height: 24),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: RichText(
-                    textAlign: TextAlign.center,
-                    text: TextSpan(
-                      style:
-                      const TextStyle(color: Colors.black, fontSize: 12),
-                      children: [
-                        const TextSpan(text: '登録を続行すると、'),
-                        TextSpan(
-                          text: '利用規約',
-                          style: const TextStyle(
-                              color: AppColors.blue600,
-                              decoration: TextDecoration.none),
-                          recognizer: TapGestureRecognizer()
-                            ..onTap = () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (_) => const TermsOfServicePage()),
-                            ),
-                        ),
-                        const TextSpan(text: 'および'),
-                        TextSpan(
-                          text: 'プライバシーポリシー',
-                          style: const TextStyle(
-                              color: AppColors.blue600,
-                              decoration: TextDecoration.none),
-                          recognizer: TapGestureRecognizer()
-                            ..onTap = () => Navigator.push(
-                              context,MaterialPageRoute(
-                                builder: (_) => const PrivacyPolicyPage()),
-                            ),
-                        ),
-                        const TextSpan(text: 'に同意したものとみなされます。'),
-                      ],
-                    ),
-                  ),
-                ),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: isSignUpEnabled ? _signUpUser : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor:
-                      isSignUpEnabled ? AppColors.blue600 : Colors.grey,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8)),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                    child: const Text('登録する',
-                        style: TextStyle(fontSize: 16, color: Colors.white)),
-                  ),
-                ),
-                const SizedBox(height: 24),
-              ],
+              ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }

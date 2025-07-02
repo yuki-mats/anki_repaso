@@ -133,10 +133,14 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
       ),
     );
   }
-
-  void showQuestionSetOptionsModal(BuildContext context, DocumentSnapshot folder, DocumentSnapshot questionSet) {
-    //owner / editor 以外はすべてビューワー扱い
-    final bool isViewer = widget.folderPermission != 'owner' && widget.folderPermission != 'editor';
+  void showQuestionSetOptionsModal(
+      BuildContext context,
+      DocumentSnapshot folder,
+      DocumentSnapshot questionSet,
+      ) {
+    // owner / editor 以外はビューワー扱い
+    final bool isViewer = widget.folderPermission != 'owner'
+        && widget.folderPermission != 'editor';
 
     showModalBottomSheet(
       isScrollControlled: true,
@@ -144,7 +148,7 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(12.0),
+          topLeft:  Radius.circular(12.0),
           topRight: Radius.circular(12.0),
         ),
       ),
@@ -152,11 +156,12 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
         return Padding(
           padding: const EdgeInsets.all(16.0),
           child: Container(
-            height: 420,
+            height: isViewer ? 280 : 420,
             child: Column(
               children: [
+                // ドラッグハンドル
                 Padding(
-                  padding: const EdgeInsets.only(top: 0),
+                  padding: const EdgeInsets.only(top: 0, bottom: 16),
                   child: Center(
                     child: Container(
                       width: 40,
@@ -168,6 +173,7 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                     ),
                   ),
                 ),
+                // タイトル
                 ListTile(
                   leading: const RoundedIconBox(
                     icon: Icons.quiz_outlined,
@@ -187,35 +193,32 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                 const SizedBox(height: 8),
                 const Divider(height: 1, color: AppColors.gray100),
                 const SizedBox(height: 16),
+
+                // ── 共通メニュー ──
                 ListTile(
                   leading: Container(
-                    width: 40,
-                    height: 40,
+                    width: 40, height: 40,
                     decoration: BoxDecoration(
                       color: AppColors.gray100,
                       borderRadius: BorderRadius.circular(100),
                     ),
-                    child:
-                    const Icon(Icons.list, size: 22, color: AppColors.gray600),
+                    child: const Icon(Icons.list, size: 22, color: AppColors.gray600),
                   ),
                   title: const Text('問題の一覧', style: TextStyle(fontSize: 16)),
                   onTap: () {
                     Navigator.of(context).pop();
-                    navigateToQuestionListPage(
-                        context, widget.folder, questionSet);
+                    navigateToQuestionListPage(context, folder, questionSet);
                   },
                 ),
                 const SizedBox(height: 8),
                 ListTile(
                   leading: Container(
-                    width: 40,
-                    height: 40,
+                    width: 40, height: 40,
                     decoration: BoxDecoration(
                       color: AppColors.gray100,
                       borderRadius: BorderRadius.circular(100),
                     ),
-                    child: const Icon(Icons.show_chart_rounded,
-                        size: 22, color: AppColors.gray600),
+                    child: const Icon(Icons.show_chart_rounded, size: 22, color: AppColors.gray600),
                   ),
                   title: const Text('グラフの確認', style: TextStyle(fontSize: 16)),
                   onTap: () {
@@ -223,77 +226,62 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                     navigateToLearningAnalyticsPage(context, questionSet);
                   },
                 ),
-                const SizedBox(height: 8),
-                Tooltip(
-                  message: isViewer ? '編集権限がありません。' : '',
-                  child: ListTile(
-                    enabled: !isViewer,
+
+                // ── 編集権限ありのみ表示 ──
+                if (!isViewer) ...[
+                  const SizedBox(height: 8),
+                  // 問題の追加
+                  ListTile(
                     leading: Container(
-                      width: 40,
-                      height: 40,
+                      width: 40, height: 40,
                       decoration: BoxDecoration(
                         color: AppColors.gray100,
                         borderRadius: BorderRadius.circular(100),
                       ),
-                      child:
-                      const Icon(Icons.add, size: 22, color: AppColors.gray600),
+                      child: const Icon(Icons.add, size: 22, color: AppColors.gray600),
                     ),
                     title: const Text('問題の追加', style: TextStyle(fontSize: 16)),
-                    onTap: isViewer
-                        ? null
-                        : () {
+                    onTap: () {
                       Navigator.of(context).pop();
                       navigateToQuestionAddPage(
-                          context, widget.folder.reference, questionSet.reference);
+                        context,
+                        widget.folder.reference,
+                        questionSet.reference,
+                      );
                     },
                   ),
-                ),
-                const SizedBox(height: 8),
-                Tooltip(
-                  message: isViewer ? '編集権限がありません。' : '',
-                  child: ListTile(
-                    enabled: !isViewer,
+                  const SizedBox(height: 8),
+                  // 名前を変更
+                  ListTile(
                     leading: Container(
-                      width: 40,
-                      height: 40,
+                      width: 40, height: 40,
                       decoration: BoxDecoration(
                         color: AppColors.gray100,
                         borderRadius: BorderRadius.circular(100),
                       ),
-                      child: const Icon(Icons.edit_outlined,
-                          size: 22, color: AppColors.gray600),
+                      child: const Icon(Icons.edit_outlined, size: 22, color: AppColors.gray600),
                     ),
                     title: const Text('名前を変更', style: TextStyle(fontSize: 16)),
-                    onTap: isViewer
-                        ? null
-                        : () {
+                    onTap: () {
                       Navigator.of(context).pop();
-                      navigateToQuestionSetsEditPage(
-                          context, widget.folder, questionSet);
+                      navigateToQuestionSetsEditPage(context, folder, questionSet);
                     },
                   ),
-                ),
-                const SizedBox(height: 8),
-                Tooltip(
-                  message: isViewer ? '削除権限がありません。' : '',
-                  child: ListTile(
-                    enabled: !isViewer,
+                  const SizedBox(height: 8),
+                  // 削除する
+                  ListTile(
                     leading: Container(
-                      width: 40,
-                      height: 40,
+                      width: 40, height: 40,
                       decoration: BoxDecoration(
                         color: AppColors.gray100,
                         borderRadius: BorderRadius.circular(100),
                       ),
-                      child: const Icon(Icons.delete_outline,
-                          size: 22, color: AppColors.gray600),
+                      child: const Icon(Icons.delete_outline, size: 22, color: AppColors.gray600),
                     ),
                     title: const Text('削除する', style: TextStyle(fontSize: 16)),
-                    onTap: isViewer
-                        ? null
-                        : () async {
+                    onTap: () async {
                       Navigator.of(context).pop();
-                      bool? confirmDelete = await showDialog<bool>(
+                      final shouldDelete = await showDialog<bool>(
                         context: context,
                         builder: (c) => AlertDialog(
                           shape: RoundedRectangleBorder(
@@ -302,28 +290,22 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                           backgroundColor: Colors.white,
                           title: const Text(
                             '本当に削除しますか？',
-                            style: TextStyle(
-                                color: Colors.black87, fontSize: 18),
+                            style: TextStyle(color: Colors.black87, fontSize: 18),
                           ),
-                          content: const Text(
-                              '問題集の配下の問題も削除されます。この操作は取り消しできません。'),
+                          content: const Text('問題集の配下の問題も削除されます。この操作は取り消しできません。'),
                           actions: [
                             TextButton(
                               onPressed: () => Navigator.pop(c, false),
-                              child: const Text('戻る',
-                                  style:
-                                  TextStyle(color: Colors.black87)),
+                              child: const Text('戻る', style: TextStyle(color: Colors.black87)),
                             ),
                             TextButton(
                               onPressed: () => Navigator.pop(c, true),
-                              child: const Text('削除',
-                                  style: TextStyle(color: Colors.red)),
+                              child: const Text('削除', style: TextStyle(color: Colors.red)),
                             ),
                           ],
                         ),
                       );
-
-                      if (confirmDelete == true) {
+                      if (shouldDelete == true) {
                         final firestore = FirebaseFirestore.instance;
                         final batch = firestore.batch();
                         final deletedAt = FieldValue.serverTimestamp();
@@ -332,11 +314,9 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                           'isDeleted': true,
                           'deletedAt': deletedAt,
                         });
-
                         final qsnap = await firestore
                             .collection("questions")
-                            .where("questionSetRef",
-                            isEqualTo: questionSet.reference)
+                            .where("questionSetRef", isEqualTo: questionSet.reference)
                             .get();
                         for (var q in qsnap.docs) {
                           batch.update(q.reference, {
@@ -345,18 +325,15 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                           });
                         }
                         await batch.commit();
-                        await updateQuestionCounts(
-                            widget.folder.id, questionSet.id);
+                        await updateQuestionCounts(widget.folder.id, questionSet.id);
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                              content: Text(
-                                  '問題集と配下の問題が削除されました。')),
+                          const SnackBar(content: Text('問題集と配下の問題が削除されました。')),
                         );
                         Navigator.of(context).pop(true);
                       }
                     },
                   ),
-                ),
+                ],
               ],
             ),
           ),
@@ -429,7 +406,7 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                 return aName.compareTo(bName);
               });
               return ListView.builder(
-                padding: const EdgeInsets.only(top: 16, bottom: 80),
+                padding: const EdgeInsets.only(top: 16, bottom: 140),
                 itemCount: questionSets.length,
                 itemBuilder: (context, index) {
                   final qs = questionSets[index];

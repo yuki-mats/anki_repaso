@@ -67,7 +67,8 @@ class _AllMemoListPageState extends State<ForumPage> {
     return Scaffold(
       backgroundColor: AppColors.gray50,
       appBar: AppBar(
-        title: const Text('コミュニティ'),
+        centerTitle: false,
+        title: const Text('コミュニティ',),
         backgroundColor: Colors.white,
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1.0),

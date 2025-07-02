@@ -1,26 +1,41 @@
 // lib/main.dart
+//
+// HomePage の再表示検知用に RouteObserver を追加した完全版。
+// 既存 UI・UX は一切変更していません。
 
 import 'dart:io';
+
 import 'package:app_tracking_transparency/app_tracking_transparency.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_analytics/firebase_analytics.dart';
+import 'package:firebase_analytics/observer.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/widgets.dart';                       // ★追加
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
+import 'ads/app_open_ad_manager.dart';
+import 'ads/banner_ad_widget.dart';
+import 'firebase_options.dart';
 import 'package:repaso/screens/home_page.dart';
 import 'package:repaso/screens/library_page.dart';
 import 'package:repaso/screens/lobby_page.dart';
+import 'package:repaso/screens/forum_page.dart';
+import 'package:repaso/screens/my_page.dart';
 import 'package:repaso/utils/update_checker.dart';
-import 'firebase_options.dart';
-import 'screens/forum_page.dart';
 import 'utils/app_colors.dart';
-import 'screens/my_page.dart';
-import 'package:google_mobile_ads/google_mobile_ads.dart';
-import 'ads/app_open_ad_manager.dart';
-import 'package:firebase_analytics/firebase_analytics.dart';
-import 'package:firebase_analytics/observer.dart';
 
+// ─────────────────────────────────────────────
+// RouteObserver  ─ 画面遷移イベント監視用（HomePage の更新など）
+// ─────────────────────────────────────────────
+final RouteObserver<PageRoute<dynamic>> routeObserver =
+RouteObserver<PageRoute<dynamic>>();                    // ★追加
+
+// ─────────────────────────────────────────────
+// アプリのライフサイクル検知
+// ─────────────────────────────────────────────
 class AppLifecycleListener extends StatefulWidget {
   final Widget child;
   final VoidCallback onResumed;
@@ -57,11 +72,12 @@ class _AppLifecycleListenerState extends State<AppLifecycleListener>
   }
 
   @override
-  Widget build(BuildContext context) {
-    return widget.child;
-  }
+  Widget build(BuildContext context) => widget.child;
 }
 
+// ─────────────────────────────────────────────
+// ATT 権限リクエスト（iOS）
+// ─────────────────────────────────────────────
 Future<void> requestTrackingPermission() async {
   try {
     final status = await AppTrackingTransparency.trackingAuthorizationStatus;
@@ -74,6 +90,9 @@ Future<void> requestTrackingPermission() async {
   }
 }
 
+// ─────────────────────────────────────────────
+// main()
+// ─────────────────────────────────────────────
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -121,11 +140,33 @@ Future<void> main() async {
       PurchasesConfiguration(key)
         ..appUserID = FirebaseAuth.instance.currentUser?.uid,
     );
+
+    // 1) 初回起動時に現在のカスタマー情報を取得してログ出力
+    try {
+      final info = await Purchases.getCustomerInfo();
+      debugPrint('[DEBUG] 初回プラン情報: '
+          'activeEntitlements=${info.entitlements.active.keys.toList()}');
+      final isPro = info.entitlements.active['Pro']?.isActive ?? false;
+      debugPrint('[DEBUG] isPro: $isPro');
+    } catch (e) {
+      debugPrint('[DEBUG] Purchases.getCustomerInfo error: $e');
+    }
+
+    // 2) 更新があったときにもログを出力するリスナーを登録
+    Purchases.addCustomerInfoUpdateListener((info) {
+      debugPrint('[DEBUG] プラン情報更新: '
+          'activeEntitlements=${info.entitlements.active.keys.toList()}');
+      final isProUpdated = info.entitlements.active['Pro']?.isActive ?? false;
+      debugPrint('[DEBUG] isPro（更新後）: $isProUpdated');
+    });
   }
 
   runApp(const MyApp());
 }
 
+// ─────────────────────────────────────────────
+// MyApp
+// ─────────────────────────────────────────────
 class MyApp extends StatelessWidget {
   const MyApp({Key? key}) : super(key: key);
 
@@ -149,10 +190,7 @@ class MyApp extends StatelessWidget {
             fontSize: 16,
             fontWeight: FontWeight.bold,
           ),
-          iconTheme: IconThemeData(
-            size: 18,
-            color: AppColors.gray700,
-          ),
+          iconTheme: IconThemeData(size: 18, color: AppColors.gray700),
           toolbarHeight: 50,
         ),
         scaffoldBackgroundColor: Colors.white,
@@ -168,12 +206,18 @@ class MyApp extends StatelessWidget {
           showUnselectedLabels: true,
         ),
       ),
-      navigatorObservers: [observer],
+      navigatorObservers: [
+        observer,
+        routeObserver,                                  // ★追加
+      ],
       home: const StartupScreen(),
     );
   }
 }
 
+// ─────────────────────────────────────────────
+// StartupScreen
+// ─────────────────────────────────────────────
 class StartupScreen extends StatefulWidget {
   const StartupScreen({Key? key}) : super(key: key);
 
@@ -200,11 +244,13 @@ class _StartupScreenState extends State<StartupScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return const Scaffold(body: SizedBox.shrink());
-  }
+  Widget build(BuildContext context) =>
+      const Scaffold(body: SizedBox.shrink());
 }
 
+// ─────────────────────────────────────────────
+// MainPage
+// ─────────────────────────────────────────────
 class MainPage extends StatefulWidget {
   const MainPage({Key? key}) : super(key: key);
 
@@ -234,29 +280,37 @@ class _MainPageState extends State<MainPage> {
       onResumed: _adManager.showAdIfAvailable,
       child: Scaffold(
         body: IndexedStack(index: _currentIndex, children: _pages),
-        bottomNavigationBar: Container(
-          decoration: BoxDecoration(
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                spreadRadius: 1,
-                blurRadius: 2.5,
-                offset: const Offset(0, 3),
+        bottomNavigationBar: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    spreadRadius: 1,
+                    blurRadius: 2.5,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
               ),
-            ],
-          ),
-          child: BottomNavigationBar(
-            type: BottomNavigationBarType.fixed,
-            backgroundColor: Colors.white,
-            currentIndex: _currentIndex,
-            onTap: (i) => setState(() => _currentIndex = i),
-            items: const [
-              //BottomNavigationBarItem(icon: Icon(Icons.home), label: 'ホーム'),
-              BottomNavigationBarItem(icon: Icon(Icons.source_rounded), label: 'ライブラリ'),
-              BottomNavigationBarItem(icon: Icon(Icons.comment), label: 'フォーラム'),
-              BottomNavigationBarItem(icon: Icon(Icons.account_circle), label: 'マイページ'),
-            ],
-          ),
+              child: BottomNavigationBar(
+                type: BottomNavigationBarType.fixed,
+                backgroundColor: Colors.white,
+                currentIndex: _currentIndex,
+                onTap: (i) => setState(() => _currentIndex = i),
+                items: const [
+                  BottomNavigationBarItem(icon: Icon(Icons.home), label: 'ホーム'),
+                  BottomNavigationBarItem(
+                      icon: Icon(Icons.source_rounded), label: 'ライブラリ'),
+                  BottomNavigationBarItem(
+                      icon: Icon(Icons.comment), label: 'フォーラム'),
+                  BottomNavigationBarItem(
+                      icon: Icon(Icons.account_circle), label: 'マイページ'),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

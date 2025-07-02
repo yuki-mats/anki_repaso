@@ -1,7 +1,6 @@
 // lib/screens/my_page.dart
 //
-// UI はそのままに、EntitlementGate を使って「寄付プラン」タイルを
-// Pro ユーザー向けにステータス表示（登録済み／未登録）するようにした版。
+// 寄付プランを最上部に配置し、すべてのカードを白背景・影なしに統一した版。
 
 import 'dart:io' show Platform;
 
@@ -10,13 +9,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:material_symbols_icons/symbols.dart';
 import 'package:repaso/screens/paywall_page.dart';
-import 'package:repaso/screens/privacy_policy_page.dart';
 import 'package:repaso/screens/profile_edit_page.dart';
-import 'package:repaso/screens/terms_of_service_page.dart';
 import 'package:repaso/screens/lobby_page.dart';
+import 'package:repaso/utils/entitlement_gate.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
-import 'package:repaso/utils/entitlement_gate.dart';   // ← 追加
+import 'package:url_launcher/url_launcher.dart';
 
 class MyPage extends StatefulWidget {
   const MyPage({Key? key}) : super(key: key);
@@ -46,21 +45,20 @@ class _MyPageState extends State<MyPage> {
       final data = doc.data();
       setState(() {
         profileImageUrl = data?['profileImageUrl'] ?? profileImageUrl;
-        userName        = data?['name'] ?? userName;
+        userName = data?['name'] ?? userName;
       });
     } catch (e) {
       debugPrint('ユーザーデータ取得エラー: $e');
     }
   }
 
-  /* ------------- アカウント削除まわり（省略なし、元コードそのまま） ------------- */
+  /* ────────────── アカウント削除まわり（ロジック変更なし） ────────────── */
   Future<void> _reauthenticateAndDeleteAccount(BuildContext context) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    final providerId = user.providerData.isNotEmpty
-        ? user.providerData.first.providerId
-        : 'password';
+    final providerId =
+    user.providerData.isNotEmpty ? user.providerData.first.providerId : 'password';
 
     final confirmed = await _showConfirmDialog(context, providerId);
     if (!confirmed) return;
@@ -70,10 +68,8 @@ class _MyPageState extends State<MyPage> {
         case 'password':
           final password = await _askPassword(context);
           if (password == null) return;
-          final credential = EmailAuthProvider.credential(
-            email: user.email!,
-            password: password,
-          );
+          final credential =
+          EmailAuthProvider.credential(email: user.email!, password: password);
           await user.reauthenticateWithCredential(credential);
           break;
         case 'google.com':
@@ -133,7 +129,7 @@ class _MyPageState extends State<MyPage> {
     }
   }
 
-  /* ---------- 以下、ダイアログ系ヘルパーは元コードと同じなので省略せず保持 ---------- */
+  /* ──────────────── ダイアログ系ヘルパー（ロジック変更なし） ──────────────── */
   Future<bool> _showConfirmDialog(BuildContext context, String providerId) async {
     final providerLabel = {
       'password': 'メールアドレス',
@@ -190,13 +186,16 @@ class _MyPageState extends State<MyPage> {
     return ok == true ? controller.text : null;
   }
 
-  /* ------------------------------ UI ------------------------------ */
+  /* ────────────────────────── UI ────────────────────────── */
 
   @override
   Widget build(BuildContext context) {
     final email = FirebaseAuth.instance.currentUser?.email ?? 'メールアドレス未設定';
     return Scaffold(
-      appBar: AppBar(title: const Text('マイページ'), centerTitle: true),
+      backgroundColor: Colors.grey[100],
+      appBar: AppBar(
+          title: const Text('マイページ'),
+          centerTitle: false),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: SingleChildScrollView(
@@ -204,7 +203,7 @@ class _MyPageState extends State<MyPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildProfileSection(email),
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
               EntitlementBuilder(
                 builder: (_, isPro) => _buildSettingsList(context, isPro),
               ),
@@ -215,66 +214,75 @@ class _MyPageState extends State<MyPage> {
     );
   }
 
+  /* -------- プロフィールカード（白背景・影なしに変更） -------- */
   Widget _buildProfileSection(String email) {
-    return Row(
-      children: [
-        CircleAvatar(radius: 32, backgroundImage: NetworkImage(profileImageUrl)),
-        const SizedBox(width: 16),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(userName,
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  overflow: TextOverflow.ellipsis),
-              const SizedBox(height: 4),
-              Text(email,
-                  style: const TextStyle(fontSize: 16, color: Colors.grey),
-                  overflow: TextOverflow.ellipsis),
-            ],
-          ),
+    return Card(
+      elevation: 0,              // 影なし
+      color: Colors.white,       // 白背景
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+        child: Row(
+          children: [
+            CircleAvatar(radius: 40, backgroundImage: NetworkImage(profileImageUrl)),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    userName,
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    email,
+                    style: const TextStyle(fontSize: 14, color: Colors.grey),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
+  /* -------- 設定カード群 -------- */
   Widget _buildSettingsList(BuildContext context, bool isPro) {
-    final donateTitle = isPro ? '寄付プラン（登録済み）' : '寄付プラン';
-    final donateIcon  = isPro ? Icons.check_circle : Icons.shopping_cart_outlined;
+    final donateTitle = isPro ? 'Anki Pro 加入中' : 'Anki Proで学習';
+    //色を黄色にしたい。
+    // 寄付アイコン（Proユーザーは特別なアイコンを使用）
+    final donateIcon = isPro ? Symbols.crown_rounded : Symbols.crown_rounded;
 
-    return Column(
-      children: [
-        const SizedBox(height: 16),
-        ListTile(
-          leading: const Icon(Icons.person, size: 22),
-          title: const Text('プロフィール編集', style: TextStyle(fontSize: 14)),
-          onTap: () async {
-            final updated = await Navigator.push<bool>(
-              context,
-              MaterialPageRoute(builder: (_) => ProfileEditPage()),
-            );
-            if (updated == true) _fetchUserData();
-          },
-        ),
-        const Divider(),
-        ListTile(
-          leading: const Icon(Icons.privacy_tip_outlined, size: 22),
-          title: const Text('プライバシーポリシー', style: TextStyle(fontSize: 14)),
-          onTap: () =>
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const PrivacyPolicyPage())),
-        ),
-        const Divider(),
-        ListTile(
-          leading: const Icon(Icons.library_books_outlined, size: 22),
-          title: const Text('利用規約', style: TextStyle(fontSize: 14)),
-          onTap: () =>
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const TermsOfServicePage())),
-        ),
-        const Divider(),
-        ListTile(
-          leading: Icon(donateIcon, size: 22, color: isPro ? Colors.blue : null),
-          title: Text(donateTitle, style: const TextStyle(fontSize: 14)),
-          onTap: isPro
+    // ListTile 生成ヘルパ
+    List<Widget> _tile(
+        IconData icon,
+        String title,
+        VoidCallback? onTap, {
+          Color? iconColor,
+          Widget? trailing,
+        }) =>
+        [
+          ListTile(
+            leading: Icon(icon, size: 22, color: iconColor),
+            title: Text(title, style: const TextStyle(fontSize: 14)),
+            trailing: trailing ?? const Icon(Icons.chevron_right, size: 18),
+            visualDensity: VisualDensity.compact,
+            onTap: onTap,
+          ),
+        ];
+
+    // ── 寄付プランカード（最上部） ──
+    final planCard = _buildCard(
+      context,
+      tiles: [
+        ..._tile(
+          donateIcon,
+          donateTitle,
+          isPro
               ? null
               : () {
             Navigator.push(
@@ -282,12 +290,73 @@ class _MyPageState extends State<MyPage> {
               MaterialPageRoute(builder: (_) => const PaywallPage()),
             );
           },
+          iconColor: isPro ? Colors.blue : null,
+          trailing: isPro
+              ? const Icon(Icons.verified, color: Colors.white, size: 18)
+              : const Icon(Icons.chevron_right, size: 18),
         ),
-        const Divider(),
-        ListTile(
-          leading: const Icon(Icons.logout, size: 22),
-          title: const Text('ログアウト', style: TextStyle(fontSize: 14)),
-          onTap: () {
+      ],
+    );
+
+    // ── アカウント管理 ──
+    final accountCard = _buildCard(
+      context,
+      tiles: [
+        ..._tile(
+          Icons.person,
+          'プロフィール',
+              () async {
+            final updated = await Navigator.push<bool>(
+              context,
+              MaterialPageRoute(builder: (_) => ProfileEditPage()),
+            );
+            if (updated == true) _fetchUserData();
+          },
+        ),
+      ],
+    );
+
+    // ── アプリ情報 ──
+    final infoCard = _buildCard(
+      context,
+      tiles: [
+        ..._tile(
+          Icons.privacy_tip_outlined,
+          'プライバシーポリシー',
+              () async {
+            final uri = Uri.parse(
+                'https://www.notion.so/17be144de0eb807c8e1fe6da3de3f92c');
+            if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('リンクを開くことができませんでした。')),
+              );
+            }
+          },
+        ),
+        ..._tile(
+          Icons.format_list_bulleted_outlined,
+          '利用規約',
+              () async {
+            final uri = Uri.parse(
+                'https://right-saxophone-1b5.notion.site/215e144de0eb8094b3b2ce284b39975c');
+            if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('リンクを開くことができませんでした。')),
+              );
+            }
+          },
+        ),
+      ],
+    );
+
+    // ── セキュリティ ──
+    final securityCard = _buildCard(
+      context,
+      tiles: [
+        ..._tile(
+          Icons.logout,
+          'ログアウト',
+              () {
             FirebaseAuth.instance.signOut().then((_) {
               Navigator.pushAndRemoveUntil(
                 context,
@@ -297,13 +366,40 @@ class _MyPageState extends State<MyPage> {
             });
           },
         ),
-        const Divider(),
-        ListTile(
-          leading: const Icon(Icons.delete_forever, size: 22),
-          title: const Text('アカウントの削除', style: TextStyle(fontSize: 14)),
-          onTap: () => _reauthenticateAndDeleteAccount(context),
+        ..._tile(
+          Icons.delete_forever,
+          'アカウント削除',
+              () => _reauthenticateAndDeleteAccount(context),
         ),
       ],
+    );
+
+    return Column(
+      children: [
+        planCard,
+        const SizedBox(height: 8),
+        accountCard,
+        const SizedBox(height: 8),
+        infoCard,
+        const SizedBox(height: 8),
+        securityCard,
+      ],
+    );
+  }
+
+  /* -------- 共通カード生成ヘルパ（白背景・影なし） -------- */
+  Widget _buildCard(BuildContext context, {required List<Widget> tiles}) {
+    return Card(
+      elevation: 0,              // 影なし
+      color: Colors.white,       // 白背景
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      child: Column(
+        children: ListTile.divideTiles(
+          context: context,
+          tiles: tiles,
+          color: Colors.grey.shade300,
+        ).toList(),
+      ),
     );
   }
 }

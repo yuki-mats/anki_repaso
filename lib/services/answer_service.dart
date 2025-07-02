@@ -56,6 +56,42 @@ List<Color> getProgressColors({
   return colors;
 }
 
+
+Future<void> _incrementDailyStudyStats({required bool isCorrect}) async {
+  final uid = FirebaseAuth.instance.currentUser!.uid;
+  final now = DateTime.now();                  // 端末ローカルで OK
+  final dateKey = DateFormat('yyyy-MM-dd').format(now);
+
+  // DEBUG
+  print('[DEBUG] _incrementDailyStudyStats called for user=$uid, dateKey=$dateKey, isCorrect=$isCorrect');
+
+  final doc = FirebaseFirestore.instance
+      .collection('users')
+      .doc(uid)
+      .collection('dailyStudyStats')
+      .doc(dateKey);
+
+  await doc.set({
+    // 0:00 JST を固定で入れておく（初回のみ上書き）
+    'dateTimestamp': Timestamp.fromDate(
+      DateTime(now.year, now.month, now.day),
+    ),
+    // ▼ インクリメント演算を使えば同時書き込みでも安全
+    'answerCount' : FieldValue.increment(1),
+    'correctCount': FieldValue.increment(isCorrect ? 1 : 0),
+    'updatedAt'   : FieldValue.serverTimestamp(),
+  }, SetOptions(merge: true));
+
+  // DEBUG: 成功後に再フェッチしてログ
+  final snapshot = await doc.get();
+  print('[DEBUG] dailyStudyStats after update: '
+      'answerCount=${snapshot.data()?['answerCount']}, '
+      'correctCount=${snapshot.data()?['correctCount']}');
+}
+
+// ------------------------------------------------------------------------
+
+
 /// 回答内容・統計情報を Firestore に保存する共通処理（IDベースで更新）
 Future<void> saveAnswer({
   required String questionId,
@@ -144,6 +180,10 @@ Future<void> saveAnswer({
       questionRef: questionRef,
       userId: userId,
     );
+    await _incrementDailyStudyStats(
+        isCorrect: isAnswerCorrect
+    );
+
   } catch (e) {
     print('Error saving answer: $e');
   }

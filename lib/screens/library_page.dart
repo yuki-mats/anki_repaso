@@ -6,6 +6,7 @@ import 'package:flutter_sticky_header/flutter_sticky_header.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:repaso/screens/folder_edit_page.dart';
+import 'package:repaso/screens/paywall_page.dart';
 import 'package:repaso/screens/question_set_list_page.dart';
 import 'package:repaso/screens/study_set_answer_page.dart';
 import 'package:repaso/screens/question_set_add_page.dart';
@@ -73,6 +74,9 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
   @override
   void initState() {
     super.initState();
+
+    debugPrint('[DEBUG] FolderListPage opened for user: ${FirebaseAuth.instance.currentUser?.uid}');
+
     _sortBy = 'nameAsc';
     _studySortBy = 'attemptAsc';
 
@@ -124,11 +128,17 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
     Purchases.getCustomerInfo().then((info) {
       final active = info.entitlements.active['Pro']?.isActive ?? false;
       setState(() => _isPro = active);
+
+      debugPrint('[DEBUG] initial isPro status: $active');
+
     });
 
     // 2) 更新ごとに購読状態を反映するリスナーを定義
     _customerInfoListener = (CustomerInfo info) {
       final active = info.entitlements.active['Pro']?.isActive ?? false;
+
+      debugPrint('[DEBUG] CustomerInfo updated isPro: $active');
+
       if (_isPro != active) {
         setState(() => _isPro = active);
       }
@@ -503,24 +513,32 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
       return;
     }
 
-    // ユーザーの権限を取得
-    final permissionSnapshot = await folder.reference
+    // ───── 権限を判定 ─────
+    String role = 'none';
+
+    // permissions サブコレクションに登録された権限を取得
+    final permSnap = await folder.reference
         .collection('permissions')
-        .where('userRef',
-        isEqualTo: FirebaseFirestore.instance.collection('users').doc(user.uid))
+        .where(
+      'userRef',
+      isEqualTo: FirebaseFirestore.instance.collection('users').doc(user.uid),
+    )
+        .limit(1)
         .get();
 
-    if (permissionSnapshot.docs.isNotEmpty) {
-      final role = permissionSnapshot.docs.first['role'];
-
-      if (role == 'viewer') {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('編集権限がありません。')),
-        );
-        return;
-      }
+    if (permSnap.docs.isNotEmpty) {
+      role = (permSnap.docs.first.data()['role'] ?? 'none') as String;
     }
 
+    // owner / editor 以外はモーダルを開かず SnackBar で通知
+    if (role != 'owner' && role != 'editor') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('編集権限がありません。')),
+      );
+      return;
+    }
+
+    // ─── ここから下は従来どおり (モーダル表示) ───
     showModalBottomSheet(
       isScrollControlled: true,
       context: context,
@@ -554,8 +572,8 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                 ),
                 ListTile(
                   leading: const RoundedIconBox(
-                    icon: Icons.folder_outlined, // フォルダアイコン
-                    iconColor: AppColors.blue500, // アイコンの色
+                    icon: Icons.folder_outlined,
+                    iconColor: AppColors.blue500,
                     backgroundColor: AppColors.blue100,
                     borderRadius: 8,
                     size: 38,
@@ -579,8 +597,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                       color: AppColors.gray100,
                       borderRadius: BorderRadius.circular(100),
                     ),
-                    child: const Icon(Icons.quiz_outlined,
-                        size: 22, color: AppColors.gray600),
+                    child: const Icon(Icons.quiz_outlined, size: 22, color: AppColors.gray600),
                   ),
                   title: const Text('問題集の追加', style: TextStyle(fontSize: 16)),
                   onTap: () {
@@ -597,8 +614,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                       color: AppColors.gray100,
                       borderRadius: BorderRadius.circular(100),
                     ),
-                    child: const Icon(Icons.edit_outlined,
-                        size: 22, color: AppColors.gray600),
+                    child: const Icon(Icons.edit_outlined, size: 22, color: AppColors.gray600),
                   ),
                   title: const Text('フォルダ名の編集', style: TextStyle(fontSize: 16)),
                   onTap: () {
@@ -607,7 +623,6 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                   },
                 ),
                 const SizedBox(height: 8),
-                // ↓ フォルダ削除オプションを追加 ↓
                 ListTile(
                   leading: Container(
                     width: 40,
@@ -616,14 +631,12 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                       color: AppColors.gray100,
                       borderRadius: BorderRadius.circular(100),
                     ),
-                    child: const Icon(Icons.delete_outline,
-                        size: 22, color: AppColors.gray600),
+                    child: const Icon(Icons.delete_outline, size: 22, color: AppColors.gray600),
                   ),
                   title: const Text('フォルダの削除', style: TextStyle(fontSize: 16)),
                   onTap: () async {
                     Navigator.of(context).pop();
-                    // 削除確認ダイアログを表示
-                    bool? confirmDelete = await showDialog<bool>(
+                    final confirmDelete = await showDialog<bool>(
                       context: context,
                       builder: (context) => AlertDialog(
                         shape: RoundedRectangleBorder(
@@ -634,7 +647,9 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                           '本当に削除しますか？',
                           style: TextStyle(color: Colors.black87, fontSize: 18),
                         ),
-                        content: const Text('フォルダの配下の問題集および問題も削除されます。この操作は取り消しできません。'),
+                        content: const Text(
+                          'フォルダの配下の問題集および問題も削除されます。この操作は取り消しできません。',
+                        ),
                         actions: [
                           TextButton(
                             onPressed: () => Navigator.pop(context, false),
@@ -648,18 +663,18 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                       ),
                     );
                     if (confirmDelete == true) {
-                      FirebaseFirestore firestore = FirebaseFirestore.instance;
-                      WriteBatch batch = firestore.batch();
+                      final firestore = FirebaseFirestore.instance;
+                      final batch = firestore.batch();
                       final deletedAt = FieldValue.serverTimestamp();
 
-                      // フォルダ自体をソフトデリート
+                      // フォルダ本体をソフトデリート
                       batch.update(folder.reference, {
                         'isDeleted': true,
                         'deletedAt': deletedAt,
                       });
 
-                      // フォルダ内の問題集を取得し、ソフトデリート
-                      QuerySnapshot qsSnapshot = await firestore
+                      // フォルダ内の問題集をソフトデリート
+                      final qsSnapshot = await firestore
                           .collection('questionSets')
                           .where('folderRef', isEqualTo: folder.reference)
                           .get();
@@ -668,8 +683,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                           'isDeleted': true,
                           'deletedAt': deletedAt,
                         });
-                        // 各問題集に紐づく問題もソフトデリート
-                        QuerySnapshot questionsSnapshot = await firestore
+                        final questionsSnapshot = await firestore
                             .collection('questions')
                             .where('questionSetRef', isEqualTo: qsDoc.reference)
                             .get();
@@ -682,7 +696,6 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                       }
 
                       await batch.commit();
-
                     }
                   },
                 ),
@@ -693,6 +706,7 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
       },
     );
   }
+
 
   Future<void> deleteStudySet(BuildContext context, DocumentSnapshot studySetDoc) async {
     try {
@@ -871,38 +885,6 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
     );
   }
 
-  Future<Offerings?> _fetchOfferings() async {
-    try {
-      return await Purchases.getOfferings();
-    } catch (e) {
-      debugPrint('Offerings取得エラー: $e');
-      return null;
-    }
-  }
-
-  /// 月額 Pro を購入
-  Future<void> _purchaseMonthly(BuildContext context) async {
-    final offerings = await _fetchOfferings();
-    final pkg = offerings?.current?.monthly;
-    if (pkg == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('購入プランが見つかりません')),
-      );
-      return;
-    }
-    try {
-      final result = await Purchases.purchasePackage(pkg);
-      final isActive = result.entitlements.active['Pro']?.isActive ?? false;
-      if (isActive) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Pro 購読が有効になりました！')),
-        );
-      }
-    } on PlatformException catch (e) {
-      debugPrint('購入エラー: $e');
-    }
-  }
-
   Widget buildFolderList() {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
@@ -1062,12 +1044,12 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
                 color: Colors.white,                   // 背景色
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: AppColors.gray200,            // 枠線の色
+                  color: Colors.grey.shade300,            // 枠線の色
                   width: 1.0,                          // 枠線の太さ
                 ),
               ),
               child: Icon(
-                MdiIcons.filterOutline,
+                Icons.filter_alt_outlined,
                 size: 18,
                 color: AppColors.gray600,
               ),
@@ -1545,11 +1527,37 @@ class FolderListPageState extends State<FolderListPage> with SingleTickerProvide
         floatingActionButton: Padding(
           padding: const EdgeInsets.only(bottom: 8.0, right: 16.0),
           child: FloatingActionButton(
-            onPressed: () {
+            // ★ async を付けて非同期処理に変更
+            onPressed: () async {
               if (_tabController.index == 0) {
                 _showAddOptionsModal(context);
               } else if (_tabController.index == 1) {
-                navigateToAddStudySetPage(context);
+                // ---- ここでリアルタイムに暗記セット数を取得 ----
+                final user = FirebaseAuth.instance.currentUser!;
+                final snap = await FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(user.uid)
+                    .collection('studySets')
+                    .where('isDeleted', isEqualTo: false)
+                    .get();
+
+                final hasAtLeastOne = snap.docs.length >= 1;
+
+                if (!_isPro && hasAtLeastOne) {
+                  // 無料プラン & 1件以上 ⇒ Paywall へ
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const PaywallPage(
+                        subtitle:
+                        '暗記セットは無料プランでは1件まで作成可能です。追加するには Pro プランにアップグレードしてください。',
+                      ),
+                    ),
+                  );
+                } else {
+                  // Pro もしくは 0 件 ⇒ 追加画面へ
+                  navigateToAddStudySetPage(context);
+                }
               }
             },
             backgroundColor: AppColors.blue500,
