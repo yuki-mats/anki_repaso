@@ -335,18 +335,7 @@ class _AnswerPageState extends State<AnswerPage> {
           : _questionsWithStats.isEmpty
           ? buildNoQuestionsWidget(
         context: context,
-        message: '問題がありません',
-        subMessage: '最初の問題を作成しよう',
-        buttonMessage: '作成する',
-        onPressed: () => Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => QuestionAddPage(
-              //widget.folderIdを持ちてReferenceを渡す
-              folderId: widget.folderId,
-              questionSetId: widget.questionSetId,
-            ),
-          ),
-        ),
+        message: '問題を取得できませんでした。',
       )
           : Column(
         children: [

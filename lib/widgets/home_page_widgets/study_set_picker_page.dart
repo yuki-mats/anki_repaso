@@ -1,5 +1,4 @@
 // lib/widgets/home_page_widgets/study_set_picker_page.dart
-// ★ このファイル全体を丸ごと置き換えてください
 // learningNow への登録まで完了させて HomePage に戻ります
 // ─────────────────────────────────────────────
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -21,20 +20,23 @@ class StudySetPickerPage extends StatelessWidget {
 
   /* ───────── Firestore 追加 ───────── */
   Future<void> _addLearningNow(String studySetId) async {
-    final uid = FirebaseAuth.instance.currentUser!.uid;
+    final uid    = FirebaseAuth.instance.currentUser!.uid;
     final itemId = FirebaseFirestore.instance.collection('_').doc().id;
-    final now = FieldValue.serverTimestamp();
+    final now    = FieldValue.serverTimestamp();
+
+    // settings.learningNow.<itemId> に payload を追記
+    final payload = {
+      'type'     : 'studySet',
+      'refId'    : studySetId,
+      'folderId' : '',
+      'order'    : DateTime.now().millisecondsSinceEpoch,
+      'createdAt': now,
+      'updatedAt': now,
+    };
 
     await FirebaseFirestore.instance.doc('users/$uid').update({
-      'settings.learningNow.$itemId': {
-        'type': 'studySet',
-        'refId': studySetId,
-        'folderId': null,
-        'order': DateTime.now().millisecondsSinceEpoch,
-        'createdAt': now,
-        'updatedAt': now,
-      },
-      'updatedAt': now,
+      'settings.learningNow.$itemId': payload,
+      'updatedAt'                   : now,
     });
   }
 
@@ -75,38 +77,38 @@ class StudySetPickerPage extends StatelessWidget {
             separatorBuilder: (_, __) => const SizedBox(height: 4),
             itemBuilder: (_, i) {
               final doc = docs[i];
-              final d = doc.data()! as Map<String, dynamic>;
+              final d   = doc.data()! as Map<String, dynamic>;
 
               final memRaw = Map<String, dynamic>.from(
                   d['memoryLevelStats'] ?? <String, dynamic>{});
 
               final mem = <String, int>{
                 'again': _i(memRaw['again']),
-                'hard': _i(memRaw['hard']),
-                'good': _i(memRaw['good']),
-                'easy': _i(memRaw['easy']),
+                'hard' : _i(memRaw['hard']),
+                'good' : _i(memRaw['good']),
+                'easy' : _i(memRaw['easy']),
               };
 
               final correct = mem['easy']! + mem['good']! + mem['hard']!;
-              final total = correct + mem['again']!;
+              final total   = correct + mem['again']!;
 
               return ReusableProgressCard(
-                iconData: Icons.school_outlined,
-                iconColor: Colors.white,
-                iconBgColor: Colors.deepPurple,
-                title: d['name'] ?? '未設定',
-                isVerified: false,
-                memoryLevels: mem,
+                iconData      : Icons.school_outlined,
+                iconColor     : Colors.white,
+                iconBgColor   : Colors.deepPurple,
+                title         : d['name'] ?? '未設定',
+                hasPermission : true,
+                memoryLevels  : mem,
                 correctAnswers: correct,
-                totalAnswers: total,
-                count: _i(d['numberOfQuestions']),
-                countSuffix: '枚',
-                selectionMode: false,
-                cardId: doc.id,
-                selectedId: null,
-                onSelected: null,
-                onMorePressed: () {},
-                onTap: () async {
+                totalAnswers  : total,
+                count         : _i(d['numberOfQuestions']),
+                countSuffix   : '枚',
+                selectionMode : false,
+                cardId        : doc.id,
+                selectedId    : null,
+                onSelected    : null,
+                onMorePressed : () {},
+                onTap         : () async {
                   await _addLearningNow(doc.id);
                   if (context.mounted) Navigator.pop(context);
                 },

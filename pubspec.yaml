@@ -2,7 +2,7 @@ name: repaso
 description: "A new Flutter project."
 
 publish_to: 'none'
-version: 2.9.3+1
+version: 2.9.6+1
 
 environment:
   sdk: ^3.5.3
@@ -84,7 +84,8 @@ flutter:
   uses-material-design: true
   assets:
     - assets/paywall/paywall.png
-    - assets/images/ios_neutral_rd_na@3x.png
+    - assets/google/ios_neutral_rd_na@3x.png
+    - assets/default_profile_icon/default_profile_icon_v1.0.png
   fonts:
     - family: NotoSansJP
       fonts:

@@ -29,7 +29,6 @@ class _ExamCountdownCardState extends State<ExamCountdownCard> {
   @override
   void initState() {
     super.initState();
-    /* ───── settings.examDate を監視 ───── */
     _userSub = FirebaseFirestore.instance
         .collection('users')
         .doc(_uid)
@@ -37,10 +36,9 @@ class _ExamCountdownCardState extends State<ExamCountdownCard> {
         .listen(_onUserDoc);
   }
 
-  /* ───────── settings.examDate が更新された ───────── */
   void _onUserDoc(DocumentSnapshot<Map<String, dynamic>> snap) {
     final settings = (snap.data()?['settings'] ?? {}) as Map<String, dynamic>;
-    final ts       = settings['examDate'] as Timestamp?;
+    final ts = settings['examDate'] as Timestamp?;
     if (ts != null) {
       final d = ts.toDate();
       setState(() => _examDate = d);
@@ -48,7 +46,6 @@ class _ExamCountdownCardState extends State<ExamCountdownCard> {
     }
   }
 
-  /* ────────── カウントダウン ────────── */
   void _startCountdownTimer() {
     _countdownTimer?.cancel();
     if (_examDate == null) return;
@@ -74,10 +71,39 @@ class _ExamCountdownCardState extends State<ExamCountdownCard> {
 
   /* ───────── 試験日入力モーダル ───────── */
   Future<void> _showExamDateInputModal() async {
-    final formKey = GlobalKey<FormState>();
     String year  = _examDate != null ? DateFormat('yyyy').format(_examDate!) : '';
     String month = _examDate != null ? DateFormat('M').format(_examDate!)   : '';
     String day   = _examDate != null ? DateFormat('d').format(_examDate!)   : '';
+
+    bool _isExistingDate(String y, String m, String d) {
+      if (y.length != 4 || m.isEmpty || d.isEmpty) return true;
+      final yy = int.tryParse(y);
+      final mm = int.tryParse(m);
+      final dd = int.tryParse(d);
+      if (yy == null || mm == null || dd == null) return false;
+      try {
+        final dt = DateTime(yy, mm, dd);
+        return dt.year == yy && dt.month == mm && dt.day == dd;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    String? _validateAll() {
+      if (year.isEmpty || month.isEmpty || day.isEmpty) {
+        return '年・月・日すべて入力してください';
+      }
+      if (int.tryParse(year) == null) return '年は4桁の数字で入力してください';
+      if (year.length != 4) return '年は4桁で入力してください';
+      final m = int.tryParse(month);
+      if (m == null) return '月は数字のみ入力してください';
+      if (m < 1 || m > 12) return '月は1〜12の範囲で入力してください';
+      final d = int.tryParse(day);
+      if (d == null) return '日は数字のみ入力してください';
+      if (d < 1 || d > 31) return '日は1〜31の範囲で入力してください';
+      if (!_isExistingDate(year, month, day)) return '存在しない日付です';
+      return null;
+    }
 
     await showModalBottomSheet<void>(
       context: context,
@@ -87,157 +113,175 @@ class _ExamCountdownCardState extends State<ExamCountdownCard> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (ctx) {
+        /* FocusNode & Controllers */
         final yearFocusNode = FocusNode();
+        final yearCtrl   = TextEditingController(text: year);
+        final monthCtrl  = TextEditingController(text: month);
+        final dayCtrl    = TextEditingController(text: day);
+        String? errorMsg;
+
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          FocusScope.of(ctx).requestFocus(yearFocusNode);
+          yearFocusNode.requestFocus();
         });
 
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 16,
-            right: 16,
-            top: 16,
-            bottom: MediaQuery.of(ctx).viewInsets.bottom + 32,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 20),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2),
+        return StatefulBuilder(
+          builder: (context, setStateSB) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                top: 16,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 32,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('試験日を設定',
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(color: Colors.black87)
                   ),
-                ),
-              ),
-              Text('試験日を入力',
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleMedium
-                      ?.copyWith(color: Colors.black87)),
-              const SizedBox(height: 20),
-              Form(
-                key: formKey,
-                child: Row(
-                  children: [
-                    /* 年 */
-                    Expanded(
-                      child: TextFormField(
-                        focusNode: yearFocusNode,
-                        autofocus: true,
-                        initialValue: year,
-                        decoration: const InputDecoration(
-                          border: OutlineInputBorder(),
-                          labelText: '年',
-                          counterText: '',
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      /* 年 */
+                      SizedBox(
+                        width: 110,
+                        child: TextField(
+                          focusNode: yearFocusNode,
+                          controller: yearCtrl,
+                          cursorColor: Colors.blue[800],
+                          decoration: InputDecoration(
+                            border: const OutlineInputBorder(),
+                            focusedBorder: const OutlineInputBorder(
+                              borderSide: BorderSide(color: Colors.blue),
+                            ),
+                            counterText: '',
+                            hintText: '2025',                                     // ★追加
+                            hintStyle: TextStyle(color: Colors.grey[400]),        // ★追加
+                          ),
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                          maxLength: 4,
+                          onChanged: (v) {
+                            year = v;
+                            setStateSB(() => errorMsg = _validateAll());
+                          },
                         ),
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                        maxLength: 4,
-                        onChanged: (v) {
-                          year = v;
-                          if (v.length == 4) FocusScope.of(ctx).nextFocus();
-                        },
-                        validator: (v) {
-                          if (v == null || v.isEmpty) return '年を入力';
-                          if (int.tryParse(v) == null) return '数字のみ';
-                          return null;
-                        },
-                        onSaved: (v) => year = v!,
                       ),
-                    ),
-                    const SizedBox(width: 16),
-                    /* 月 */
-                    Expanded(
-                      child: TextFormField(
-                        initialValue: month,
-                        decoration: const InputDecoration(
-                          border: OutlineInputBorder(),
-                          labelText: '月',
-                          counterText: '',
+                      const SizedBox(width: 4),
+                      const Text('年', style: TextStyle(fontSize: 16)),
+                      const SizedBox(width: 16),
+                      /* 月 */
+                      SizedBox(
+                        width: 70,
+                        child: TextField(
+                          controller: monthCtrl,
+                          cursorColor: Colors.blue[800],
+                          decoration: InputDecoration(
+                            border: const OutlineInputBorder(),
+                            focusedBorder: const OutlineInputBorder(
+                              borderSide: BorderSide(color: Colors.blue),
+                            ),
+                            counterText: '',
+                            hintText: '02',                                      // ★追加
+                            hintStyle: TextStyle(color: Colors.grey[400]),        // ★追加
+                          ),
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                          maxLength: 2,
+                          onChanged: (v) {
+                            month = v;
+                            setStateSB(() => errorMsg = _validateAll());
+                          },
                         ),
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                        maxLength: 2,
-                        onChanged: (v) {
-                          month = v;
-                          if (v.length == 2) FocusScope.of(ctx).nextFocus();
-                        },
-                        validator: (v) {
-                          final m = int.tryParse(v ?? '');
-                          if (m == null) return '数字のみ';
-                          if (m < 1 || m > 12) return '1〜12の範囲';
-                          return null;
-                        },
-                        onSaved: (v) => month = v!,
                       ),
-                    ),
-                    const SizedBox(width: 16),
-                    /* 日 */
-                    Expanded(
-                      child: TextFormField(
-                        initialValue: day,
-                        decoration: const InputDecoration(
-                          border: OutlineInputBorder(),
-                          labelText: '日',
-                          counterText: '',
+                      const SizedBox(width: 4),
+                      const Text('月', style: TextStyle(fontSize: 16)),
+                      const SizedBox(width: 16),
+                      /* 日 */
+                      SizedBox(
+                        width: 70,
+                        child: TextField(
+                          controller: dayCtrl,
+                          cursorColor: Colors.blue[800],
+                          decoration: InputDecoration(
+                            border: const OutlineInputBorder(),
+                            focusedBorder: const OutlineInputBorder(
+                              borderSide: BorderSide(color: Colors.blue),
+                            ),
+                            counterText: '',
+                            hintText: '28',                                      // ★追加
+                            hintStyle: TextStyle(color: Colors.grey[400]),        // ★追加
+                          ),
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                          maxLength: 2,
+                          onChanged: (v) {
+                            day = v;
+                            setStateSB(() => errorMsg = _validateAll());
+                          },
                         ),
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                        maxLength: 2,
-                        onChanged: (v) => day = v,
-                        validator: (v) {
-                          final d = int.tryParse(v ?? '');
-                          if (d == null) return '数字のみ';
-                          if (d < 1 || d > 31) return '1〜31の範囲';
-                          return null;
-                        },
-                        onSaved: (v) => day = v!,
                       ),
+                      const SizedBox(width: 4),
+                      const Text('日', style: TextStyle(fontSize: 16)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    height: 16,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: errorMsg == null
+                          ? const SizedBox.shrink()
+                          : Text(errorMsg!,
+                          style: const TextStyle(color: Colors.red, fontSize: 12)),
                     ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () async {
-                    if (!formKey.currentState!.validate()) return;
-                    formKey.currentState!.save();
-                    _examDate = DateTime(
-                        int.parse(year), int.parse(month), int.parse(day));
-                    /* Firestore へ保存 (保持したい場合) */
-                    await FirebaseFirestore.instance
-                        .collection('users')
-                        .doc(_uid)
-                        .set(
-                      {
-                        'settings': {
-                          'examDate': Timestamp.fromDate(_examDate!)
-                        },
-                        'updatedAt': FieldValue.serverTimestamp(),
+                  ),
+                  const SizedBox(height: 2),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue[800],
+                      ),
+                      onPressed: () async {
+                        final msg = _validateAll();
+                        if (msg != null) {
+                          setStateSB(() => errorMsg = msg);
+                          return;
+                        }
+                        final dt =
+                        DateTime(int.parse(year), int.parse(month), int.parse(day));
+                        await FirebaseFirestore.instance
+                            .collection('users')
+                            .doc(_uid)
+                            .set(
+                          {
+                            'settings': {'examDate': Timestamp.fromDate(dt)},
+                            'updatedAt': FieldValue.serverTimestamp(),
+                          },
+                          SetOptions(merge: true),
+                        );
+                        _examDate = dt;
+                        _startCountdownTimer();
+                        if (mounted) Navigator.pop(context);
                       },
-                      SetOptions(merge: true),
-                    );
-                    _startCountdownTimer();
-                    if (mounted) Navigator.pop(ctx);
-                  },
-                  child: const Text('更新'),
-                ),
+                      child: const Text('保存',
+                          style: TextStyle(color: Colors.white, fontSize: 16)),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
   }
 
-  /* ───────── build ───────── */
   @override
   Widget build(BuildContext context) {
     return Expanded(
@@ -256,13 +300,13 @@ class _ExamCountdownCardState extends State<ExamCountdownCard> {
             children: [
               Row(
                 children: [
-                  Icon(Icons.calendar_today, color: Colors.black54, size: 16),
+                  Icon(Icons.calendar_today, size: 16),
                   const SizedBox(width: 4),
                   Text('試験日まで',
                       style: Theme.of(context)
                           .textTheme
                           .labelSmall
-                          ?.copyWith(color: Colors.black54)),
+                          ?.copyWith(color: Colors.black87)),
                 ],
               ),
               Padding(
@@ -289,7 +333,6 @@ class _ExamCountdownCardState extends State<ExamCountdownCard> {
     );
   }
 
-  /* ───────── クリーンアップ ───────── */
   @override
   void dispose() {
     _userSub.cancel();

@@ -12,7 +12,6 @@ class ReusableProgressCard extends StatelessWidget {
     required this.iconColor,
     required this.iconBgColor,
     required this.title,
-    required this.isVerified,
     required this.memoryLevels,
     required this.correctAnswers,
     required this.totalAnswers,
@@ -20,10 +19,13 @@ class ReusableProgressCard extends StatelessWidget {
     required this.countSuffix,
     required this.onTap,
     required this.onMorePressed,
-    required this.selectionMode,    // 追加
-    required this.cardId,           // 追加
-    this.selectedId,                // 追加
-    this.onSelected,                // 追加
+    required this.selectionMode,
+    required this.cardId,
+    required this.hasPermission,
+    this.selectedId,
+    this.onSelected,
+    this.iconBoxSize,        // ★ 追加
+    this.iconSize,           // ★ 追加
   });
 
   // ------- 外から渡すプロパティ -------
@@ -31,7 +33,6 @@ class ReusableProgressCard extends StatelessWidget {
   final Color              iconColor;
   final Color              iconBgColor;
   final String             title;
-  final bool               isVerified;
   final Map<String, int>   memoryLevels;
   final int                correctAnswers;
   final int                totalAnswers;
@@ -40,20 +41,36 @@ class ReusableProgressCard extends StatelessWidget {
   final VoidCallback       onTap;
   final VoidCallback       onMorePressed;
 
-  // 追加: ラジオ選択用プロパティ
+  // ラジオ選択用プロパティ
   final bool               selectionMode;
   final String             cardId;
   final String?            selectedId;
   final ValueChanged<String?>? onSelected;
 
+  // 権限の有無
+  final bool               hasPermission;
+
+  // アイコンボックスとアイコンのサイズ（指定が無い場合は RoundedIconBox のデフォルト値）
+  final double?            iconBoxSize;    // ★ 追加
+  final double?            iconSize;       // ★ 追加
+
   @override
   Widget build(BuildContext context) {
     // ★ デバッグ出力
     print('[ReusableProgressCard] build  '
-        'cardId=$cardId  selectionMode=$selectionMode  selectedId=$selectedId');
+        'cardId=$cardId  selectionMode=$selectionMode  selectedId=$selectedId  hasPermission=$hasPermission');
+
+    // 権限が無い場合はグレー系カラーへ差し替え
+    final Color effectiveIconColor   = hasPermission ? iconColor   : Colors.white;
+    final Color effectiveIconBgColor = hasPermission ? iconBgColor : Colors.grey;
+    final TextStyle effectiveTitleStyle = const TextStyle(
+      fontSize : 13,
+      fontWeight: FontWeight.bold,
+      color: Colors.black,
+    );
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -71,30 +88,18 @@ class ReusableProgressCard extends StatelessWidget {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Stack(
-                      children: [
-                        RoundedIconBox(
-                          icon            : iconData,
-                          iconColor       : iconColor,
-                          backgroundColor : iconBgColor,
-                        ),
-                        if (isVerified)
-                          const Positioned(
-                            bottom: 1,
-                            right : 0,
-                            child : Icon(Icons.verified,
-                                size: 12, color: Colors.blueAccent),
-                          ),
-                      ],
+                    RoundedIconBox(
+                      icon            : iconData,
+                      iconColor       : effectiveIconColor,
+                      backgroundColor : effectiveIconBgColor,
+                      size            : iconBoxSize ?? 28.0,   // ★ 追加
+                      iconSize        : iconSize    ?? 16.0,   // ★ 追加
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         title,
-                        style: const TextStyle(
-                          fontSize : 13,
-                          fontWeight: FontWeight.bold,
-                        ),
+                        style: effectiveTitleStyle,
                         overflow: TextOverflow.ellipsis,
                         maxLines: 2,
                       ),
@@ -104,7 +109,7 @@ class ReusableProgressCard extends StatelessWidget {
                       Radio<String>(
                         value       : cardId,
                         groupValue  : selectedId,
-                        activeColor : AppColors.blue500,
+                        activeColor : Colors.blue[800],
                         onChanged   : (val) {
                           // ★ デバッグ出力
                           print('[ReusableProgressCard] Radio onChanged → $val');

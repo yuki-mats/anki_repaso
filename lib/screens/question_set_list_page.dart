@@ -7,6 +7,7 @@ import 'package:repaso/screens/question_set_edit_page.dart';
 import 'package:repaso/services/question_count.dart';
 import 'package:repaso/widgets/list_page_widgets/rounded_icon_box.dart';
 import '../utils/app_colors.dart';
+import '../widgets/dialogs/delete_confirmation_dialog.dart';
 import '../widgets/list_page_widgets/reusable_progress_card.dart';
 import 'learning_analytics_page.dart';
 import 'question_add_page.dart';
@@ -16,7 +17,7 @@ class QuestionSetsListPage extends StatefulWidget {
   final DocumentSnapshot folder;
   final String folderPermission;
 
-  QuestionSetsListPage({
+  const QuestionSetsListPage({
     Key? key,
     required this.folder,
     required this.folderPermission,
@@ -27,6 +28,7 @@ class QuestionSetsListPage extends StatefulWidget {
 }
 
 class _QuestionSetListPageState extends State<QuestionSetsListPage> {
+  /* ───────── 既存ナビゲーション系メソッド（省略なしで掲載） ───────── */
   void navigateToQuestionSetAddPage(BuildContext context, DocumentSnapshot folder) {
     Navigator.push(
       context,
@@ -38,7 +40,6 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
 
   void navigateToLearningAnalyticsPage(BuildContext context, DocumentSnapshot questionSet) async {
     try {
-      print("QuestionSet ID: ${questionSet.id}");
       QuerySnapshot questionSnapshot = await FirebaseFirestore.instance
           .collection("questions")
           .where("questionSetRef", isEqualTo: questionSet.reference)
@@ -133,14 +134,22 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
       ),
     );
   }
+
+  /* ────────── オプションモーダル ────────── */
+/* ────────── オプションモーダル ────────── */
   void showQuestionSetOptionsModal(
       BuildContext context,
       DocumentSnapshot folder,
       DocumentSnapshot questionSet,
       ) {
-    // owner / editor 以外はビューワー扱い
-    final bool isViewer = widget.folderPermission != 'owner'
-        && widget.folderPermission != 'editor';
+    /* ───── 権限判定 ───── */
+    final bool isViewer =
+        widget.folderPermission != 'owner' && widget.folderPermission != 'editor';
+    final bool canEdit = !isViewer;
+
+    /* ───── カラーをカードと同じロジックで決定 ───── */
+    final Color iconColor   = Colors.white;
+    final Color iconBgColor = canEdit ? Colors.blue[700]!   : Colors.grey[500]!;
 
     showModalBottomSheet(
       isScrollControlled: true,
@@ -148,23 +157,23 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.only(
-          topLeft:  Radius.circular(12.0),
+          topLeft : Radius.circular(12.0),
           topRight: Radius.circular(12.0),
         ),
       ),
       builder: (_) {
         return Padding(
           padding: const EdgeInsets.all(16.0),
-          child: Container(
-            height: isViewer ? 280 : 420,
+          child: SizedBox(
+            height: isViewer ? 340 : 480, // 1 行ぶん高さ拡張
             child: Column(
               children: [
-                // ドラッグハンドル
+                /* ─ ドラッグハンドル ─ */
                 Padding(
                   padding: const EdgeInsets.only(top: 0, bottom: 16),
                   child: Center(
                     child: Container(
-                      width: 40,
+                      width : 40,
                       height: 4,
                       decoration: BoxDecoration(
                         color: Colors.grey.shade300,
@@ -173,15 +182,15 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                     ),
                   ),
                 ),
-                // タイトル
+                /* ─ タイトル ─ */
                 ListTile(
-                  leading: const RoundedIconBox(
-                    icon: Icons.quiz_outlined,
-                    iconColor: AppColors.blue600,
-                    backgroundColor: AppColors.blue100,
-                    borderRadius: 8,
-                    size: 34,
-                    iconSize: 22,
+                  leading: RoundedIconBox(
+                    icon            : Icons.dehaze_rounded,
+                    iconColor       : iconColor,
+                    backgroundColor : iconBgColor,
+                    borderRadius    : 8,
+                    size            : 34,
+                    iconSize        : 22,
                   ),
                   title: Text(
                     questionSet['name'],
@@ -194,10 +203,11 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                 const Divider(height: 1, color: AppColors.gray100),
                 const SizedBox(height: 16),
 
-                // ── 共通メニュー ──
+                /* ───── 共通メニュー ───── */
                 ListTile(
                   leading: Container(
-                    width: 40, height: 40,
+                    width : 40,
+                    height: 40,
                     decoration: BoxDecoration(
                       color: AppColors.gray100,
                       borderRadius: BorderRadius.circular(100),
@@ -213,12 +223,14 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                 const SizedBox(height: 8),
                 ListTile(
                   leading: Container(
-                    width: 40, height: 40,
+                    width : 40,
+                    height: 40,
                     decoration: BoxDecoration(
                       color: AppColors.gray100,
                       borderRadius: BorderRadius.circular(100),
                     ),
-                    child: const Icon(Icons.show_chart_rounded, size: 22, color: AppColors.gray600),
+                    child: const Icon(Icons.show_chart_rounded,
+                        size: 22, color: AppColors.gray600),
                   ),
                   title: const Text('グラフの確認', style: TextStyle(fontSize: 16)),
                   onTap: () {
@@ -226,14 +238,121 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                     navigateToLearningAnalyticsPage(context, questionSet);
                   },
                 ),
+                /* ★★★ 追加: 記憶度をクリア ★★★ */
+                const SizedBox(height: 8),
+                ListTile(
+                  leading: Container(
+                    width : 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: AppColors.gray100,
+                      borderRadius: BorderRadius.circular(100),
+                    ),
+                    child: const Icon(Icons.restart_alt,
+                        size: 22, color: AppColors.gray600),
+                  ),
+                  title: const Text('学習履歴をクリア', style: TextStyle(fontSize: 16)),
+                  onTap: () async {
+                    Navigator.of(context).pop(); // まずモーダルを閉じる
+                    /* ─── 以降は既存ロジック（省略なし） ─── */
+                    final res = await DeleteConfirmationDialog.show(
+                      context,
+                      title       : '学習履歴をクリア',
+                      bulletPoints: const ['問題集の記憶度', '問題集の正答率'],
+                      description : 'この問題集の記憶度が初期化されます。\n上位フォルダの正答率・記憶度にも反映されます。',
+                      confirmText : 'クリア',
+                      cancelText  : '戻る',
+                      showCheckbox: false,
+                    );
 
-                // ── 編集権限ありのみ表示 ──
+                    if (res != null && res.confirmed) {
+                      try {
+                        final uid = FirebaseAuth.instance.currentUser?.uid;
+                        if (uid == null) return;
+
+                        final firestore = FirebaseFirestore.instance;
+
+                        /* ---------- クリア対象の questionId を取得 ---------- */
+                        final qSnap = await firestore
+                            .collection('questions')
+                            .where('questionSetRef', isEqualTo: questionSet.reference)
+                            .get();
+
+                        /* ---------- バッチ書き込み準備 ---------- */
+                        final batch = firestore.batch();
+
+                        // ① questionSetUserStats の記憶度 & 正答率系のみリセット
+                        final qsStatRef = questionSet.reference
+                            .collection('questionSetUserStats')
+                            .doc(uid);
+                        batch.set(
+                          qsStatRef,
+                          {
+                            'memoryLevels'     : <String, String>{},
+                            'attemptCount'     : 0,
+                            'correctCount'     : 0,
+                            'incorrectCount'   : 0,
+                            'memoryLevelStats' : {
+                              'again': 0, 'hard': 0, 'good': 0, 'easy': 0,
+                            },
+                            'memoryLevelRatios': {
+                              'again': 0, 'hard': 0, 'good': 0, 'easy': 0,
+                            },
+                            'updatedAt': FieldValue.serverTimestamp(),
+                          },
+                          SetOptions(merge: true),
+                        );
+
+                        // ② folderSetUserStats の該当 questionId キーを削除
+                        final folderStatRef = firestore
+                            .collection('folders')
+                            .doc(folder.id)
+                            .collection('folderSetUserStats')
+                            .doc(uid);
+
+                        batch.set(
+                          folderStatRef,
+                          {
+                            'memoryLevels': <String, String>{},
+                            'updatedAt': FieldValue.serverTimestamp(),
+                          },
+                          SetOptions(merge: true),
+                        );
+
+                        final Map<String, dynamic> folderUpdate = {
+                          'updatedAt': FieldValue.serverTimestamp(),
+                        };
+                        for (final q in qSnap.docs) {
+                          folderUpdate['memoryLevels.${q.id}'] = FieldValue.delete();
+                        }
+                        if (folderUpdate.length > 1) batch.update(folderStatRef, folderUpdate);
+
+                        await batch.commit();
+
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('記憶度をクリアしました。')),
+                          );
+                        }
+                      } catch (e) {
+                        debugPrint('Clear memoryLevels error: $e');
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('エラーが発生しました')),
+                          );
+                        }
+                      }
+                    }
+                  },
+                ),
+
+                /* ───── 編集権限ありのみ表示 ───── */
                 if (!isViewer) ...[
                   const SizedBox(height: 8),
-                  // 問題の追加
                   ListTile(
                     leading: Container(
-                      width: 40, height: 40,
+                      width : 40,
+                      height: 40,
                       decoration: BoxDecoration(
                         color: AppColors.gray100,
                         borderRadius: BorderRadius.circular(100),
@@ -251,15 +370,16 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                     },
                   ),
                   const SizedBox(height: 8),
-                  // 名前を変更
                   ListTile(
                     leading: Container(
-                      width: 40, height: 40,
+                      width : 40,
+                      height: 40,
                       decoration: BoxDecoration(
                         color: AppColors.gray100,
                         borderRadius: BorderRadius.circular(100),
                       ),
-                      child: const Icon(Icons.edit_outlined, size: 22, color: AppColors.gray600),
+                      child:
+                      const Icon(Icons.edit_outlined, size: 22, color: AppColors.gray600),
                     ),
                     title: const Text('名前を変更', style: TextStyle(fontSize: 16)),
                     onTap: () {
@@ -268,52 +388,43 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                     },
                   ),
                   const SizedBox(height: 8),
-                  // 削除する
                   ListTile(
                     leading: Container(
-                      width: 40, height: 40,
+                      width : 40,
+                      height: 40,
                       decoration: BoxDecoration(
                         color: AppColors.gray100,
                         borderRadius: BorderRadius.circular(100),
                       ),
-                      child: const Icon(Icons.delete_outline, size: 22, color: AppColors.gray600),
+                      child: const Icon(Icons.delete_outline,
+                          size: 22, color: AppColors.gray600),
                     ),
                     title: const Text('削除する', style: TextStyle(fontSize: 16)),
                     onTap: () async {
+                      /* ---------- 既存削除ロジック（省略せず） ---------- */
                       Navigator.of(context).pop();
-                      final shouldDelete = await showDialog<bool>(
-                        context: context,
-                        builder: (c) => AlertDialog(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          backgroundColor: Colors.white,
-                          title: const Text(
-                            '本当に削除しますか？',
-                            style: TextStyle(color: Colors.black87, fontSize: 18),
-                          ),
-                          content: const Text('問題集の配下の問題も削除されます。この操作は取り消しできません。'),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(c, false),
-                              child: const Text('戻る', style: TextStyle(color: Colors.black87)),
-                            ),
-                            TextButton(
-                              onPressed: () => Navigator.pop(c, true),
-                              child: const Text('削除', style: TextStyle(color: Colors.red)),
-                            ),
-                          ],
-                        ),
+
+                      final res = await DeleteConfirmationDialog.show(
+                        context,
+                        title       : '問題集を削除',
+                        bulletPoints: const ['問題集本体', '配下の問題'],
+                        description : '問題集の配下の問題も削除されます。この操作は取り消しできません。',
+                        confirmText : '削除',
+                        cancelText  : '戻る',
+                        showCheckbox: false,
+                        confirmColor: Colors.redAccent,
                       );
-                      if (shouldDelete == true) {
+
+                      if (res != null && res.confirmed) {
                         final firestore = FirebaseFirestore.instance;
-                        final batch = firestore.batch();
+                        final batch     = firestore.batch();
                         final deletedAt = FieldValue.serverTimestamp();
 
                         batch.update(questionSet.reference, {
                           'isDeleted': true,
                           'deletedAt': deletedAt,
                         });
+
                         final qsnap = await firestore
                             .collection("questions")
                             .where("questionSetRef", isEqualTo: questionSet.reference)
@@ -326,6 +437,7 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                         }
                         await batch.commit();
                         await updateQuestionCounts(widget.folder.id, questionSet.id);
+
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('問題集と配下の問題が削除されました。')),
                         );
@@ -342,6 +454,8 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
     );
   }
 
+
+  /* ────────── build ────────── */
   @override
   Widget build(BuildContext context) {
     final bool canEditFolder =
@@ -371,7 +485,6 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
       ),
       body: Container(
         color: Colors.white,
-        padding: EdgeInsets.zero,
         child: MediaQuery.removePadding(
           removeTop: true,
           context: context,
@@ -399,10 +512,8 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                 );
               }
               questionSets.sort((a, b) {
-                final aName =
-                    (a.data() as Map<String, dynamic>)['name'] ?? '';
-                final bName =
-                    (b.data() as Map<String, dynamic>)['name'] ?? '';
+                final aName = (a.data() as Map<String, dynamic>)['name'] ?? '';
+                final bName = (b.data() as Map<String, dynamic>)['name'] ?? '';
                 return aName.compareTo(bName);
               });
               return ListView.builder(
@@ -410,8 +521,7 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                 itemCount: questionSets.length,
                 itemBuilder: (context, index) {
                   final qs = questionSets[index];
-                  final data =
-                  qs.data() as Map<String, dynamic>;
+                  final data = qs.data() as Map<String, dynamic>;
                   final questionCount = data['questionCount'] ?? 0;
 
                   return StreamBuilder<DocumentSnapshot>(
@@ -428,28 +538,20 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                       };
                       int correct = 0, total = 0;
                       if (statSnap.hasData && statSnap.data!.exists) {
-                        final m = statSnap.data!['memoryLevels']
-                        as Map<String, dynamic>? ?? {};
+                        final m = statSnap.data!['memoryLevels'] as Map<String, dynamic>? ?? {};
                         for (var v in m.values) {
                           if (base.containsKey(v)) base[v] = base[v]! + 1;
                         }
-                        correct = base['easy']! +
-                            base['good']! +
-                            base['hard']!;
+                        correct = base['easy']! + base['good']! + base['hard']!;
                         total = correct + base['again']!;
                       }
-                      base['unanswered'] =
-                      questionCount > correct
-                          ? questionCount - correct
-                          : 0;
+                      base['unanswered'] = questionCount > correct ? questionCount - correct : 0;
 
                       return ReusableProgressCard(
-                        iconData: Icons.quiz_outlined,
-                        iconColor: AppColors.blue500,
-                        iconBgColor: AppColors.blue100,
+                        iconData: Icons.dehaze_rounded,
+                        iconColor: Colors.white,
+                        iconBgColor: Colors.blue[700]!,
                         title: data['name'] ?? '未設定',
-                        isVerified:
-                        widget.folder['isPublic'] == true,
                         memoryLevels: base,
                         correctAnswers: correct,
                         totalAnswers: total,
@@ -462,12 +564,13 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
                           data['name'] ?? '',
                         ),
                         onMorePressed: () =>
-                            showQuestionSetOptionsModal(
-                                context, widget.folder, qs),
-                        selectionMode  : false,
-                        cardId         : qs.id,
-                        selectedId     : null,
-                        onSelected     : null,
+                            showQuestionSetOptionsModal(context, widget.folder, qs),
+                        selectionMode: false,
+                        cardId: qs.id,
+                        selectedId: null,
+                        onSelected: null,
+                        hasPermission: widget.folderPermission == 'owner' ||
+                            widget.folderPermission == 'editor',
                       );
                     },
                   );
@@ -481,8 +584,7 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
           ? Padding(
         padding: const EdgeInsets.only(bottom: 8.0, right: 16.0),
         child: FloatingActionButton(
-          onPressed: () =>
-              navigateToQuestionSetAddPage(context, widget.folder),
+          onPressed: () => navigateToQuestionSetAddPage(context, widget.folder),
           backgroundColor: AppColors.blue500,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(30),
@@ -490,7 +592,7 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage> {
           child: const Icon(Icons.add, color: Colors.white, size: 40),
         ),
       )
-          : null, // ← 権限なしの場合はボタン自体を置かない
+          : null,
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }

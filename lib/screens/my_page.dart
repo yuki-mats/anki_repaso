@@ -192,9 +192,10 @@ class _MyPageState extends State<MyPage> {
   Widget build(BuildContext context) {
     final email = FirebaseAuth.instance.currentUser?.email ?? 'メールアドレス未設定';
     return Scaffold(
-      backgroundColor: Colors.grey[100],
+      backgroundColor: Colors.grey.shade100,
       appBar: AppBar(
-          title: const Text('マイページ'),
+          title: Text('マイページ',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           centerTitle: false),
       body: Padding(
         padding: const EdgeInsets.all(16),
@@ -255,7 +256,7 @@ class _MyPageState extends State<MyPage> {
     final donateTitle = isPro ? 'Anki Pro 加入中' : 'Anki Proで学習';
     //色を黄色にしたい。
     // 寄付アイコン（Proユーザーは特別なアイコンを使用）
-    final donateIcon = isPro ? Symbols.crown_rounded : Symbols.crown_rounded;
+    final donateIcon = Icons.diamond_outlined;
 
     // ListTile 生成ヘルパ
     List<Widget> _tile(

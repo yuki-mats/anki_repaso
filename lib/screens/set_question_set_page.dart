@@ -5,7 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_sticky_header/flutter_sticky_header.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
-import 'package:purchases_flutter/purchases_flutter.dart';                  // ★ 追加
+
 import '../screens/paywall_page.dart';
 import '../utils/app_colors.dart';
 import '../widgets/list_page_widgets/rounded_icon_box.dart';
@@ -36,9 +36,7 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
   final Map<String, int> _questionCounts = {};
 
   bool isLoading = true;
-  bool _isPro = false;                                       // ★
-
-  late final void Function(CustomerInfo) _customerInfoListener; // ★
+  bool _isPro = false; // 課金ユーザーかどうか
 
   // 画面に収まる目安のアイテム数
   static const int _visibleItemCount = 6;
@@ -52,21 +50,6 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
 
     debugPrint('[DEBUG] SetQuestionSetPage opened for user: ${widget.userId}');
 
-    // ─── RevenueCat で isPro 初期化 ─── ★
-    Purchases.getCustomerInfo().then((info) {
-      final active = info.entitlements.active['Pro']?.isActive ?? false;
-      debugPrint('[DEBUG] initial isPro status: $active');
-      if (mounted) setState(() => _isPro = active);
-    });
-
-    _customerInfoListener = (CustomerInfo info) {
-      final active = info.entitlements.active['Pro']?.isActive ?? false;
-      debugPrint('[DEBUG] CustomerInfo updated isPro: $active');
-      if (mounted && _isPro != active) setState(() => _isPro = active);
-    };
-    Purchases.addCustomerInfoUpdateListener(_customerInfoListener);
-    // ─── ここまで ───
-
     // オフラインキャッシュを有効化
     FirebaseFirestore.instance.settings = const Settings(
       persistenceEnabled: true,
@@ -74,12 +57,6 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
     );
 
     _initializeSelections().then((_) => _fetchData());
-  }
-
-  @override
-  void dispose() {
-    Purchases.removeCustomerInfoUpdateListener(_customerInfoListener); // ★
-    super.dispose();
   }
 
   // 保存せずに閉じる
@@ -129,8 +106,9 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
           ? rawLicenses.whereType<String>().toList()
           : <String>[];
 
-      // Firestore 側の isPro は参考値とし、RevenueCat が優先される ★
-      debugPrint('[DEBUG] Firestore isPro (reference) = ${userData['isPro']}');
+      _isPro = userData['isPro'] as bool? ?? false;
+
+      debugPrint('[DEBUG] isPro status for ${widget.userId}: $_isPro');
 
       final fetched = <String, Map<String, dynamic>>{};
       final folderState = <String, bool?>{};
@@ -296,10 +274,7 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
 
   void _onBack() => Navigator.pop(
     context,
-    questionSetSelection.entries
-        .where((e) => e.value)
-        .map((e) => e.key)
-        .toList(),
+    questionSetSelection.entries.where((e) => e.value).map((e) => e.key).toList(),
   );
 
   // 選択済み問題数を算出

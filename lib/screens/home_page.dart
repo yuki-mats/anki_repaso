@@ -1,21 +1,18 @@
 // ignore_for_file: avoid_classes_with_only_static_members
-import 'dart:async';                               // ← 変更なし
-// import 'dart:math';                             // ✖️ 不要になったので削除
+import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
 import 'package:intl/intl.dart';
-// import 'package:shared_preferences/shared_preferences.dart'; // ✖️ 不要になったので削除
 
 import '../main.dart' show routeObserver;
 import '../widgets/home_page_widgets/weekly_chart_toggle.dart';
 import '../widgets/home_page_widgets/learning_now_section.dart';
 import '../widgets/home_page_widgets/exam_countdown_card.dart';
 import '../widgets/home_page_widgets/streak_badge.dart';
-// import 'paywall_page.dart';                    // ✖️ PaywallManager 経由で呼び出すため削除
-import '../utils/paywall_manager.dart';            // ★ 追加 ── Paywall 表示ロジック集約
+import '../utils/paywall_manager.dart'; // ★ 追加 ── Paywall 表示ロジック集約
 
 /// ─────────────────────────────────────────────
 /// HomePage  ─ アプリ起動直後に表示するホーム画面
@@ -46,8 +43,6 @@ class _HomePageState extends State<HomePage>
   /* ──────────── アニメーション ──────────── */
   late final AnimationController _streakAnimCtrl;
   late final Animation<double> _streakScale;
-
-  /* ──────── Paywall 変数は PaywallManager に集約 ──────── */
 
   @override
   void initState() {
@@ -173,7 +168,7 @@ class _HomePageState extends State<HomePage>
     DateFormat('yyyy年M月d日 EEEE', 'ja').format(DateTime.now());
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Colors.grey.shade50,
       body: SafeArea(
         child: CustomScrollView(
           physics: const BouncingScrollPhysics(),
@@ -240,13 +235,17 @@ class _HomePageState extends State<HomePage>
       children: [
         _StatCard(
           icon: Icons.cached_rounded,
+          iconColor: Colors.blue[800]!, // ★ 追加 ── アイコン色
           label: '回答数',
+          labelColor: Colors.black87, // ★ 追加 ── ラベル色
           value: _weekTotalAnswers == 0 ? '-' : _weekTotalAnswers.toString(),
           period: range,
         ),
         const SizedBox(width: 12),
         _StatCard(
-          icon: Icons.star_rate,
+          icon: Icons.star,
+          iconColor: Colors.amber[700]!,
+          labelColor: Colors.black87,
           label: '正答率',
           value: _weekTotalAnswers == 0 ? '-' : '$_weekAccuracyPct%',
           period: range,
@@ -265,7 +264,7 @@ class _HomePageState extends State<HomePage>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('お疲れさまです！',
+            Text('ホーム',
                 style: Theme.of(context)
                     .textTheme
                     .headlineSmall
@@ -285,34 +284,51 @@ class _HomePageState extends State<HomePage>
           scale: _streakScale, child: StreakBadge(count: streak))
           : StreakBadge(count: 0), // ← 0 日でもグレー表示
       const SizedBox(width: 12),
-      FutureBuilder<DocumentSnapshot>(
-        future:
-        FirebaseFirestore.instance.collection('users').doc(_uid).get(),
+      FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        future: FirebaseFirestore.instance
+            .collection('users')
+            .doc(_uid)
+            .get(),
         builder: (ctx, snap) {
-          if (snap.hasData && snap.data!.exists) {
-            final url = snap.data!.get('profileImageUrl') as String;
-            return CircleAvatar(radius: 20, backgroundImage: NetworkImage(url));
-          }
-          return const CircleAvatar(
+          // フォールバック用 Avatar
+          const fallback = CircleAvatar(
             radius: 20,
-            backgroundColor: Colors.deepPurpleAccent,
-            child: Text('U', style: TextStyle(color: Colors.white)),
+            backgroundImage: AssetImage(
+                'assets/default_profile_icon/default_profile_icon_v1.0.png'), // ★ 修正
           );
+
+          if (snap.hasData && snap.data!.exists) {
+            final data = snap.data!.data() ?? {};
+            final url = (data['profileImageUrl'] ?? '') as String;
+            if (url.isNotEmpty) {
+              return CircleAvatar(
+                radius: 20,
+                backgroundImage: NetworkImage(url),
+              );
+            }
+          }
+          return fallback;
         },
       ),
     ],
   );
 }
 
-/* ───────── ステータスカード ───────── */
+// ───────── ステータスカード ─────────
 class _StatCard extends StatelessWidget {
   final IconData icon;
+  final Color iconColor;    // アイコン色
+  final Color labelColor;   // ラベル＆期間の文字色
+  final Color valueColor;   // 値の文字色
   final String label;
   final String value;
   final String period;
 
   const _StatCard({
     required this.icon,
+    this.iconColor = Colors.grey,        // デフォルトはグレー
+    this.labelColor = Colors.black54,    // デフォルトは既存の薄い黒
+    this.valueColor = Colors.black87,    // デフォルトは既存の濃い黒
     required this.label,
     required this.value,
     required this.period,
@@ -333,13 +349,15 @@ class _StatCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(icon, color: Colors.black54, size: 16),
+                Icon(icon, color: iconColor, size: 16),
                 const SizedBox(width: 4),
-                Text(label,
-                    style: Theme.of(context)
-                        .textTheme
-                        .labelSmall
-                        ?.copyWith(color: Colors.black54)),
+                Text(
+                  label,
+                  style: Theme.of(context)
+                      .textTheme
+                      .labelSmall
+                      ?.copyWith(color: labelColor),
+                ),
               ],
             ),
             Expanded(
@@ -353,7 +371,7 @@ class _StatCard extends StatelessWidget {
                           .textTheme
                           .titleLarge
                           ?.copyWith(
-                        color: Colors.black87,
+                        color: valueColor,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -363,7 +381,7 @@ class _StatCard extends StatelessWidget {
                       style: Theme.of(context)
                           .textTheme
                           .labelSmall
-                          ?.copyWith(color: Colors.black54),
+                          ?.copyWith(color: labelColor),
                     ),
                   ],
                 ),
@@ -375,3 +393,4 @@ class _StatCard extends StatelessWidget {
     );
   }
 }
+

@@ -1,10 +1,5 @@
 // lib/main.dart
-//
-// HomePage の再表示検知用に RouteObserver を追加した完全版。
-// 既存 UI・UX は一切変更していません。
-
 import 'dart:io';
-
 import 'package:app_tracking_transparency/app_tracking_transparency.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -12,15 +7,13 @@ import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_analytics/observer.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/widgets.dart';                       // ★追加
-import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:flutter/widgets.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
-import 'ads/app_open_ad_manager.dart';
+import 'package:repaso/screens/library_page.dart';
 import 'ads/banner_ad_widget.dart';
 import 'firebase_options.dart';
 import 'package:repaso/screens/home_page.dart';
-import 'package:repaso/screens/library_page.dart';
 import 'package:repaso/screens/lobby_page.dart';
 import 'package:repaso/screens/forum_page.dart';
 import 'package:repaso/screens/my_page.dart';
@@ -31,7 +24,7 @@ import 'utils/app_colors.dart';
 // RouteObserver  ─ 画面遷移イベント監視用（HomePage の更新など）
 // ─────────────────────────────────────────────
 final RouteObserver<PageRoute<dynamic>> routeObserver =
-RouteObserver<PageRoute<dynamic>>();                    // ★追加
+RouteObserver<PageRoute<dynamic>>();
 
 // ─────────────────────────────────────────────
 // アプリのライフサイクル検知
@@ -66,9 +59,7 @@ class _AppLifecycleListenerState extends State<AppLifecycleListener>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      widget.onResumed();
-    }
+    // 起動広告表示ロジック削除につき何もしない
   }
 
   @override
@@ -122,14 +113,6 @@ Future<void> main() async {
   // 日付ローカライズ
   await initializeDateFormatting('ja_JP', null);
 
-  // AdMob 初期化（Webではスキップ）
-  if (!kIsWeb) {
-    await MobileAds.instance.updateRequestConfiguration(
-      RequestConfiguration(testDeviceIds: ['01262462e4ee6bb499fd8becbef443f3']),
-    );
-    await MobileAds.instance.initialize();
-  }
-
   // RevenueCat SDK 初期化（Webではスキップ）
   if (!kIsWeb) {
     Purchases.setLogLevel(LogLevel.debug);
@@ -137,27 +120,20 @@ Future<void> main() async {
     const androidApiKey = 'goog_あなたの_Android_Public_SDK_Key';
     final key = Platform.isIOS ? iosApiKey : androidApiKey;
     await Purchases.configure(
-      PurchasesConfiguration(key)
-        ..appUserID = FirebaseAuth.instance.currentUser?.uid,
+      PurchasesConfiguration(key)..appUserID = FirebaseAuth.instance.currentUser?.uid,
     );
 
-    // 1) 初回起動時に現在のカスタマー情報を取得してログ出力
+    // 初回・更新リスナーはそのまま残す
     try {
       final info = await Purchases.getCustomerInfo();
       debugPrint('[DEBUG] 初回プラン情報: '
           'activeEntitlements=${info.entitlements.active.keys.toList()}');
-      final isPro = info.entitlements.active['Pro']?.isActive ?? false;
-      debugPrint('[DEBUG] isPro: $isPro');
     } catch (e) {
       debugPrint('[DEBUG] Purchases.getCustomerInfo error: $e');
     }
-
-    // 2) 更新があったときにもログを出力するリスナーを登録
     Purchases.addCustomerInfoUpdateListener((info) {
       debugPrint('[DEBUG] プラン情報更新: '
           'activeEntitlements=${info.entitlements.active.keys.toList()}');
-      final isProUpdated = info.entitlements.active['Pro']?.isActive ?? false;
-      debugPrint('[DEBUG] isPro（更新後）: $isProUpdated');
     });
   }
 
@@ -194,21 +170,21 @@ class MyApp extends StatelessWidget {
           toolbarHeight: 50,
         ),
         scaffoldBackgroundColor: Colors.white,
-        bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+        bottomNavigationBarTheme: BottomNavigationBarThemeData(
           backgroundColor: Colors.white,
-          selectedItemColor: AppColors.blue600,
-          unselectedItemColor: AppColors.gray536,
-          selectedIconTheme: IconThemeData(size: 28),
-          unselectedIconTheme: IconThemeData(size: 28),
-          selectedLabelStyle: TextStyle(fontSize: 10),
-          unselectedLabelStyle: TextStyle(fontSize: 10),
+          selectedItemColor: Colors.blue[800],
+          unselectedItemColor: Colors.black54,
+          selectedIconTheme: const IconThemeData(size: 28),
+          unselectedIconTheme: const IconThemeData(size: 28),
+          selectedLabelStyle: const TextStyle(fontSize: 10),
+          unselectedLabelStyle: const TextStyle(fontSize: 10),
           showSelectedLabels: true,
           showUnselectedLabels: true,
         ),
       ),
       navigatorObservers: [
         observer,
-        routeObserver,                                  // ★追加
+        routeObserver,
       ],
       home: const StartupScreen(),
     );
@@ -260,58 +236,87 @@ class MainPage extends StatefulWidget {
 
 class _MainPageState extends State<MainPage> {
   int _currentIndex = 0;
+  bool _isPro = false;
   final List<Widget> _pages = [
     HomePage(),
-    FolderListPage(title: 'ライブラリ'),
+    LibraryPage(),
     ForumPage(),
     MyPage(),
   ];
-  final AppOpenAdManager _adManager = AppOpenAdManager();
 
   @override
   void initState() {
     super.initState();
-    _adManager.loadAd();
+    _loadEntitlement();
+    Purchases.addCustomerInfoUpdateListener((info) {
+      final isPro = info.entitlements.active['Pro']?.isActive ?? false;
+      if (mounted && _isPro != isPro) {
+        setState(() => _isPro = isPro);
+      }
+    });
+  }
+
+  Future<void> _loadEntitlement() async {
+    try {
+      final info = await Purchases.getCustomerInfo();
+      setState(() => _isPro = info.entitlements.active['Pro']?.isActive ?? false);
+    } catch (_) {}
   }
 
   @override
   Widget build(BuildContext context) {
-    return AppLifecycleListener(
-      onResumed: _adManager.showAdIfAvailable,
-      child: Scaffold(
-        body: IndexedStack(index: _currentIndex, children: _pages),
-        bottomNavigationBar: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              decoration: BoxDecoration(
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    spreadRadius: 1,
-                    blurRadius: 2.5,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
-              child: BottomNavigationBar(
-                type: BottomNavigationBarType.fixed,
-                backgroundColor: Colors.white,
-                currentIndex: _currentIndex,
-                onTap: (i) => setState(() => _currentIndex = i),
-                items: const [
-                  BottomNavigationBarItem(icon: Icon(Icons.home), label: 'ホーム'),
-                  BottomNavigationBarItem(
-                      icon: Icon(Icons.source_rounded), label: 'ライブラリ'),
-                  BottomNavigationBarItem(
-                      icon: Icon(Icons.comment), label: 'フォーラム'),
-                  BottomNavigationBarItem(
-                      icon: Icon(Icons.account_circle), label: 'マイページ'),
-                ],
-              ),
+    return Scaffold(
+      body: IndexedStack(index: _currentIndex, children: _pages),
+
+      // ② bottomNavigationBar を Column にして、上部にバナー広告を配置
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          // ── バナー広告をここに表示 ──
+          const BannerAdWidget(),
+
+          // ── 既存のボトムナビゲーションバー ──
+          Container(
+            decoration: BoxDecoration(
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  spreadRadius: 1,
+                  blurRadius: 2.5,
+                  offset: const Offset(0, 3),
+                ),
+              ],
             ),
-          ],
-        ),
+            child: BottomNavigationBar(
+              type: BottomNavigationBarType.fixed,
+              backgroundColor: Colors.white,
+              currentIndex: _currentIndex,
+              onTap: (i) => setState(() => _currentIndex = i),
+              items: const [
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.home_outlined),
+                  activeIcon: Icon(Icons.home),
+                  label: 'ホーム',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.source_outlined),
+                  activeIcon: Icon(Icons.source_rounded),
+                  label: 'ライブラリ',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.comment_outlined),
+                  activeIcon: Icon(Icons.comment),
+                  label: 'フォーラム',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.account_circle_outlined),
+                  activeIcon: Icon(Icons.account_circle),
+                  label: 'マイページ',
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

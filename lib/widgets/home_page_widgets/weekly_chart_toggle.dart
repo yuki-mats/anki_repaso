@@ -225,11 +225,17 @@ class _WeeklyChartToggleState extends State<WeeklyChartToggle> {
                   gradient: const LinearGradient(
                     begin: Alignment.bottomCenter,
                     end: Alignment.topCenter,
-                    colors: [Color(0xFF2196F3), Color(0xFF42A5F5)],
+                    colors: [Color(0xFF1E88E5), Color(0xFF1565C0)],
                   ),
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
                 ),
               ],
+              onTooltipRender: (TooltipArgs args) {
+                // args.text には 'point.y' の値（数値）が入っている
+                args.text = _metric == _Metric.count       // 回答数モード
+                    ? '${args.text} 回'
+                    : '${args.text}%';                     // 正答率モード
+              },
             ),
           ),
 
@@ -309,6 +315,7 @@ class _WeeklyChartToggleState extends State<WeeklyChartToggle> {
   }
 
   // 目標値編集モーダル
+  // 目標値編集モーダル
   void _showGoalEditModal(BuildContext ctx) {
     final isCount = _metric == _Metric.count;
     double temp   = isCount ? _countMax : _accuracyTarget;
@@ -317,43 +324,71 @@ class _WeeklyChartToggleState extends State<WeeklyChartToggle> {
       context: ctx,
       isScrollControlled: true,
       backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
       builder: (context) => Padding(
         padding: EdgeInsets.only(
           bottom: MediaQuery.of(context).viewInsets.bottom + 16,
           top: 16, left: 16, right: 16,
         ),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(isCount ? '目標回答数を設定' : '目標正答率を設定',
-                style: Theme.of(context).textTheme.titleSmall),
+            Text(
+              isCount ? '回答数（目標）' : '正答率（目標）',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(color: Colors.black87),
+            ),
             const SizedBox(height: 8),
-            TextField(
-              autofocus: true,
-              keyboardType: TextInputType.number,
-              cursorColor: Colors.blueAccent,
-              decoration: InputDecoration(
-                border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(8))),
-                enabledBorder: OutlineInputBorder(
-                    borderRadius: const BorderRadius.all(Radius.circular(8)),
-                    borderSide: BorderSide(color: Colors.blue)),
-                focusedBorder: OutlineInputBorder(
-                    borderRadius: const BorderRadius.all(Radius.circular(8)),
-                    borderSide: BorderSide(color: Colors.blue)),
-                isDense: true,
-                hintText: isCount ? '例: 30' : '例: 85',
-              ),
-              onChanged: (v) => temp = double.tryParse(v) ?? temp,
+            /* ───────── 入力フィールド + 単位 ───────── */
+            Row(
+              children: [
+                /* TextField（幅は出来るだけ広く取る） */
+                Expanded(
+                  child: TextField(
+                    autofocus: true,
+                    keyboardType: TextInputType.number,
+                    cursorColor: Colors.blue[800],
+                    decoration: InputDecoration(
+                      border: const OutlineInputBorder(
+                          borderRadius: BorderRadius.all(Radius.circular(8))),
+                      enabledBorder: OutlineInputBorder(
+                          borderRadius: const BorderRadius.all(Radius.circular(8)),
+                          borderSide: BorderSide(color: Colors.blue[800]!)),
+                      focusedBorder: OutlineInputBorder(
+                          borderRadius: const BorderRadius.all(Radius.circular(8)),
+                          borderSide: BorderSide(color: Colors.blue[800]!)),
+                      isDense: true,
+                      hintText: isCount ? '30' : '85',             // 統一
+                      hintStyle: TextStyle(color: Colors.grey[400]),
+                    ),
+                    onChanged: (v) => temp = double.tryParse(v) ?? temp,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                /* 単位ラベル */
+                Text(
+                  isCount ? '回' : '%',
+                  style: const TextStyle(fontSize: 16, color: Colors.black87),
+                ),
+              ],
             ),
             const SizedBox(height: 12),
+            /* ───────── 保存ボタン ───────── */
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+                  backgroundColor: Colors.blue[800],
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(32),
+                  ),
+                ),
                 onPressed: () async {
                   setState(() {
                     if (isCount) {
@@ -376,7 +411,10 @@ class _WeeklyChartToggleState extends State<WeeklyChartToggle> {
                   }
                   Navigator.of(context).pop();
                 },
-                child: const Text('決定', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                child: const Text(
+                  '保存',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
               ),
             ),
           ],

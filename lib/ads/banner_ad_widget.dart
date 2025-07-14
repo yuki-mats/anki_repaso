@@ -1,8 +1,29 @@
-import 'dart:async';
+// lib/ads/banner_ad_widget.dart
+
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
+/// プラットフォームごとに適切なバナー広告ユニット ID を返す
+String getAdBannerUnitId() {
+  if (Platform.isAndroid) {
+    return kDebugMode
+    // デバッグ用の Android テスト広告 ID
+        ? 'ca-app-pub-3940256099942544/6300978111'
+    // リリース用の Android 広告ユニット ID
+        : 'ca-app-pub-4495844115981683/8175496111';
+  } else if (Platform.isIOS) {
+    return kDebugMode
+    // デバッグ用の iOS テスト広告 ID
+        ? 'ca-app-pub-3940256099942544/2435281174'
+    // リリース用の iOS 広告ユニット ID
+        : 'ca-app-pub-4495844115981683/8175496111';
+  }
+  return '';
+}
+
+/// バナー広告を表示するウィジェット
 class BannerAdWidget extends StatefulWidget {
   const BannerAdWidget({Key? key}) : super(key: key);
 
@@ -11,71 +32,61 @@ class BannerAdWidget extends StatefulWidget {
 }
 
 class _BannerAdWidgetState extends State<BannerAdWidget> {
-  // ⇒ リロード間隔を2分→5分に延長
-  static const Duration _reloadInterval = Duration(minutes: 5);
-
   late BannerAd _bannerAd;
-  bool _isAdLoaded = false;
-  Timer? _reloadTimer;
+  bool _isLoaded = false;
 
   @override
   void initState() {
     super.initState();
-    _loadBannerAd();
-    _reloadTimer = Timer.periodic(_reloadInterval, (_) => _loadBannerAd());
-  }
 
-  void _loadBannerAd() {
-    if (_isAdLoaded) {
-      _bannerAd.dispose();
-      _isAdLoaded = false;
-    }
-
-    final adUnitId = kDebugMode
-        ? 'ca-app-pub-3940256099942544/6300978111'
-        : 'ca-app-pub-4495844115981683/7136073776';
-
+    // BannerAd のインスタンスを生成
     _bannerAd = BannerAd(
-      adUnitId: adUnitId,
+      adUnitId: getAdBannerUnitId(),
       size: AdSize.banner,
       request: const AdRequest(),
       listener: BannerAdListener(
-        onAdLoaded: (ad) {
-          // ⇒ State破棄後の setState を防止
-          if (!mounted) return;
-          setState(() => _isAdLoaded = true);
+        onAdLoaded: (Ad ad) {
+          setState(() {
+            _isLoaded = true;
+          });
         },
-        onAdFailedToLoad: (ad, error) {
+        onAdFailedToLoad: (Ad ad, LoadAdError error) {
           ad.dispose();
-          // ⇒ デバッグ時のみログ出力
-          if (kDebugMode) {
-            debugPrint('BannerAd failed to load: $error');
-          }
         },
       ),
-    )..load();
+    );
+
+    // 広告をロード
+    _bannerAd.load();
   }
 
   @override
   void dispose() {
-    _reloadTimer?.cancel();
     _bannerAd.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_isAdLoaded) return const SizedBox.shrink();
+    if (!_isLoaded) {
+      // 広告がロードされるまで何も表示しない
+      return const SizedBox.shrink();
+    }
 
-    final adView = kDebugMode
-        ? AbsorbPointer(child: AdWidget(ad: _bannerAd))
-        : AdWidget(ad: _bannerAd);
-
-    return Container(
-      color: Colors.green[100],
-      width: _bannerAd.size.width.toDouble(),
-      height: _bannerAd.size.height.toDouble(),
-      child: adView,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const SizedBox(height: 16),
+        // 広告本体
+        Container(
+          width: _bannerAd.size.width.toDouble(),
+          height: _bannerAd.size.height.toDouble(),
+          alignment: Alignment.center,
+          child: AdWidget(ad: _bannerAd),
+        ),
+        // SafeArea を挿入して誤タップを防止
+        const SizedBox(height: 16),
+      ],
     );
   }
 }

@@ -1,5 +1,8 @@
 // ignore_for_file: avoid_classes_with_only_static_members
-
+// lib/widgets/home_page_widgets/question_set_picker_page.dart
+// ─────────────────────────────────────────────
+// QuestionSetPickerPage  ─ 問題集を 1 つだけ選択
+// ─────────────────────────────────────────────
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -12,9 +15,6 @@ import '../list_page_widgets/rounded_icon_box.dart';
 import '../study_set_selectable_card.dart';
 import '../study_set_skeleton_card.dart';
 
-/// ─────────────────────────────────────────────
-/// QuestionSetPickerPage  ─ 問題集を 1 つだけ選択
-/// ─────────────────────────────────────────────
 class QuestionSetPickerPage extends StatefulWidget {
   const QuestionSetPickerPage({super.key});
   @override
@@ -62,58 +62,66 @@ class _QuestionSetPickerPageState extends State<QuestionSetPickerPage> {
           .where('isDeleted', isEqualTo: false)
           .get(const GetOptions(source: Source.serverAndCache));
 
-      final fetched      = <String, Map<String, dynamic>>{};
+      final fetched = <String, Map<String, dynamic>>{};
       final expandedInit = <String, bool>{};
 
       // ③ フォルダごとに問題集を収集
       await Future.wait([
-        for (final f in foldersSnap.docs) () async {
-          final fd         = f.data();
-          final lic        = fd['licenseName'] as String? ?? '';
-          final isOfficial = fd['isOfficial'] as bool? ?? false;
+        for (final f in foldersSnap.docs)
+              () async {
+            final fd = f.data();
+            final lic = fd['licenseName'] as String? ?? '';
+            final isOfficial = fd['isOfficial'] as bool? ?? false;
 
-          // 公式：ライセンスフィルタ
-          if (isOfficial && licenses.isNotEmpty && !licenses.contains(lic)) return;
+            // 公式：ライセンスフィルタ
+            if (isOfficial &&
+                licenses.isNotEmpty &&
+                !licenses.contains(lic)) return;
 
-          // 非公式：アクセス権を確認
-          if (!isOfficial) {
-            final permSnap = await f.reference
-                .collection('permissions')
-                .where('userRef', isEqualTo: FirebaseFirestore.instance.doc('users/$uid'))
-                .where('role', whereIn: ['owner', 'editor', 'viewer'])
-                .limit(1)
+            // 非公式：アクセス権を確認
+            if (!isOfficial) {
+              final permSnap = await f.reference
+                  .collection('permissions')
+                  .where('userRef',
+                  isEqualTo:
+                  FirebaseFirestore.instance.doc('users/$uid'))
+                  .where('role', whereIn: ['owner', 'editor', 'viewer'])
+                  .limit(1)
+                  .get(const GetOptions(source: Source.serverAndCache));
+              if (permSnap.docs.isEmpty) return;
+            }
+
+            // フォルダ内 QuestionSet
+            final qsSnap = await FirebaseFirestore.instance
+                .collection('questionSets')
+                .where('folderId', isEqualTo: f.id)
+                .where('isDeleted', isEqualTo: false)
                 .get(const GetOptions(source: Source.serverAndCache));
-            if (permSnap.docs.isEmpty) return;
-          }
 
-          // フォルダ内 QuestionSet
-          final qsSnap = await FirebaseFirestore.instance
-              .collection('questionSets')
-              .where('folderId', isEqualTo: f.id)
-              .where('isDeleted', isEqualTo: false)
-              .get(const GetOptions(source: Source.serverAndCache));
+            final qsList = [
+              for (var q in qsSnap.docs)
+                {
+                  'id': q.id,
+                  'name': q.data()['name'] ?? '',
+                  'count': q.data()['questionCount'] ?? 0,
+                  'ref': q.reference,
+                }
+            ];
 
-          final qsList = [
-            for (var q in qsSnap.docs)
-              {
-                'id'   : q.id,
-                'name' : q.data()['name'] ?? '',
-                'count': q.data()['questionCount'] ?? 0,
-                'ref'  : q.reference,
-              }
-          ];
-
-          if (qsList.isNotEmpty) {
-            fetched[f.id] = {'name': fd['name'] ?? '', 'questionSets': qsList};
-            expandedInit[f.id] = false;
-          }
-        }(),
+            if (qsList.isNotEmpty) {
+              fetched[f.id] = {
+                'name': fd['name'] ?? '',
+                'questionSets': qsList
+              };
+              expandedInit[f.id] = false;
+            }
+          }()
       ]);
 
       setState(() {
         _folderData = fetched;
-        _expanded   = expandedInit;
-        _isLoading  = false;
+        _expanded = expandedInit;
+        _isLoading = false;
       });
     } catch (e) {
       debugPrint('Fetch error: $e');
@@ -126,15 +134,53 @@ class _QuestionSetPickerPageState extends State<QuestionSetPickerPage> {
    * ────────────────────────────── */
   void _select(String qsId, Map<String, dynamic> payload) {
     setState(() {
-      _selectedQsId         = qsId;
-      _selectedCardPayload  = payload;
+      _selectedQsId = qsId;
+      _selectedCardPayload = payload;
     });
+  }
+
+  /* ──────────────────────────────
+   * Firestore 書き込み: learningNow に追加
+   * ────────────────────────────── */
+  /* ───────── Firestore 書き込み: learningNow に追加 ───────── */
+  Future<void> _addLearningNow({
+    required String qsId,
+    required String folderId,
+  }) async {
+    final uid    = FirebaseAuth.instance.currentUser!.uid;
+    final itemId = FirebaseFirestore.instance.collection('_').doc().id;
+    final now    = FieldValue.serverTimestamp();
+
+    final payload = {
+      'type'     : 'questionSet',
+      'refId'    : qsId,
+      'folderId' : folderId,
+      'order'    : DateTime.now().millisecondsSinceEpoch,
+      'createdAt': now,
+      'updatedAt': now,
+    };
+
+    await FirebaseFirestore.instance.doc('users/$uid').set({
+      'settings': {
+        'learningNow': { itemId: payload }   // ← パス 2 でネスト登録
+      },
+      'updatedAt': now,
+    }, SetOptions(merge: true));
   }
 
   /* ──────────────────────────────
    * 保存
    * ────────────────────────────── */
-  void _onSave() => Navigator.pop(context, _selectedCardPayload);
+  Future<void> _onSave() async {
+    if (_selectedCardPayload == null) return;
+
+    await _addLearningNow(
+      qsId: _selectedCardPayload!['id'] as String,
+      folderId: _selectedCardPayload!['folderId'] as String,
+    );
+
+    if (mounted) Navigator.pop(context); // 戻る（値は返さない）
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -150,9 +196,7 @@ class _QuestionSetPickerPageState extends State<QuestionSetPickerPage> {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: _isLoading
-          ? _buildSkeleton(physics)
-          : _buildContent(physics),
+      body: _isLoading ? _buildSkeleton(physics) : _buildContent(physics),
       bottomNavigationBar: _buildSaveButton(),
     );
   }
@@ -176,8 +220,8 @@ class _QuestionSetPickerPageState extends State<QuestionSetPickerPage> {
     slivers: [
       const SliverToBoxAdapter(child: SizedBox(height: 16)),
       ..._folderData.entries.map((entry) {
-        final fid      = entry.key;
-        final info     = entry.value;
+        final fid = entry.key;
+        final info = entry.value;
         final expanded = _expanded[fid] ?? false;
 
         return SliverStickyHeader(
@@ -188,20 +232,26 @@ class _QuestionSetPickerPageState extends State<QuestionSetPickerPage> {
               splashColor: Colors.transparent,
               onTap: () => setState(() => _expanded[fid] = !expanded),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Row(
                   children: [
                     RoundedIconBox(
-                      icon            : expanded ? MdiIcons.folderOpenOutline : MdiIcons.folderOutline,
-                      size            : 28,
-                      iconSize        : 18,
-                      iconColor       : AppColors.blue500,
-                      backgroundColor : AppColors.blue100,
+                      icon: expanded
+                          ? MdiIcons.folderOpenOutline
+                          : MdiIcons.folderOutline,
+                      size: 28,
+                      iconSize: 18,
+                      iconColor: AppColors.blue500,
+                      backgroundColor: AppColors.blue100,
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(info['name'] as String,
-                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.black87)),
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                              color: Colors.black87)),
                     ),
                   ],
                 ),
@@ -211,10 +261,11 @@ class _QuestionSetPickerPageState extends State<QuestionSetPickerPage> {
           sliver: SliverList(
             delegate: SliverChildBuilderDelegate(
                   (context, i) {
-                final qs   = (info['questionSets'] as List<Map<String, dynamic>>)[i];
+                final qs =
+                (info['questionSets'] as List<Map<String, dynamic>>)[i];
                 final qsId = qs['id'] as String;
-                final sel  = _selectedQsId == qsId;
-                final ref  = qs['ref'] as DocumentReference;
+                final sel = _selectedQsId == qsId;
+                final ref = qs['ref'] as DocumentReference;
 
                 return StreamBuilder<DocumentSnapshot>(
                   stream: ref
@@ -222,57 +273,68 @@ class _QuestionSetPickerPageState extends State<QuestionSetPickerPage> {
                       .doc(FirebaseAuth.instance.currentUser?.uid)
                       .snapshots(),
                   builder: (_, statSnap) {
-                    final mem = {'again': 0, 'hard': 0, 'good': 0, 'easy': 0, 'unanswered': 0};
+                    final mem = {
+                      'again': 0,
+                      'hard': 0,
+                      'good': 0,
+                      'easy': 0,
+                      'unanswered': 0
+                    };
                     int correct = 0, total = 0;
 
                     if (statSnap.hasData && statSnap.data!.exists) {
-                      final raw = (statSnap.data!.data() as Map<String, dynamic>?)?['memoryLevels']
-                      as Map<String, dynamic>? ??
-                          {};
+                      final raw =
+                          (statSnap.data!.data() as Map<String, dynamic>?)?[
+                          'memoryLevels'] as Map<String, dynamic>? ??
+                              {};
                       for (var v in raw.values) {
                         if (mem.containsKey(v)) mem[v] = mem[v]! + 1;
                       }
-                      correct = mem['easy']! + mem['good']! + mem['hard']!;
-                      total   = correct + mem['again']!;
+                      correct = mem['easy']! +
+                          mem['good']! +
+                          mem['hard']!;
+                      total = correct + mem['again']!;
                     }
-                    mem['unanswered'] = max(0, (qs['count'] as int) - correct);
+                    mem['unanswered'] =
+                        max(0, (qs['count'] as int) - correct);
 
                     // ★ LearningNowSection で期待される最低限のフィールド
                     final payload = <String, dynamic>{
-                      'type'      : 'questionSet',        // ← 追加
-                      'id'        : qsId,
-                      'folderId'  : fid,
-                      'title'     : qs['name'],
-                      'iconData'  : Icons.quiz_outlined,
-                      'iconColor' : AppColors.blue500,
-                      'iconBg'    : AppColors.blue100,
-                      'verified'  : false,
+                      'type': 'questionSet',
+                      'id': qsId,
+                      'folderId': fid,
+                      'title': qs['name'],
+                      'iconData': Icons.quiz_outlined,
+                      'iconColor': AppColors.blue500,
+                      'iconBg': AppColors.blue100,
+                      'verified': false,
                       'memoryLevels': Map<String, int>.from(mem),
-                      'correct'   : correct,
-                      'totalAns'  : total,
-                      'count'     : qs['count'],
-                      'suffix'    : '問',
+                      'correct': correct,
+                      'totalAns': total,
+                      'count': qs['count'],
+                      'suffix': '問',
                     };
 
                     return StudySetSelectableCard(
-                      iconData        : Icons.quiz_outlined,
-                      iconColor       : AppColors.blue500,
-                      iconBgColor     : AppColors.blue100,
-                      title           : qs['name'] as String,
-                      isVerified      : false,
-                      memoryLevels    : Map<String, int>.from(mem),
-                      correctAnswers  : correct,
-                      totalAnswers    : total,
-                      count           : qs['count'] as int,
-                      countSuffix     : ' 問',
-                      isSelected      : sel,
-                      onTap           : () => _select(qsId, payload),
+                      iconData: Icons.quiz_outlined,
+                      iconColor: AppColors.blue500,
+                      iconBgColor: AppColors.blue100,
+                      title: qs['name'] as String,
+                      isVerified: false,
+                      memoryLevels: Map<String, int>.from(mem),
+                      correctAnswers: correct,
+                      totalAnswers: total,
+                      count: qs['count'] as int,
+                      countSuffix: ' 問',
+                      isSelected: sel,
+                      onTap: () => _select(qsId, payload),
                       onSelectionChanged: (_) => _select(qsId, payload),
                     );
                   },
                 );
               },
-              childCount: expanded ? (info['questionSets'] as List).length : 0,
+              childCount:
+              expanded ? (info['questionSets'] as List).length : 0,
             ),
           ),
         );
@@ -288,11 +350,16 @@ class _QuestionSetPickerPageState extends State<QuestionSetPickerPage> {
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.blue500,
-          padding        : const EdgeInsets.symmetric(vertical: 14),
-          shape          : RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12)),
         ),
         onPressed: _selectedQsId == null ? null : _onSave,
-        child: const Text('保存', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+        child: const Text('保存',
+            style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.white)),
       ),
     ),
   );

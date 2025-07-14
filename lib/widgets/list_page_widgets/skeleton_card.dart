@@ -97,7 +97,7 @@ class SkeletonCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(4),
                 child: Row(
                   children: List.generate(
-                    5,
+                    1,
                         (_) => Expanded(
                       child: shimmer(Container(
                         height: 8,
