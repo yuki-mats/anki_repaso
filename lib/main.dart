@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:repaso/screens/library_page.dart';
 import 'ads/banner_ad_widget.dart';
 import 'firebase_options.dart';
@@ -101,6 +102,19 @@ Future<void> main() async {
     }
   }
 
+  // ───────────────────────────────────────────
+  // Google Mobile Ads SDK 初期化 & テストデバイス登録
+  await MobileAds.instance.initialize();
+  MobileAds.instance.updateRequestConfiguration(
+    RequestConfiguration(
+      testDeviceIds: <String>[
+        'BBF5B92D-5E84-4B46-905C-ED71FB328CFF',
+        'CF36ECD6-F4DC-4B1F-A468-6FFC2757889A',
+      ],
+    ),
+  );
+  // ───────────────────────────────────────────
+
   // ATT 要求（iOSのみ）
   if (!kIsWeb && Platform.isIOS) {
     await requestTrackingPermission();
@@ -120,7 +134,8 @@ Future<void> main() async {
     const androidApiKey = 'goog_あなたの_Android_Public_SDK_Key';
     final key = Platform.isIOS ? iosApiKey : androidApiKey;
     await Purchases.configure(
-      PurchasesConfiguration(key)..appUserID = FirebaseAuth.instance.currentUser?.uid,
+      PurchasesConfiguration(key)
+        ..appUserID = FirebaseAuth.instance.currentUser?.uid,
     );
 
     // 初回・更新リスナーはそのまま残す
@@ -259,7 +274,8 @@ class _MainPageState extends State<MainPage> {
   Future<void> _loadEntitlement() async {
     try {
       final info = await Purchases.getCustomerInfo();
-      setState(() => _isPro = info.entitlements.active['Pro']?.isActive ?? false);
+      setState(() => _isPro =
+          info.entitlements.active['Pro']?.isActive ?? false);
     } catch (_) {}
   }
 

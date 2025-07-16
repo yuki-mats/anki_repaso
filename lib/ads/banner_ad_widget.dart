@@ -76,7 +76,7 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const SizedBox(height: 16),
+        const SizedBox(height: 8),
         // 広告本体
         Container(
           width: _bannerAd.size.width.toDouble(),
@@ -85,7 +85,7 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
           child: AdWidget(ad: _bannerAd),
         ),
         // SafeArea を挿入して誤タップを防止
-        const SizedBox(height: 16),
+        const SizedBox(height: 8),
       ],
     );
   }
