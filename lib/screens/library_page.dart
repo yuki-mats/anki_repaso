@@ -69,6 +69,7 @@ class _LibraryPageState extends State<LibraryPage>
       studyStreakCount: 0,
       lastStudiedDate: '',
       selectedMemoryLevels: ['again', 'hard', 'good', 'easy'],
+      correctChoiceFilter: 'all',
     );
 
     final result = await Navigator.push(

@@ -1,12 +1,13 @@
 // ignore_for_file: always_use_package_imports, avoid_print
 // FolderListPage の実装を踏襲し、RevenueCat 経由で isPro を正確に取得します。
-// UI / UX や既存の機能は一切変更していません。★ 印が追加・変更箇所です。
+// 既存 UI / UX は維持しつつ、正誤フィルターを編集できるように拡張しました。★ 印が追加・変更箇所です。
 
-import 'dart:async'; // Future/Stream 用
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:purchases_flutter/purchases_flutter.dart';                 // ★ 追加
+import 'package:purchases_flutter/purchases_flutter.dart';                  // RevenueCat
 import 'package:repaso/screens/paywall_page.dart';
+import 'package:repaso/screens/set_correct_choice_filter_page.dart';       // ★ 新規
 import 'package:repaso/screens/set_study_set_name_page.dart';
 import 'package:repaso/utils/app_colors.dart';
 import 'package:repaso/screens/set_number_of_questions_page.dart';
@@ -26,6 +27,7 @@ class StudySet {
   final RangeValues correctRateRange;
   final bool isFlagged;
   final List<String> selectedMemoryLevels;
+  final String correctChoiceFilter;                                       // ★ 'all' | 'correct' | 'incorrect'
 
   StudySet({
     required this.id,
@@ -36,6 +38,7 @@ class StudySet {
     required this.correctRateRange,
     required this.isFlagged,
     required this.selectedMemoryLevels,
+    required this.correctChoiceFilter,                                    // ★
   });
 
   factory StudySet.fromFirestore(String id, Map<String, dynamic> data) {
@@ -46,13 +49,14 @@ class StudySet {
       numberOfQuestions: data['numberOfQuestions'] as int,
       selectedQuestionOrder: data['selectedQuestionOrder'] as String,
       correctRateRange: RangeValues(
-        (data['correctRateRange']?['start'] ?? 0.0) as double,
-        (data['correctRateRange']?['end'] ?? 100.0) as double,
+        (data['correctRateRange']?['start'] ?? 0).toDouble(),
+        (data['correctRateRange']?['end'] ?? 100).toDouble(),
       ),
       isFlagged: data['isFlagged'] as bool? ?? false,
       selectedMemoryLevels: List<String>.from(
         data['selectedMemoryLevels'] ?? ['again', 'hard', 'good', 'easy'],
       ),
+      correctChoiceFilter: data['correctChoiceFilter'] as String? ?? 'all', // ★
     );
   }
 
@@ -68,6 +72,7 @@ class StudySet {
       },
       'isFlagged': isFlagged,
       'selectedMemoryLevels': selectedMemoryLevels,
+      'correctChoiceFilter': correctChoiceFilter,                          // ★
     };
   }
 }
@@ -100,10 +105,26 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
   late int? numberOfQuestions;
   late String? selectedQuestionOrder;
   late List<String> _selectedMemoryLevels;
+  late String _correctChoiceFilter;                                      // ★
 
   // Pro 判定
-  bool _isPro = false;                                        // ★
-  late final void Function(CustomerInfo) _customerInfoListener; // ★
+  bool _isPro = false;                                                   // ★
+  late final void Function(CustomerInfo) _customerInfoListener;
+
+  /// Pro 機能を使っているかどうか判定する
+  bool _requiresPro(StudySet s) {
+    const freeOrder          = 'random';   // 無料で使える出題順
+    const freeMaxQuestions   = 10;         // 無料枠は 1〜10 問まで
+
+    return
+      s.correctChoiceFilter != 'all'                       // 正誤フィルター
+          || s.selectedMemoryLevels.length != 4                   // 記憶度フィルター
+          || s.correctRateRange.start != 0 ||
+          s.correctRateRange.end   != 100                      // 正答率フィルター
+          || s.selectedQuestionOrder  != freeOrder                // 出題順
+          || s.numberOfQuestions      >  freeMaxQuestions;        // 出題数 11 問以上
+  }
+// ★
 
   // メモリレベル表示用ラベル
   final Map<String, String> _memoryLevelLabels = {
@@ -147,30 +168,25 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
     _correctRateRange     = s.correctRateRange;
     _isFlagged            = s.isFlagged;
     _selectedMemoryLevels = List.from(s.selectedMemoryLevels);
+    _correctChoiceFilter  = s.correctChoiceFilter;                       // ★
 
     _fetchAndCacheQuestionSetNames();
 
-    // ─── RevenueCat から Pro ステータスを取得 ─── ★
+    // RevenueCat
     Purchases.getCustomerInfo().then((info) {
       final active = info.entitlements.active['Pro']?.isActive ?? false;
-      debugPrint('[DEBUG] initial isPro status: $active');
       if (mounted) setState(() => _isPro = active);
     });
-
-    _customerInfoListener = (CustomerInfo info) {
+    _customerInfoListener = (info) {
       final active = info.entitlements.active['Pro']?.isActive ?? false;
-      debugPrint('[DEBUG] CustomerInfo updated isPro: $active');
       if (mounted && _isPro != active) setState(() => _isPro = active);
     };
     Purchases.addCustomerInfoUpdateListener(_customerInfoListener);
   }
 
-  // ──────────────────────────────
-  // dispose
-  // ──────────────────────────────
   @override
   void dispose() {
-    Purchases.removeCustomerInfoUpdateListener(_customerInfoListener); // ★
+    Purchases.removeCustomerInfoUpdateListener(_customerInfoListener);   // ★
     super.dispose();
   }
 
@@ -184,12 +200,9 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
 
   Future<List<String>> _fetchQuestionSetNames(List<String> ids) async {
     try {
-      final List<String> names = [];
+      final names = <String>[];
       for (final id in ids) {
-        final doc = await FirebaseFirestore.instance
-            .collection('questionSets')
-            .doc(id)
-            .get();
+        final doc = await FirebaseFirestore.instance.collection('questionSets').doc(id).get();
         if (doc.exists) {
           final name = doc.data()?['name'] as String?;
           if (name != null) names.add(name);
@@ -226,7 +239,12 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
       correctRateRange: _correctRateRange,
       isFlagged: _isFlagged,
       selectedMemoryLevels: _selectedMemoryLevels,
+      correctChoiceFilter: _correctChoiceFilter,
     );
+
+    // 🔑 requiresPro を再計算して上書き
+    final data = updatedStudySet.toFirestore()
+      ..['requiresPro'] = _requiresPro(updatedStudySet);
 
     try {
       await FirebaseFirestore.instance
@@ -234,7 +252,7 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
           .doc(widget.userId)
           .collection('studySets')
           .doc(widget.studySetId)
-          .update(updatedStudySet.toFirestore());
+          .update(data);
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('暗記セットが更新されました。')),
@@ -254,20 +272,14 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.close),
-          onPressed: () => Navigator.pop(context),
-        ),
+        leading: IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
         title: const Text('暗記セットの編集'),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(color: Colors.grey[300], height: 1),
-        ),
+        bottom: PreferredSize(preferredSize: const Size.fromHeight(1), child: Container(color: Colors.grey[300], height: 1)),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // ── セット名
+          // セット名 ─────────────────
           ListTile(
             title: Row(
               children: [
@@ -287,28 +299,22 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
             onTap: () async {
               final name = await Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => SetStudySetNamePage(initialName: studySetName ?? ""),
-                ),
+                MaterialPageRoute(builder: (_) => SetStudySetNamePage(initialName: studySetName ?? "")),
               );
               if (name is String) setState(() => studySetName = name);
             },
           ),
 
-          // ── 問題集
+          // 問題集 ─────────────────
           ListTile(
             title: Row(
               children: [
-                const Icon(Icons.layers_rounded, size: 22, color: AppColors.gray600),
+                const Icon(Icons.dehaze_rounded, size: 22, color: AppColors.gray600),
                 const SizedBox(width: 6),
                 const SizedBox(width: 50, child: Text("問題集", style: TextStyle(fontSize: 14))),
                 if (_cachedQuestionSetNames.isNotEmpty)
                   Expanded(
-                    child: Text(
-                      _cachedQuestionSetNames.join(', '),
-                      style: const TextStyle(fontSize: 14),
-                      textAlign: TextAlign.end,
-                    ),
+                    child: Text(_cachedQuestionSetNames.join(', '), style: const TextStyle(fontSize: 14), textAlign: TextAlign.end),
                   ),
               ],
             ),
@@ -324,27 +330,24 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
                 ),
               );
               if (result is List<String>) {
-                final List<String> validIds = [];
-                final List<String> validNames = [];
+                final ids = <String>[];
+                final names = <String>[];
                 for (final id in result) {
-                  final doc = await FirebaseFirestore.instance
-                      .collection('questionSets')
-                      .doc(id)
-                      .get();
+                  final doc = await FirebaseFirestore.instance.collection('questionSets').doc(id).get();
                   if (doc.exists && (doc.data()?['isDeleted'] ?? false) == false) {
-                    validIds.add(id);
-                    validNames.add(doc.data()?['name'] as String);
+                    ids.add(id);
+                    names.add(doc.data()?['name'] as String);
                   }
                 }
                 setState(() {
-                  questionSetIds = validIds;
-                  _cachedQuestionSetNames = validNames;
+                  questionSetIds = ids;
+                  _cachedQuestionSetNames = names;
                 });
               }
             },
           ),
 
-          // ── 記憶度
+          // 記憶度 ─────────────────
           ListTile(
             title: Row(
               children: [
@@ -355,9 +358,7 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
                   child: Text(
                     _selectedMemoryLevels.length == 4
                         ? "すべて"
-                        : _selectedMemoryLevels
-                        .map((e) => _memoryLevelLabels[e] ?? e)
-                        .join(', '),
+                        : _selectedMemoryLevels.map((e) => _memoryLevelLabels[e] ?? e).join(', '),
                     style: const TextStyle(fontSize: 14),
                     textAlign: TextAlign.end,
                   ),
@@ -368,30 +369,23 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
             onTap: () async {
               final result = await Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => SetMemoryLevelPage(initialSelection: _selectedMemoryLevels),
-                ),
+                MaterialPageRoute(builder: (_) => SetMemoryLevelPage(initialSelection: _selectedMemoryLevels)),
               );
               if (result is List<String>) setState(() => _selectedMemoryLevels = result);
             },
           ),
-
-          // ── フラグあり
+          // フラグあり ─────────────────
           ListTile(
             leading: const Row(
               mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.bookmark, size: 22, color: AppColors.gray600),
-                SizedBox(width: 6),
-                Text("フラグあり", style: TextStyle(fontSize: 14)),
-              ],
+              children: [Icon(Icons.bookmark, size: 22, color: AppColors.gray600), SizedBox(width: 6), Text("フラグあり", style: TextStyle(fontSize: 14))],
             ),
             trailing: Transform.scale(
               scale: 0.8,
               child: Switch(
                 value: _isFlagged,
                 activeColor: Colors.white,
-                activeTrackColor: AppColors.blue500,
+                activeTrackColor: Colors.blue[800]!,
                 inactiveThumbColor: Colors.black,
                 inactiveTrackColor: Colors.white,
                 onChanged: (v) => setState(() => _isFlagged = v),
@@ -400,41 +394,70 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
             onTap: () => setState(() => _isFlagged = !_isFlagged),
           ),
 
-          // ── 正答率
+          // 正誤フィルター ───────────────── ★
+          ListTile(
+            title: Row(
+              children: [
+                Icon(_isPro ? Icons.fact_check : Icons.lock, size: 22, color: Colors.amber),
+                const SizedBox(width: 6),
+                const SizedBox(width: 80, child: Text("正誤", style: TextStyle(fontSize: 14))),
+                Expanded(
+                  child: Text(
+                    _correctChoiceFilter == 'all'
+                        ? 'すべて'
+                        : (_correctChoiceFilter == 'correct' ? '正しいのみ' : '間違いのみ'),
+                    style: const TextStyle(fontSize: 14),
+                    textAlign: TextAlign.end,
+                  ),
+                ),
+              ],
+            ),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.gray600),
+            onTap: !_isPro
+                ? () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const PaywallPage(
+                  subtitle: '正誤フィルターを利用するには Pro プランが必要です。',
+                ),
+              ),
+            )
+                : () async {
+              final result = await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => SetCorrectChoiceFilterPage(initialSelection: _correctChoiceFilter),
+                ),
+              );
+              if (result is String) setState(() => _correctChoiceFilter = result);
+            },
+          ),
+          // 正答率 ─────────────────
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               ListTile(
                 onTap: !_isPro
-                    ? () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const PaywallPage(
-                        subtitle: '暗記セットで正答率フィルターを編集するには、Proプランが必要です。',
-                      ),
+                    ? () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const PaywallPage(
+                      subtitle: '暗記セットで正答率フィルターを編集するには、Proプランが必要です。',
                     ),
-                  );
-                }
+                  ),
+                )
                     : null,
                 title: Row(
                   children: [
-                    Icon(_isPro ? Icons.percent : Icons.lock,
-                        size: 22, color: Colors.amber),
+                    Icon(_isPro ? Icons.percent : Icons.lock, size: 22, color: Colors.amber),
                     const SizedBox(width: 6),
                     const SizedBox(width: 80, child: Text("正答率", style: TextStyle(fontSize: 14))),
                     Expanded(
                       child: Padding(
                         padding: const EdgeInsets.only(right: 16),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            Text(
-                              "${_correctRateRange.start.toInt()} 〜 ${_correctRateRange.end.toInt()}%",
-                              style: const TextStyle(fontSize: 14),
-                            ),
-                          ],
-                        ),
+                        child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                          Text("${_correctRateRange.start.toInt()} 〜 ${_correctRateRange.end.toInt()}%", style: const TextStyle(fontSize: 14)),
+                        ]),
                       ),
                     ),
                   ],
@@ -444,16 +467,14 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
                 behavior: HitTestBehavior.opaque,
                 onTap: _isPro
                     ? null
-                    : () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const PaywallPage(
-                        subtitle: '正答率フィルターを編集するには Pro プランが必要です。',
-                      ),
+                    : () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const PaywallPage(
+                      subtitle: '正答率フィルターを編集するには Pro プランが必要です。',
                     ),
-                  );
-                },
+                  ),
+                ),
                 child: AbsorbPointer(
                   absorbing: !_isPro,
                   child: SliderTheme(
@@ -462,8 +483,8 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
                       thumbColor: Colors.white,
                       inactiveTrackColor: Colors.grey[300],
                       inactiveTickMarkColor: Colors.grey[300],
-                      activeTrackColor: AppColors.blue500,
-                      activeTickMarkColor: AppColors.blue500,
+                      activeTrackColor: Colors.blue[800]!,
+                      activeTickMarkColor: Colors.blue[800]!,
                     ),
                     child: RangeSlider(
                       values: _correctRateRange,
@@ -490,84 +511,62 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
             ],
           ),
 
-          // ── 出題順
+          // 出題順 ─────────────────
           ListTile(
             title: Row(
               children: [
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
-                  child: Icon(_isPro ? Icons.sort : Icons.lock,
-                      size: 22, color: Colors.amber),
+                  child: Icon(_isPro ? Icons.sort : Icons.lock, size: 22, color: Colors.amber),
                 ),
                 const SizedBox(width: 6),
                 const SizedBox(width: 55, child: Text("出題順", style: TextStyle(fontSize: 14))),
                 if (selectedQuestionOrder != null)
                   Expanded(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Text(
-                          orderOptions[selectedQuestionOrder] ?? '',
-                          style: const TextStyle(fontSize: 14),
-                        ),
-                      ],
-                    ),
+                    child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                      Text(orderOptions[selectedQuestionOrder] ?? '', style: const TextStyle(fontSize: 14)),
+                    ]),
                   ),
               ],
             ),
             trailing: const Icon(Icons.arrow_forward_ios, size: 18),
             onTap: () async {
-              final selOrder = await Navigator.push(
+              final sel = await Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => SetQuestionOrderPage(
-                    initialSelection: selectedQuestionOrder,
-                  ),
-                ),
+                MaterialPageRoute(builder: (_) => SetQuestionOrderPage(initialSelection: selectedQuestionOrder)),
               );
-              if (selOrder is String) setState(() => selectedQuestionOrder = selOrder);
+              if (sel is String) setState(() => selectedQuestionOrder = sel);
             },
           ),
 
-          // ── 出題数
+          // 出題数 ─────────────────
           ListTile(
             title: Row(
               children: [
-                Icon(_isPro ? Icons.format_list_numbered : Icons.lock,
-                    size: 22, color: Colors.amber),
+                Icon(_isPro ? Icons.format_list_numbered : Icons.lock, size: 22, color: Colors.amber),
                 const SizedBox(width: 6),
                 const SizedBox(width: 55, child: Text("出題数", style: TextStyle(fontSize: 14))),
                 if (numberOfQuestions != null)
                   Expanded(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Text(
-                          "最大 $numberOfQuestions 問",
-                          style: const TextStyle(fontSize: 14),
-                        ),
-                      ],
-                    ),
+                    child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                      Text("最大 $numberOfQuestions 問", style: const TextStyle(fontSize: 14)),
+                    ]),
                   ),
               ],
             ),
             trailing: const Icon(Icons.arrow_forward_ios, size: 18),
             onTap: () async {
-              final selectedCount = await Navigator.push(
+              final cnt = await Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => SetNumberOfQuestionsPage(
-                    initialSelection: numberOfQuestions,
-                  ),
-                ),
+                MaterialPageRoute(builder: (_) => SetNumberOfQuestionsPage(initialSelection: numberOfQuestions)),
               );
-              if (selectedCount is int) setState(() => numberOfQuestions = selectedCount);
+              if (cnt is int) setState(() => numberOfQuestions = cnt);
             },
           ),
         ],
       ),
 
-      // ── 保存ボタン
+      // 保存ボタン ─────────────────
       bottomNavigationBar: Padding(
         padding: const EdgeInsets.only(left: 16, right: 16, bottom: 24),
         child: Container(
@@ -586,12 +585,10 @@ class _StudySetEditPageState extends State<StudySetEditPage> {
                   studySetName!.isNotEmpty &&
                   numberOfQuestions != null &&
                   selectedQuestionOrder != null)
-                  ? AppColors.blue500
+                  ? Colors.blue[800]!
                   : Colors.grey,
               minimumSize: const Size.fromHeight(48),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(32),
-              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
             ),
             child: const Text('保存', style: TextStyle(fontSize: 16, color: Colors.white)),
           ),

@@ -1,6 +1,7 @@
 // lib/screens/my_page.dart
 //
 // 寄付プランを最上部に配置し、すべてのカードを白背景・影なしに統一した版。
+// 「レビューで応援」タイルを追加。
 
 import 'dart:io' show Platform;
 
@@ -28,6 +29,24 @@ class _MyPageState extends State<MyPage> {
   String profileImageUrl =
       'https://firebasestorage.googleapis.com/v0/b/repaso-rbaqy4.appspot.com/o/profile_images%2Fdefault_profile_icon_v1.0.png?alt=media';
   String userName = 'user';
+
+  // ──────────────── 追加: ストアレビュー URL と起動ヘルパ ────────────────
+  static const String _iosReviewUrl =
+      'itms-apps://itunes.apple.com/app/id6740453092?action=write-review'; // YOUR_APP_ID を実際の ID に置換
+  static const String _androidReviewUrl =
+      'https://play.google.com/store/apps/details?id=YOUR_PACKAGE_NAME'; // YOUR_PACKAGE_NAME を実際の ID に置換
+
+  Future<void> _launchReviewPage() async {
+    final url = Platform.isIOS ? _iosReviewUrl : _androidReviewUrl;
+    final uri = Uri.parse(url);
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('レビュー画面を開けませんでした。')),
+      );
+    }
+  }
+  // ────────────────────────────────────────────────────────────────
 
   @override
   void initState() {
@@ -194,7 +213,7 @@ class _MyPageState extends State<MyPage> {
     return Scaffold(
       backgroundColor: Colors.grey.shade100,
       appBar: AppBar(
-          title: Text('マイページ',
+          title: const Text('マイページ',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           centerTitle: false),
       body: Padding(
@@ -215,11 +234,11 @@ class _MyPageState extends State<MyPage> {
     );
   }
 
-  /* -------- プロフィールカード（白背景・影なしに変更） -------- */
+  /* -------- プロフィールカード（白背景・影なし） -------- */
   Widget _buildProfileSection(String email) {
     return Card(
-      elevation: 0,              // 影なし
-      color: Colors.white,       // 白背景
+      elevation: 0,
+      color: Colors.white,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
@@ -253,8 +272,7 @@ class _MyPageState extends State<MyPage> {
 
   /* -------- 設定カード群 -------- */
   Widget _buildSettingsList(BuildContext context, bool isPro) {
-    final donateTitle = isPro ? 'Anki Pro 加入中' : 'Anki Proで学習';
-    //色を黄色にしたい。
+    final donateTitle = isPro ? 'Anki Pro 加入中' : 'アップグレード';
     // 寄付アイコン（Proユーザーは特別なアイコンを使用）
     final donateIcon = Icons.diamond_outlined;
 
@@ -295,6 +313,19 @@ class _MyPageState extends State<MyPage> {
           trailing: isPro
               ? const Icon(Icons.verified, color: Colors.white, size: 18)
               : const Icon(Icons.chevron_right, size: 18),
+        ),
+      ],
+    );
+
+    // ── レビューで応援カード（追加） ──
+    final reviewCard = _buildCard(
+      context,
+      tiles: [
+        ..._tile(
+          Icons.thumb_up_alt_outlined,
+          'レビューで応援',
+          _launchReviewPage,
+          iconColor: Colors.black87,
         ),
       ],
     );
@@ -379,6 +410,8 @@ class _MyPageState extends State<MyPage> {
       children: [
         planCard,
         const SizedBox(height: 8),
+        reviewCard,           // ← 追加したカード
+        const SizedBox(height: 8),
         accountCard,
         const SizedBox(height: 8),
         infoCard,
@@ -391,8 +424,8 @@ class _MyPageState extends State<MyPage> {
   /* -------- 共通カード生成ヘルパ（白背景・影なし） -------- */
   Widget _buildCard(BuildContext context, {required List<Widget> tiles}) {
     return Card(
-      elevation: 0,              // 影なし
-      color: Colors.white,       // 白背景
+      elevation: 0,
+      color: Colors.white,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       child: Column(
         children: ListTile.divideTiles(

@@ -24,50 +24,44 @@ class ReusableProgressCard extends StatelessWidget {
     required this.hasPermission,
     this.selectedId,
     this.onSelected,
-    this.iconBoxSize,        // ★ 追加
-    this.iconSize,           // ★ 追加
+    this.iconBoxSize,
+    this.iconSize,
   });
 
-  // ------- 外から渡すプロパティ -------
-  final IconData           iconData;
-  final Color              iconColor;
-  final Color              iconBgColor;
-  final String             title;
-  final Map<String, int>   memoryLevels;
-  final int                correctAnswers;
-  final int                totalAnswers;
-  final int                count;
-  final String             countSuffix;
-  final VoidCallback       onTap;
-  final VoidCallback       onMorePressed;
+  /* ───────── props ───────── */
+  final IconData iconData;
+  final Color iconColor;
+  final Color iconBgColor;
+  final String title;
+  final Map<String, int> memoryLevels;
+  final int correctAnswers;
+  final int totalAnswers;
+  final int count;
+  final String countSuffix;
+  final VoidCallback onTap;
+  final VoidCallback onMorePressed;
 
-  // ラジオ選択用プロパティ
-  final bool               selectionMode;
-  final String             cardId;
-  final String?            selectedId;
+  // チェックボックス選択用
+  final bool selectionMode;
+  final String cardId;
+  final String? selectedId;
   final ValueChanged<String?>? onSelected;
 
-  // 権限の有無
-  final bool               hasPermission;
+  final bool hasPermission;
 
-  // アイコンボックスとアイコンのサイズ（指定が無い場合は RoundedIconBox のデフォルト値）
-  final double?            iconBoxSize;    // ★ 追加
-  final double?            iconSize;       // ★ 追加
+  final double? iconBoxSize;
+  final double? iconSize;
+
+  static const double _actionAreaSize = 40; // チェック / more 領域
 
   @override
   Widget build(BuildContext context) {
-    // ★ デバッグ出力
-    print('[ReusableProgressCard] build  '
-        'cardId=$cardId  selectionMode=$selectionMode  selectedId=$selectedId  hasPermission=$hasPermission');
+    final bool isChecked = selectedId == cardId;
 
-    // 権限が無い場合はグレー系カラーへ差し替え
-    final Color effectiveIconColor   = hasPermission ? iconColor   : Colors.white;
+    final borderColor = isChecked ? Colors.blue[800]! : AppColors.gray100;
+
+    final Color effectiveIconColor = hasPermission ? iconColor : Colors.white;
     final Color effectiveIconBgColor = hasPermission ? iconBgColor : Colors.grey;
-    final TextStyle effectiveTitleStyle = const TextStyle(
-      fontSize : 13,
-      fontWeight: FontWeight.bold,
-      color: Colors.black,
-    );
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -75,7 +69,7 @@ class ReusableProgressCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.gray100, width: 1),
+          border: Border.all(color: borderColor, width: 1),
         ),
         child: InkWell(
           onTap: onTap,
@@ -84,71 +78,63 @@ class ReusableProgressCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ───── タイトル行 ─────
+                /* ───── タイトル行 ───── */
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     RoundedIconBox(
-                      icon            : iconData,
-                      iconColor       : effectiveIconColor,
-                      backgroundColor : effectiveIconBgColor,
-                      size            : iconBoxSize ?? 28.0,   // ★ 追加
-                      iconSize        : iconSize    ?? 16.0,   // ★ 追加
+                      icon: iconData,
+                      iconColor: effectiveIconColor,
+                      backgroundColor: effectiveIconBgColor,
+                      size: iconBoxSize ?? 28.0,
+                      iconSize: iconSize ?? 16.0,
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         title,
-                        style: effectiveTitleStyle,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black,
+                        ),
                         overflow: TextOverflow.ellipsis,
                         maxLines: 2,
                       ),
                     ),
-                    // ───── ここをラジオ or アイコンボタンに切り替え ─────
-                    if (selectionMode)
-                      Radio<String>(
-                        value       : cardId,
-                        groupValue  : selectedId,
-                        activeColor : Colors.blue[800],
-                        onChanged   : (val) {
-                          // ★ デバッグ出力
-                          print('[ReusableProgressCard] Radio onChanged → $val');
-                          if (onSelected != null) onSelected!(val);
-                        },
-                      )
-                    else
-                      SizedBox(
-                        width : 40,
-                        height: 40,
-                        child : IconButton(
-                          icon            : const Icon(
-                            Icons.more_horiz_outlined,
-                            color: Colors.grey,
-                          ),
-                          padding       : EdgeInsets.zero,
-                          constraints   : const BoxConstraints(),
-                          visualDensity : VisualDensity.compact,
-                          onPressed     : onMorePressed,
-                        ),
+                    /* ───── 右側アクション ───── */
+                    SizedBox(
+                      width: _actionAreaSize,
+                      height: _actionAreaSize,
+                      child: selectionMode
+                          ? const SizedBox.shrink() // ★ 複数選択時は非表示
+                          : IconButton(
+                        icon: const Icon(Icons.more_horiz_outlined,
+                            color: Colors.grey),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        visualDensity: VisualDensity.compact,
+                        onPressed: onMorePressed,
                       ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 12),
-                // ───── 正答率・件数表示 ─────
+                /* ───── 正答率・件数 ───── */
                 QuestionRateDisplay(
-                  top          : correctAnswers,
-                  bottom       : totalAnswers,
-                  memoryLevels : memoryLevels,
-                  count        : count,
-                  countSuffix  : countSuffix,
+                  top: correctAnswers,
+                  bottom: totalAnswers,
+                  memoryLevels: memoryLevels,
+                  count: count,
+                  countSuffix: countSuffix,
                 ),
                 const SizedBox(height: 4),
-                // ───── メモリーレベルバー ─────
+                /* ───── メモリーバー ───── */
                 Padding(
                   padding: const EdgeInsets.only(right: 8.0),
-                  child  : MemoryLevelProgressBar(
+                  child: MemoryLevelProgressBar(
                     memoryValues: memoryLevels,
-                    totalCount  : count,
+                    totalCount: count,
                   ),
                 ),
                 const SizedBox(height: 4),

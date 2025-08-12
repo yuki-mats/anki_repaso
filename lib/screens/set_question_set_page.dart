@@ -1,3 +1,4 @@
+// lib/widgets/home_page_widgets/set_question_set_page.dart
 import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -5,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_sticky_header/flutter_sticky_header.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
+import 'package:purchases_flutter/purchases_flutter.dart';
 
 import '../screens/paywall_page.dart';
 import '../utils/app_colors.dart';
@@ -48,13 +50,21 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
   void initState() {
     super.initState();
 
-    debugPrint('[DEBUG] SetQuestionSetPage opened for user: ${widget.userId}');
+    debugPrint('[DEBUG] SetQuestionSetPage opened for user: ${widget.userId}]');
 
     // オフラインキャッシュを有効化
     FirebaseFirestore.instance.settings = const Settings(
       persistenceEnabled: true,
       cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
     );
+
+    // RevenueCat の更新を監視（Entitlement 変更時に UI へ即反映）
+    Purchases.addCustomerInfoUpdateListener((info) {
+      final pro = info.entitlements.active['Pro']?.isActive ?? false;
+      if (mounted && _isPro != pro) {
+        setState(() => _isPro = pro);
+      }
+    });
 
     _initializeSelections().then((_) => _fetchData());
   }
@@ -102,12 +112,16 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
           .get(const GetOptions(source: Source.serverAndCache));
       final userData = userDoc.data() ?? {};
       final rawLicenses = userData['selectedLicenseNames'];
-      final selectedLicenses = (rawLicenses is List)
-          ? rawLicenses.whereType<String>().toList()
-          : <String>[];
+      final selectedLicenses =
+      (rawLicenses is List) ? rawLicenses.whereType<String>().toList() : <String>[];
 
-      _isPro = userData['isPro'] as bool? ?? false;
-
+      /* ───── isPro 判定を RevenueCat 由来に変更 ───── */
+      try {
+        final info = await Purchases.getCustomerInfo();
+        _isPro = info.entitlements.active['Pro']?.isActive ?? false;
+      } catch (_) {
+        _isPro = false;
+      }
       debugPrint('[DEBUG] isPro status for ${widget.userId}: $_isPro');
 
       final fetched = <String, Map<String, dynamic>>{};
@@ -333,12 +347,12 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
           ),
         );
         btnLabel = 'プランを変更する';
-        btnColor = AppColors.blue500;
+        btnColor = Colors.blue[800]!;
       }
     } else {
       onSave = _onBack;
       btnLabel = '保存';
-      btnColor = AppColors.blue500;
+      btnColor = Colors.blue[800]!;
     }
 
     return Scaffold(
@@ -374,28 +388,69 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
             final fid = entry.key;
             final info = entry.value;
             final expanded = expandedState[fid] ?? false;
-            final folderSel = folderSelection[fid];
+            final folderSel = folderSelection[fid]; // true / false / null
+
             return SliverStickyHeader(
               header: Material(
                 color: Colors.white,
                 child: InkWell(
                   highlightColor: Colors.transparent,
                   splashColor: Colors.transparent,
+                  // 行全体タップで開閉
                   onTap: () => setState(() => expandedState[fid] = !expanded),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        RoundedIconBox(
-                          icon: expanded
-                              ? MdiIcons.folderOpenOutline
-                              : MdiIcons.folderOutline,
-                          size: 28.0,
-                          iconSize: 18.0,
-                          iconColor: AppColors.blue500,
-                          backgroundColor: AppColors.blue100,
+                        // ─── 左チェック（統一：28×28, R=6） ───
+                        GestureDetector(
+                          onTap: () => _toggleFolder(fid, folderSel != true),
+                          behavior: HitTestBehavior.opaque,
+                          child: Container(
+                            alignment: Alignment.center,
+                            width: 28,
+                            height: 28,
+                            margin: const EdgeInsets.only(left: 16, right: 8),
+                            decoration: BoxDecoration(
+                              // ★ 変更点：null（部分選択）でも青背景に
+                              color: folderSel == true
+                                  ? Colors.blue[700]
+                                  : (folderSel == null ? Colors.blue[700] : Colors.white),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                // ★ 変更点：null も青枠
+                                color: (folderSel == true || folderSel == null)
+                                    ? Colors.blue[700]!
+                                    : AppColors.gray300,
+                                width: 2,
+                              ),
+                            ),
+                            child: folderSel == true
+                                ? const Icon(Icons.check, size: 18, color: Colors.white)
+                                : (folderSel == null
+                            // ★ 変更点：マイナスを白色で
+                                ? const Icon(Icons.remove,
+                                size: 18, color: Colors.white)
+                                : null),
+                          ),
                         ),
-                        const SizedBox(width: 8),
+
+                        // ─── フォルダアイコン ───
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8.0),
+                          child: RoundedIconBox(
+                            icon: expanded
+                                ? MdiIcons.folderOpenOutline
+                                : MdiIcons.folderOutline,
+                            size: 28.0,
+                            iconSize: 18.0,
+                            iconColor: Colors.white,
+                            backgroundColor: Colors.blue[800]!,
+                          ),
+                        ),
+
+                        // ─── フォルダ名 ───
                         Expanded(
                           child: Text(
                             info['name'] as String,
@@ -404,29 +459,13 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
                               fontSize: 14,
                               color: Colors.black87,
                             ),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 2,
                           ),
                         ),
-                        InkWell(
-                          onTap: () => _toggleFolder(fid, folderSel != true),
-                          child: Padding(
-                            padding: const EdgeInsets.only(right: 10.0),
-                            child: SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: Icon(
-                                folderSel == true
-                                    ? Icons.check_box
-                                    : (folderSel == false
-                                    ? Icons.check_box_outline_blank
-                                    : Icons.indeterminate_check_box),
-                                color: folderSel != false
-                                    ? AppColors.blue500
-                                    : AppColors.gray600,
-                                size: 20,
-                              ),
-                            ),
-                          ),
-                        ),
+
+                        // 右端余白を少しだけ（視覚バランス）
+                        const SizedBox(width: 16),
                       ],
                     ),
                   ),
@@ -435,8 +474,8 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
               sliver: SliverList(
                 delegate: SliverChildBuilderDelegate(
                       (context, i) {
-                    final qsInfo = (info['questionSets']
-                    as List<Map<String, dynamic>>)[i];
+                    final qsInfo =
+                    (info['questionSets'] as List<Map<String, dynamic>>)[i];
                     final id = qsInfo['id'] as String;
                     final count = qsInfo['count'] as int? ?? 0;
                     final sel = questionSetSelection[id] ?? false;
@@ -458,10 +497,12 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
 
                         // 2) Firestore データを反映
                         if (statSnap.hasData && statSnap.data!.exists) {
-                          final data = statSnap.data!.data() as Map<String, dynamic>;
+                          final data =
+                          statSnap.data!.data() as Map<String, dynamic>;
 
-                          // ── 集計版があれば優先
-                          final stats = data['memoryLevelStats'] as Map<String, dynamic>?;
+                          // 集計版があれば優先
+                          final stats =
+                          data['memoryLevelStats'] as Map<String, dynamic>?;
                           if (stats != null && stats.isNotEmpty) {
                             stats.forEach((k, v) {
                               if (lvl.containsKey(k) && v is num) {
@@ -469,8 +510,10 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
                               }
                             });
                           } else {
-                            // ── 旧形式を走査
-                            final raw = (data['memoryLevels'] as Map<String, dynamic>? ?? {})
+                            // 旧形式を走査
+                            final raw = (data['memoryLevels']
+                            as Map<String, dynamic>? ??
+                                {})
                                 .values
                                 .whereType<String>();
                             for (final lv in raw) {
@@ -488,28 +531,62 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
                           'unanswered': max(unanswered, 0),
                         };
 
-                        // 4) カード生成
-                        return StudySetSelectableCard(
-                          iconData: Icons.quiz_outlined,
-                          iconColor: AppColors.blue500,
-                          iconBgColor: AppColors.blue100,
-                          title: qsInfo['name'] as String,
-                          isVerified: false,
-                          memoryLevels: memoryLevels,  // ← メーター用
-                          correctAnswers: correct,
-                          totalAnswers: count,         // ← 正答率用
-                          count: count,
-                          countSuffix: ' 問',
-                          onTap: () => _toggleQuestionSet(fid, id),
-                          isSelected: sel,
-                          onSelectionChanged: (_) => _toggleQuestionSet(fid, id),
+                        // 4) 行（左チェック + カード本体）
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            // 左側チェック（統一）
+                            GestureDetector(
+                              onTap: () => _toggleQuestionSet(fid, id),
+                              behavior: HitTestBehavior.opaque,
+                              child: Container(
+                                alignment: Alignment.center,
+                                width: 28,
+                                height: 28,
+                                margin: const EdgeInsets.only(left: 16),
+                                decoration: BoxDecoration(
+                                  color: sel ? Colors.blue[700] : Colors.white,
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color:
+                                    sel ? Colors.blue[700]! : AppColors.gray300,
+                                    width: 2,
+                                  ),
+                                ),
+                                child: sel
+                                    ? const Icon(Icons.check,
+                                    size: 18, color: Colors.white)
+                                    : null,
+                              ),
+                            ),
+
+                            // 右側：カード本体（選択時は青枠で強調）
+                            Expanded(
+                              child: StudySetSelectableCard(
+                                iconData: Icons.dehaze_rounded,
+                                iconColor: Colors.white,
+                                iconBgColor: Colors.blue[800]!,
+                                title: qsInfo['name'] as String,
+                                isVerified: false,
+                                memoryLevels: memoryLevels, // メーター用
+                                correctAnswers: correct,
+                                totalAnswers: count, // 正答率用
+                                count: count,
+                                countSuffix: ' 問',
+                                onTap: () => _toggleQuestionSet(fid, id),
+                                isSelected: sel, // 枠色のために渡す
+                                onSelectionChanged: (_) =>
+                                    _toggleQuestionSet(fid, id),
+                                iconBoxSize: 28.0,
+                                iconSize: 16.0,
+                              ),
+                            ),
+                          ],
                         );
                       },
                     );
-
-                      },
-                  childCount:
-                  expanded ? (info['questionSets'] as List).length : 0,
+                  },
+                  childCount: expanded ? (info['questionSets'] as List).length : 0,
                 ),
               ),
             );
@@ -530,7 +607,7 @@ class _SetQuestionSetPageState extends State<SetQuestionSetPage> {
                   Expanded(
                     child: Text(
                       infoText,
-                      style: TextStyle(color: AppColors.gray600, fontSize: 14),
+                      style: const TextStyle(color: AppColors.gray600, fontSize: 14),
                     ),
                   ),
                 ],

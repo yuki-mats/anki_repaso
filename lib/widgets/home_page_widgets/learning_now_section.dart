@@ -187,6 +187,10 @@ class _LearningNowSectionState extends State<LearningNowSection> {
       return false;
     }
     final d = snap.data()!;
+
+    /* ★ requiresPro フラグをカードに反映（studySet のみ） */
+    item['requiresPro'] = isQs ? false : (d['requiresPro'] ?? false);
+
     if ((d['isDeleted'] ?? false) == true) {
       debugPrint('_fillMeta: doc isDeleted=true, returning false');
       return false;
@@ -308,11 +312,14 @@ class _LearningNowSectionState extends State<LearningNowSection> {
 
   /* --- ヘッダー --- */
   Widget _header(BuildContext ctx) => Padding(
-    padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+    padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
     child: Row(
       children: [
-        const Icon(Icons.push_pin, color: Colors.black87),
-        const SizedBox(width: 8),
+        Padding(
+          padding: const EdgeInsets.only(top:2.0),
+          child: const Icon(Icons.push_pin, color: Colors.black87, size: 24),
+        ),
+        const SizedBox(width: 2),
         Text('今すぐ学習',
             style: Theme.of(ctx)
                 .textTheme
@@ -421,7 +428,21 @@ class _LearningNowSectionState extends State<LearningNowSection> {
 
   /* ───────── イベント ───────── */
   void _onCardTap(Map<String, dynamic> m) {
-    debugPrint('_onCardTap: type=${m['type']} refId=${m['refId']}');
+    /* ★ requiresPro × 無料ユーザーなら Paywall へ */
+    final bool requiresPro = m['requiresPro'] == true;
+    final bool isProUser   = EntitlementGate().isPro;
+    if (requiresPro && !isProUser) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const PaywallPage(
+            subtitle: 'この暗記セットを利用するには Pro プランが必要です。',
+          ),
+        ),
+      );
+      return;
+    }
+
     final bool isQs = m['type'] == 'questionSet';
     if (isQs) {
       Navigator.push(
@@ -443,6 +464,7 @@ class _LearningNowSectionState extends State<LearningNowSection> {
       );
     }
   }
+
 
   void _showMoreModal(String itemId) => showModalBottomSheet(
     backgroundColor: Colors.white,

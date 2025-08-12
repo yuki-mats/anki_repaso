@@ -297,6 +297,7 @@ class _AnkiSetTabPageState extends State<AnkiSetTabPage>
         (data['correctRateRange']?['end'] ?? 100).toDouble(),
       ),
       isFlagged: data['isFlagged'] ?? false,
+      correctChoiceFilter: data['correctChoiceFilter'] ?? 'all',
       selectedMemoryLevels: data.containsKey('selectedMemoryLevels')
           ? List<String>.from(data['selectedMemoryLevels'])
           : ['again', 'hard', 'good', 'easy'],
@@ -326,10 +327,10 @@ class _AnkiSetTabPageState extends State<AnkiSetTabPage>
                 ),
               ),
               ListTile(
-                leading: const RoundedIconBox(
-                  icon: Icons.school_outlined,
-                  iconColor: AppColors.blue600,
-                  backgroundColor: AppColors.blue100,
+                leading: RoundedIconBox(
+                  icon: Icons.rule_rounded,
+                  iconColor: Colors.white,
+                  backgroundColor: Colors.blue[800],
                   borderRadius: 8,
                   size: 34,
                   iconSize: 24,

@@ -4,7 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:excel/excel.dart' as excel;
 import 'package:flutter/material.dart';
-import 'question_count.dart';
+import 'question_count_update.dart';
 
 /// Firestore への問題インポートやファイル解析を行うサービス
 class ImportQuestionsService {
@@ -199,7 +199,7 @@ class ImportQuestionsService {
 
     try {
       await batch.commit();
-      await updateQuestionCounts(folderId, questionSetId);
+      await questionCountsUpdate(folderId, questionSetId);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('問題のインポートが完了しました')),

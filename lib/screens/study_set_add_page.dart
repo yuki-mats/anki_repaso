@@ -6,8 +6,9 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:purchases_flutter/purchases_flutter.dart';                // ★ 追加
+import 'package:purchases_flutter/purchases_flutter.dart'; // ★
 import 'package:repaso/screens/paywall_page.dart';
+import 'package:repaso/screens/set_correct_choice_filter_page.dart';     // ★ 追加
 import 'package:repaso/screens/set_study_set_name_page.dart';
 import 'package:repaso/utils/app_colors.dart';
 import 'package:repaso/screens/set_number_of_questions_page.dart';
@@ -15,7 +16,7 @@ import 'package:repaso/screens/set_question_order_page.dart';
 import 'package:repaso/screens/set_question_set_page.dart';
 import 'package:repaso/widgets/set_memory_level_page.dart';
 
-/// StudySet モデル（StudySetEditPage に合わせた追加フィールド付き）
+/// StudySet モデル（正誤フィルターなど追加済み）
 class StudySet {
   final String name;
   final List<String> questionSetIds;
@@ -23,12 +24,16 @@ class StudySet {
   final String selectedQuestionOrder;
   final RangeValues correctRateRange;
   final bool isFlagged;
+  final String correctChoiceFilter;          // ★ 'all' | 'correct' | 'incorrect'
+  final List<String> selectedMemoryLevels;   // ★ 記憶度フィルター
+
+  // 学習統計
   final Map<String, int> memoryLevelStats;
   final Map<String, int> memoryLevelRatios;
   final int totalAttemptCount;
   final int studyStreakCount;
   final String lastStudiedDate;
-  final List<String> selectedMemoryLevels;
+
   final Timestamp? createdAt;
 
   StudySet({
@@ -38,12 +43,13 @@ class StudySet {
     required this.selectedQuestionOrder,
     required this.correctRateRange,
     required this.isFlagged,
+    required this.correctChoiceFilter,       // ★
+    required this.selectedMemoryLevels,      // ★
     required this.memoryLevelStats,
     required this.memoryLevelRatios,
     required this.totalAttemptCount,
     required this.studyStreakCount,
     required this.lastStudiedDate,
-    required this.selectedMemoryLevels,
     this.createdAt,
   });
 
@@ -58,19 +64,18 @@ class StudySet {
         (data['correctRateRange']?['end'] ?? 100.0).toDouble(),
       ),
       isFlagged: data['isFlagged'] as bool? ?? false,
+      correctChoiceFilter: data['correctChoiceFilter'] as String? ?? 'all', // ★
+      selectedMemoryLevels:
+      List<String>.from(data['selectedMemoryLevels'] ?? ['again', 'hard', 'good', 'easy']),
       memoryLevelStats: Map<String, int>.from(
-        data['memoryLevelStats'] ??
-            {'again': 0, 'hard': 0, 'good': 0, 'easy': 0},
+        data['memoryLevelStats'] ?? {'again': 0, 'hard': 0, 'good': 0, 'easy': 0},
       ),
       memoryLevelRatios: Map<String, int>.from(
-        data['memoryLevelRatios'] ??
-            {'again': 0, 'hard': 0, 'good': 0, 'easy': 0},
+        data['memoryLevelRatios'] ?? {'again': 0, 'hard': 0, 'good': 0, 'easy': 0},
       ),
       totalAttemptCount: data['totalAttemptCount'] ?? 0,
       studyStreakCount: data['studyStreakCount'] ?? 0,
       lastStudiedDate: data['lastStudiedDate'] ?? "",
-      selectedMemoryLevels:
-      List<String>.from(data['selectedMemoryLevels'] ?? []),
       createdAt: data['createdAt'],
     );
   }
@@ -87,12 +92,13 @@ class StudySet {
         'end': correctRateRange.end,
       },
       'isFlagged': isFlagged,
+      'correctChoiceFilter': correctChoiceFilter,           // ★
+      'selectedMemoryLevels': selectedMemoryLevels,         // ★
       'memoryLevelStats': memoryLevelStats,
       'memoryLevelRatios': memoryLevelRatios,
       'totalAttemptCount': totalAttemptCount,
       'studyStreakCount': studyStreakCount,
       'lastStudiedDate': lastStudiedDate,
-      'selectedMemoryLevels': selectedMemoryLevels,
       'createdAt': FieldValue.serverTimestamp(),
     };
   }
@@ -100,7 +106,6 @@ class StudySet {
 
 class StudySetAddPage extends StatefulWidget {
   final StudySet? studySet;
-
   const StudySetAddPage({Key? key, this.studySet}) : super(key: key);
 
   @override
@@ -115,14 +120,30 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
   late List<String> questionSetIds;
   late int? numberOfQuestions;
   late String? selectedQuestionOrder;
+  late String _correctChoiceFilter;
 
   // キャッシュ
   List<String> _cachedQuestionSetNames = [];
   List<String> _selectedMemoryLevels = ['again', 'hard', 'good', 'easy'];
 
   // Pro 判定
-  bool _isPro = false;                                         // ★
-  late final void Function(CustomerInfo) _customerInfoListener; // ★
+  bool _isPro = false;
+  late final void Function(CustomerInfo) _customerInfoListener;
+
+  /// Pro 機能を使っているかどうか判定する
+  bool _requiresPro(StudySet s) {
+    const freeOrder          = 'random';   // 無料で使える出題順
+    const freeMaxQuestions   = 10;         // 無料枠は 1〜10 問まで
+
+    return
+      s.correctChoiceFilter != 'all'                       // 正誤フィルター
+          || s.selectedMemoryLevels.length != 4                   // 記憶度フィルター
+          || s.correctRateRange.start != 0 ||
+          s.correctRateRange.end   != 100                      // 正答率フィルター
+          || s.selectedQuestionOrder  != freeOrder                // 出題順
+          || s.numberOfQuestions      >  freeMaxQuestions;        // 出題数 11 問以上
+  }
+
 
   final Map<String, String> _memoryLevelLabels = {
     'again': 'もう一度',
@@ -157,6 +178,8 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
       selectedQuestionOrder = s.selectedQuestionOrder;
       _correctRateRange = s.correctRateRange;
       _isFlagged = s.isFlagged;
+      _correctChoiceFilter = s.correctChoiceFilter;        // ★
+      _selectedMemoryLevels = List.from(s.selectedMemoryLevels);
     } else {
       studySetName = null;
       questionSetIds = [];
@@ -164,6 +187,7 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
       selectedQuestionOrder = null;
       _correctRateRange = const RangeValues(0, 100);
       _isFlagged = false;
+      _correctChoiceFilter = 'all';                        // ★
     }
 
     _fetchAndCacheQuestionSetNames();
@@ -247,20 +271,25 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
       selectedQuestionOrder: selectedQuestionOrder!,
       correctRateRange: _correctRateRange,
       isFlagged: _isFlagged,
+      correctChoiceFilter: _correctChoiceFilter,
+      selectedMemoryLevels: _selectedMemoryLevels,
       memoryLevelStats: const {'again': 0, 'hard': 0, 'good': 0, 'easy': 0},
       memoryLevelRatios: const {'again': 0, 'hard': 0, 'good': 0, 'easy': 0},
       totalAttemptCount: 0,
       studyStreakCount: 0,
       lastStudiedDate: "",
-      selectedMemoryLevels: _selectedMemoryLevels,
     );
+
+    // 🔑 requiresPro を計算して書き込む
+    final data = newStudySet.toFirestore()
+      ..['requiresPro'] = _requiresPro(newStudySet);
 
     try {
       await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
           .collection('studySets')
-          .add(newStudySet.toFirestore());
+          .add(data);
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('学習セットが保存されました。')),
@@ -410,6 +439,46 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
             onTap: () => setState(() => _isFlagged = !_isFlagged),
           ),
 
+          // 正誤フィルター ★
+          ListTile(
+            title: Row(
+              children: [
+                Icon(_isPro ? Icons.fact_check : Icons.lock, size: 22, color: Colors.amber),
+                const SizedBox(width: 6),
+                const SizedBox(width: 80, child: Text("正誤", style: TextStyle(fontSize: 14))),
+                Expanded(
+                  child: Text(
+                    _correctChoiceFilter == 'all'
+                        ? 'すべて'
+                        : (_correctChoiceFilter == 'correct' ? '正しいのみ' : '間違いのみ'),
+                    style: const TextStyle(fontSize: 14),
+                    textAlign: TextAlign.end,
+                  ),
+                ),
+              ],
+            ),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.gray600),
+            onTap: !_isPro
+                ? () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const PaywallPage(
+                  subtitle: '正誤フィルターを利用するには Pro プランが必要です。',
+                ),
+              ),
+            )
+                : () async {
+              final result = await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                      SetCorrectChoiceFilterPage(initialSelection: _correctChoiceFilter),
+                ),
+              );
+              if (result is String) setState(() => _correctChoiceFilter = result);
+            },
+          ),
+
           // 正答率
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -420,16 +489,14 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
                   context,
                   MaterialPageRoute(
                     builder: (_) => const PaywallPage(
-                      subtitle:
-                      '暗記セットで正答率フィルターを編集するには、Proプランが必要です。',
+                      subtitle: '暗記セットで正答率フィルターを編集するには、Proプランが必要です。',
                     ),
                   ),
                 )
                     : null,
                 title: Row(
                   children: [
-                    Icon(_isPro ? Icons.percent : Icons.lock,
-                        size: 22, color: Colors.amber),
+                    Icon(_isPro ? Icons.percent : Icons.lock, size: 22, color: Colors.amber),
                     const SizedBox(width: 6),
                     const SizedBox(width: 80, child: Text("正答率", style: TextStyle(fontSize: 14))),
                     Expanded(
@@ -499,8 +566,7 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
               children: [
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
-                  child: Icon(_isPro ? Icons.sort : Icons.lock,
-                      size: 22, color: Colors.amber),
+                  child: Icon(_isPro ? Icons.sort : Icons.lock, size: 22, color: Colors.amber),
                 ),
                 const SizedBox(width: 6),
                 const SizedBox(width: 55, child: Text("出題順", style: TextStyle(fontSize: 14))),
@@ -519,9 +585,7 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
               final selOrder = await Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => SetQuestionOrderPage(
-                    initialSelection: selectedQuestionOrder,
-                  ),
+                  builder: (_) => SetQuestionOrderPage(initialSelection: selectedQuestionOrder),
                 ),
               );
               if (selOrder is String) setState(() => selectedQuestionOrder = selOrder);
@@ -551,9 +615,7 @@ class _StudySetAddPageState extends State<StudySetAddPage> {
               final selectedCount = await Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => SetNumberOfQuestionsPage(
-                    initialSelection: numberOfQuestions,
-                  ),
+                  builder: (_) => SetNumberOfQuestionsPage(initialSelection: numberOfQuestions),
                 ),
               );
               if (selectedCount is int) setState(() => numberOfQuestions = selectedCount);

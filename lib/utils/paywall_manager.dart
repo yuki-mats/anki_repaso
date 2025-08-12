@@ -1,50 +1,56 @@
 // lib/utils/paywall_manager.dart
+// ignore_for_file: always_use_package_imports, avoid_print
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:purchases_flutter/purchases_flutter.dart';          // RevenueCat
+import 'package:package_info_plus/package_info_plus.dart';          // ★ アプリバージョン取得
 import '../screens/paywall_page.dart';
 
 class PaywallManager {
   PaywallManager._();                               // インスタンス生成禁止
 
-  static const _kPrefsLastPaywallDate = 'lastPaywallShownDate';
-  static bool _hasShownThisSession = false;         // 起動中 1 回だけ表示
+  static bool _hasShownThisSession = false;         // プロセス中は 1 回
 
-  /// 必要があれば PaywallPage を push する（乱数判定なし）
+  /// ─────────────────────────────────────────────
+  /// MainPage 到達時に呼び出し
+  ///   - Pro は除外
+  ///   - `lastPaywallVersion_<uid>` が現在バージョンと違えば表示
+  ///   - 同セッション内で二重表示を防ぐ
+  /// ─────────────────────────────────────────────
   static Future<void> maybeShow({
     required BuildContext context,
     required String uid,
   }) async {
-    if (await _isProUser(uid)) return;              // 有料ユーザーは非表示
+    if (uid.isEmpty) return;                        // 未ログイン
+    if (await _isProUser()) return;                 // 有料ユーザー
 
-    final prefs   = await SharedPreferences.getInstance();
-    final today   = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final prefs          = await SharedPreferences.getInstance();
+    final currentVersion = await _appVersion();
+    final lastVersion    = prefs.getString('lastPaywallVersion_$uid');
 
-    // 既に当日表示済みならスキップ
-    if (prefs.getString(_kPrefsLastPaywallDate) == today) return;
+    // 既に同バージョンで表示済み、またはセッション内で表示済み
+    if (lastVersion == currentVersion || _hasShownThisSession) return;
 
-    // セッション内で未表示なら必ず表示
-    if (!_hasShownThisSession) {
-      _hasShownThisSession = true;
-      _openPaywall(context);
-      await prefs.setString(_kPrefsLastPaywallDate, today);
-    }
+    _hasShownThisSession = true;
+    _openPaywall(context);
+    await prefs.setString('lastPaywallVersion_$uid', currentVersion);
   }
 
   /* ---------- 内部 util ---------- */
 
-  static Future<bool> _isProUser(String uid) async {
+  static Future<bool> _isProUser() async {
     try {
-      final snap = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(uid)
-          .get();
-      return (snap.data()?['isPro'] ?? false) as bool;
+      final info = await Purchases.getCustomerInfo();
+      return info.entitlements.active['Pro']?.isActive ?? false;
     } catch (e) {
-      debugPrint('isPro 判定エラー: $e');
-      return false;                                 // 失敗時は表示する
+      debugPrint('[PaywallManager] isPro 判定エラー: $e');
+      return false;                                 // 失敗時は無料扱い
     }
+  }
+
+  static Future<String> _appVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    return info.version;                            // 例 "2.12.0"
   }
 
   /// PaywallPage を **下からスライドイン** で表示

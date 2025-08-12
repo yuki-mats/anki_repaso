@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';                // PlatformException
+import 'package:flutter/services.dart'; // PlatformException
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../utils/app_colors.dart';       // ← リンク用
+import '../ads/app_open_ad_manager.dart';
+import '../utils/app_colors.dart'; // ← リンク用
 
 // ====== それぞれの外部リンク先 =============================================
-const _kTermsUrl   = 'https://right-saxophone-1b5.notion.site/215e144de0eb8094b3b2ce284b39975c';
-const _kPolicyUrl  = 'https://right-saxophone-1b5.notion.site/17be144de0eb807c8e1fe6da3de3f92c?pvs=74';
-const _kCancelUrl  = 'https://support.apple.com/ja-jp/HT202039';
+const _kTermsUrl =
+    'https://right-saxophone-1b5.notion.site/215e144de0eb8094b3b2ce284b39975c';
+const _kPolicyUrl =
+    'https://right-saxophone-1b5.notion.site/17be144de0eb807c8e1fe6da3de3f92c?pvs=74';
+const _kCancelUrl = 'https://support.apple.com/ja-jp/HT202039';
 // ============================================================================
 
 class PaywallPage extends StatefulWidget {
@@ -19,9 +22,13 @@ class PaywallPage extends StatefulWidget {
 }
 
 class _PaywallPageState extends State<PaywallPage> {
-  int _selectedIndex = 1;                               // 0: 月額, 1: 年額
+  int _selectedIndex = 1; // 0: 月額, 1: 年額
   Package? _monthlyPackage;
   Package? _annualPackage;
+
+  // ───────────────────────────── 新規追加 ─────────────────────────────
+  bool _isLoading = false; // 今すぐ登録ボタン押下時のローディング状態
+  // ──────────────────────────────────────────────────────────────
 
   @override
   void initState() {
@@ -36,7 +43,7 @@ class _PaywallPageState extends State<PaywallPage> {
       if (!mounted) return;
       setState(() {
         _monthlyPackage = current?.monthly;
-        _annualPackage  = current?.annual;
+        _annualPackage = current?.annual;
       });
     } catch (e) {
       debugPrint('Offerings fetch error: $e');
@@ -47,38 +54,41 @@ class _PaywallPageState extends State<PaywallPage> {
 
   Future<void> _onSubscribe() async {
     final pkg = _selectedIndex == 0 ? _monthlyPackage : _annualPackage;
-    if (pkg == null) return;                            // まだロード中
+    if (pkg == null) return;
 
+    AppOpenAdManager.instance.ignoreNextResume(); // ★ 追加: 課金フロー復帰を無視
+    setState(() => _isLoading = true);
     try {
-      final info = await Purchases.purchasePackage(pkg);  // v6+
+      final info = await Purchases.purchasePackage(pkg);
+      if (!mounted) return;
       if (info.entitlements.active.containsKey('Pro')) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('ご登録ありがとうございました！')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('ご登録ありがとうございました！')));
         Navigator.of(context).pop();
       }
     } on PlatformException catch (e) {
-      if (PurchasesErrorHelper.getErrorCode(e) ==
-          PurchasesErrorCode.purchaseCancelledError) return;
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('購入に失敗しました: ${e.message}')),
-      );
+      if (PurchasesErrorHelper.getErrorCode(e) !=
+          PurchasesErrorCode.purchaseCancelledError) {
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text('購入に失敗しました: ${e.message}')));
+        }
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   Future<void> _onRestore() async {
+    AppOpenAdManager.instance.ignoreNextResume(); // ★ 追加
     try {
       await Purchases.restorePurchases();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('購入履歴を復元しました')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('購入履歴を復元しました')));
     } catch (e) {
       debugPrint('Restore error: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('復元に失敗しました')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('復元に失敗しました')));
     }
   }
 
@@ -91,13 +101,12 @@ class _PaywallPageState extends State<PaywallPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isMonthly    = _selectedIndex == 0;
+    final isMonthly = _selectedIndex == 0;
     final monthlyPrice = _monthlyPackage?.storeProduct.priceString ?? '---';
-    final annualPrice  = _annualPackage ?.storeProduct.priceString ?? '---';
+    final annualPrice = _annualPackage?.storeProduct.priceString ?? '---';
 
     // 24px padding ×2 + 16px gap
-    final cardWidth =
-        (MediaQuery.of(context).size.width - 24 * 2 - 16) / 2;
+    final cardWidth = (MediaQuery.of(context).size.width - 24 * 2 - 16) / 2;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -114,7 +123,7 @@ class _PaywallPageState extends State<PaywallPage> {
             mainAxisAlignment: MainAxisAlignment.start,
             children: [
               Padding(
-                padding: const EdgeInsets.only(top:2.0),
+                padding: const EdgeInsets.only(top: 2.0),
                 child: Text(
                   'Anki',
                   style: TextStyle(
@@ -126,7 +135,8 @@ class _PaywallPageState extends State<PaywallPage> {
               ),
               const SizedBox(width: 4),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                padding:
+                const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
                 decoration: BoxDecoration(
                   color: Colors.blue[700],
                   borderRadius: BorderRadius.circular(2),
@@ -154,7 +164,6 @@ class _PaywallPageState extends State<PaywallPage> {
           const SizedBox(width: 16),
         ],
       ),
-
       body: SafeArea(
         child: Column(
           children: [
@@ -171,7 +180,8 @@ class _PaywallPageState extends State<PaywallPage> {
                       ),
                     ),
                     Padding(
-                      padding: const EdgeInsets.only(left: 16.0, right: 16.0, top: 0.0),
+                      padding: const EdgeInsets.only(
+                          left: 16.0, right: 16.0, top: 0.0),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
@@ -179,12 +189,13 @@ class _PaywallPageState extends State<PaywallPage> {
                             widget.subtitle ??
                                 'Anki Proプランで、学習をもっと効率的に！',
                             textAlign: TextAlign.center,
-                            style: TextStyle(fontSize: 14, color: Colors.black54),
+                            style:
+                            TextStyle(fontSize: 14, color: Colors.black54),
                           ),
                           const SizedBox(height: 16),
                           // ─── 機能リスト ────────────────────────────────
                           Padding(
-                            padding: const EdgeInsets.only(left:8.0),
+                            padding: const EdgeInsets.only(left: 8.0),
                             child: Column(
                               children: [
                                 _FeatureRow(
@@ -210,9 +221,7 @@ class _PaywallPageState extends State<PaywallPage> {
                               ],
                             ),
                           ),
-
                           const SizedBox(height: 16),
-
                           // ─── プランセレクター ─────────────────────────
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -239,16 +248,15 @@ class _PaywallPageState extends State<PaywallPage> {
                               ),
                             ],
                           ),
-
                           const SizedBox(height: 24),
                           // ─── 利用規約・プライバシー・解約リンク ────────────
                           Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 24),
+                            padding:
+                            const EdgeInsets.symmetric(horizontal: 24),
                             child: Wrap(
                               alignment: WrapAlignment.center,
                               spacing: 12,
                               children: [
-                                // 利用規約リンク
                                 InkWell(
                                   onTap: () => _launchUrl(_kTermsUrl),
                                   child: const Text(
@@ -260,7 +268,6 @@ class _PaywallPageState extends State<PaywallPage> {
                                     ),
                                   ),
                                 ),
-                                // プライバシーポリシーリンク
                                 InkWell(
                                   onTap: () => _launchUrl(_kPolicyUrl),
                                   child: const Text(
@@ -272,24 +279,25 @@ class _PaywallPageState extends State<PaywallPage> {
                                     ),
                                   ),
                                 ),
-                                // 解約方法は外部リンク
                                 _PolicyLink(label: '解約方法', url: _kCancelUrl),
                               ],
                             ),
                           ),
                           const SizedBox(height: 8),
-                          // ─── 価格フッター ────────────────────────────────
                           const Text(
                             '年額 ¥4,980 (¥415/月相当) – 期間終了 24 時間前までに解約しない限り自動更新されます。',
                             textAlign: TextAlign.start,
-                            style: TextStyle(fontSize: 12, color: Colors.black54),
+                            style:
+                            TextStyle(fontSize: 12, color: Colors.black54),
                           ),
                           TextButton(
                             onPressed: _onRestore,
                             child: const Text(
                               '購入内容を復元する',
-                              style: TextStyle(decoration: TextDecoration.underline,
-                                fontSize: 12, color: Colors.blue),
+                              style: TextStyle(
+                                  decoration: TextDecoration.underline,
+                                  fontSize: 12,
+                                  color: Colors.blue),
                             ),
                           ),
                           const SizedBox(height: 24),
@@ -300,7 +308,6 @@ class _PaywallPageState extends State<PaywallPage> {
                 ),
               ),
             ),
-
             // ─── 購入ボタン & 復元リンク ────────────────────────
             Column(
               children: [
@@ -317,10 +324,25 @@ class _PaywallPageState extends State<PaywallPage> {
                           borderRadius: BorderRadius.circular(32),
                         ),
                       ),
-                      onPressed: _onSubscribe,
-                      child: const Text(
+                      // ─── 変更：ローディング中は無効 ────────────────
+                      onPressed: _isLoading ? null : _onSubscribe,
+                      // ─── 変更：ローディング表示 ──────────────────
+                      child: _isLoading
+                          ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 3,
+                          valueColor:
+                          AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
+                          : const Text(
                         '初回7日無料 今すぐ登録',
-                        style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold),
                       ),
                     ),
                   ),
@@ -401,11 +423,8 @@ class _FeatureRow extends StatelessWidget {
   }
 }
 
-
 class _PlanSelectorCard extends StatelessWidget {
-
   final String? discountLabel;
-
   final double width;
   final String title;
   final String price;
@@ -427,91 +446,94 @@ class _PlanSelectorCard extends StatelessWidget {
     required this.onTap,
   });
 
-    @override
-    Widget build(BuildContext context) {
-      final borderColor = selected ? Colors.blue : Colors.grey[300]!;
-      final bgColor = selected ? Colors.blue[50] : Colors.white;
+  @override
+  Widget build(BuildContext context) {
+    final borderColor = selected ? Colors.blue : Colors.grey[300]!;
+    final bgColor = selected ? Colors.blue[50] : Colors.white;
 
-      return GestureDetector(
-        onTap: onTap,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Container(
-              width: width,
-              // 縦幅を固定（必要に応じて値を調整）
-              height: 100,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: bgColor,
-                border: Border.all(color: borderColor, width: 2),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                // 縦方向は中央揃え
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: const TextStyle(fontSize: 14)),
-                  const SizedBox(height: 4),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(price,
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: selected ? Colors.blue[800] : Colors.black,
-                          )),
-                      const SizedBox(width: 4),
-                      Text(period,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: selected ? Colors.blue[800] : Colors.black54,
-                          )),
-                    ],
-                  ),
-                  if (smallNote != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text(
-                        smallNote!,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: selected ? Colors.blue[700] : Colors.black45,
-                        ),
+    return GestureDetector(
+      onTap: onTap,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: width,
+            height: 100, // 縦幅を固定（必要に応じて値を調整）
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: bgColor,
+              border: Border.all(color: borderColor, width: 2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center, // 縦方向は中央揃え
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(fontSize: 14)),
+                const SizedBox(height: 4),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      price,
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: selected ? Colors.blue[800] : Colors.black,
                       ),
                     ),
-                ],
-              ),
-            ),
-
-            // 選択時のチェックマークを固定位置に配置
-            if (selected)
-              Positioned(
-                bottom: 8,
-                right: 8,
-                child: Icon(Icons.check_circle, size: 20, color: Colors.blue),
-              ),
-
-            // おすすめバッジは元のまま
-            if (badge != null && selected)
-              Positioned(
-                top: -10,
-                right: -10,
-                child: Container(
-                  padding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.blue[700],
-                    borderRadius: BorderRadius.circular(12),
+                    const SizedBox(width: 4),
+                    Text(
+                      period,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: selected ? Colors.blue[800] : Colors.black54,
+                      ),
+                    ),
+                  ],
+                ),
+                if (smallNote != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      smallNote!,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: selected ? Colors.blue[700] : Colors.black45,
+                      ),
+                    ),
                   ),
-                  child: Text(badge!,
-                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+              ],
+            ),
+          ),
+          if (selected)
+            Positioned(
+              bottom: 8,
+              right: 8,
+              child: Icon(Icons.check_circle, size: 20, color: Colors.blue),
+            ),
+          if (badge != null && selected)
+            Positioned(
+              top: -10,
+              right: -10,
+              child: Container(
+                padding:
+                const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.blue[700],
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  badge!,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold),
                 ),
               ),
-          ],
-        ),
-      );
-    }
+            ),
+        ],
+      ),
+    );
   }
+}

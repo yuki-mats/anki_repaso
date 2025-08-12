@@ -8,7 +8,7 @@ import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:repaso/services/import_questions.dart';
 import 'package:repaso/utils/app_colors.dart';
-import 'package:repaso/services/question_count.dart';
+import 'package:repaso/services/question_count_update.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:typed_data';
 import 'package:image/image.dart' as img;
@@ -792,7 +792,7 @@ class _QuestionAddPageState extends State<QuestionAddPage> with SingleTickerProv
           'aggregatedQuestionTags': FieldValue.arrayUnion(_questionTags),
         });
       }
-      await updateQuestionCounts(widget.folderId, widget.questionSetId);
+      await questionCountsUpdate(widget.folderId, widget.questionSetId);
 
       _clearFields();
       ScaffoldMessenger.of(context).showSnackBar(

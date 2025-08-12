@@ -62,7 +62,7 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
   /// StudySet の情報と対象の問題群を取得（フィルタ・ソート処理含む）
   Future<void> _fetchQuestions() async {
     try {
-      // StudySet 情報の取得
+      // ───────────────── StudySet を取得 ─────────────────
       final studySetSnapshot = await FirebaseFirestore.instance
           .collection('users')
           .doc(FirebaseAuth.instance.currentUser?.uid)
@@ -70,30 +70,31 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
           .doc(widget.studySetId)
           .get();
 
-      if (!studySetSnapshot.exists) {
-        throw Exception('StudySet not found');
-      }
+      if (!studySetSnapshot.exists) throw Exception('StudySet not found');
       final studySetData = studySetSnapshot.data();
       if (studySetData == null) throw Exception('StudySet data is null');
 
-      // studySet から対象の questionSet ID リスト等の設定を取得
-      final List<String> questionSetIds = (studySetData['questionSetIds'] as List<dynamic>)
-          .map((id) => id as String)
-          .toList();
-      final double? correctRateStart = studySetData['correctRateRange']?['start']?.toDouble();
-      final double? correctRateEnd = studySetData['correctRateRange']?['end']?.toDouble();
+      // ───────────────── StudySet 設定値 ─────────────────
+      final List<String> questionSetIds =
+      List<String>.from(studySetData['questionSetIds'] ?? []);
+      final double? correctRateStart =
+      studySetData['correctRateRange']?['start']?.toDouble();
+      final double? correctRateEnd =
+      studySetData['correctRateRange']?['end']?.toDouble();
       final bool flagFilterOn = studySetData['isFlagged'] ?? false;
-      final String selectedOrder = studySetData['selectedQuestionOrder'] ?? 'random';
+      final String selectedOrder =
+          studySetData['selectedQuestionOrder'] ?? 'random';
       final int numberOfQuestions = studySetData['numberOfQuestions'] ?? 10;
-      final List<String> selectedMemoryLevels =
-      List<String>.from(studySetData['selectedMemoryLevels'] ?? ['again', 'hard', 'good', 'easy']);
+      final List<String> selectedMemoryLevels = List<String>.from(
+          studySetData['selectedMemoryLevels'] ??
+              ['again', 'hard', 'good', 'easy']);
+      final String correctChoiceFilter =
+          studySetData['correctChoiceFilter'] ?? 'all'; // ★ 正誤フィルター
 
-      print('StudySet ID: ${widget.studySetId}');
-      print('Selected questionSetIds: $questionSetIds');
-
-      // questionSet の名前および folderRef を取得
+      // ───────────────── 参照情報の取得 ─────────────────
       final Map<String, String> questionSetNames = {};
       final Map<String, DocumentReference> questionSetFolderRefs = {};
+
       final questionSetDocs = await FirebaseFirestore.instance
           .collection('questionSets')
           .where(FieldPath.documentId, whereIn: questionSetIds)
@@ -103,139 +104,141 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
         final data = doc.data();
         questionSetNames[doc.id] = data['name'] ?? 'Unknown';
         if (data.containsKey('folderRef')) {
-          questionSetFolderRefs[doc.id] = data['folderRef'] as DocumentReference;
+          questionSetFolderRefs[doc.id] =
+          data['folderRef'] as DocumentReference<Object?>;
         }
       }
 
-      // 空状態用のデフォルト設定
+      // デフォルト参照（空のときの UI 用）
       if (questionSetIds.isNotEmpty) {
-        _defaultQuestionSetRef = FirebaseFirestore.instance.collection('questionSets').doc(questionSetIds.first);
+        _defaultQuestionSetRef =
+            FirebaseFirestore.instance.collection('questionSets').doc(
+              questionSetIds.first,
+            );
         _defaultFolderRef = questionSetFolderRefs[questionSetIds.first];
         _defaultQuestionSetName = questionSetNames[questionSetIds.first];
       }
 
-      // 対象の questions を取得（questionSetId を元に検索）
+      // ───────────────── 質問を一括取得 ─────────────────
       final questionSnapshots = await FirebaseFirestore.instance
           .collection('questions')
           .where('questionSetId', whereIn: questionSetIds)
           .where('isDeleted', isEqualTo: false)
           .get();
 
-      print('Fetched ${questionSnapshots.docs.length} questions');
+      // ───────────────── フィルタリング ─────────────────
+      final filteredQuestions = await Future.wait(questionSnapshots.docs.map(
+            (doc) async {
+          final statsSnapshot = await doc.reference
+              .collection('questionUserStats')
+              .doc(FirebaseAuth.instance.currentUser?.uid)
+              .get();
 
-      // 各 question ごとにユーザー統計（questionUserStats）を取得し、フィルタ処理
-      final filteredQuestions = await Future.wait(questionSnapshots.docs.map((doc) async {
-        final statsSnapshot = await doc.reference
-            .collection('questionUserStats')
-            .doc(FirebaseAuth.instance.currentUser?.uid)
-            .get();
+          final Map<String, dynamic> q = doc.data() as Map<String, dynamic>;
 
-        final Map<String, dynamic> questionData = doc.data() as Map<String, dynamic>;
+          // ── 統計情報（既読対策）
+          final Map<String, dynamic> stat = statsSnapshot.exists
+              ? statsSnapshot.data() ?? {}
+              : {
+            'attemptCount': 0,
+            'correctCount': 0,
+            'incorrectCount': 0,
+            'correctRate': 0.0,
+            'isFlagged': false,
+            'memoryLevelStats': {},
+            'memoryLevelRatios': {},
+          };
 
-        // デフォルトの統計情報
-        Map<String, dynamic> statData = statsSnapshot.exists ? statsSnapshot.data() ?? {} : {
-          'attemptCount': 0,
-          'correctCount': 0,
-          'incorrectCount': 0,
-          'correctRate': 0.0,
-          'isFlagged': false,
-          'memoryLevelStats': {},
-          'memoryLevelRatios': {},
-        };
+          // 正答率計算
+          final int attemptCount = stat['attemptCount'] ?? 0;
+          final int correctCount = stat['correctCount'] ?? 0;
+          final double rate =
+          attemptCount > 0 ? (correctCount / attemptCount * 100) : 0.0;
+          stat['correctRate'] = rate;
 
-        // 正答率を計算（パーセンテージに変換）
-        final int attemptCount = statData['attemptCount'] ?? 0;
-        final int correctCount = statData['correctCount'] ?? 0;
-        final double computedCorrectRate = attemptCount > 0 ? (correctCount / attemptCount * 100) : 0.0;
-        statData['correctRate'] = computedCorrectRate;
-        final lastMemoryLevel = statData['memoryLevel'] as String?;
-        if (lastMemoryLevel != null && !selectedMemoryLevels.contains(lastMemoryLevel)) {
-          print('Filtered out by memoryLevel: ${doc.id} ($lastMemoryLevel)');
-          return null;
-        }
-
-        // 正答率フィルタ（correctRateStart, correctRateEnd を含む）
-        if (correctRateStart != null && correctRateEnd != null) {
-          // computedCorrectRate が correctRateStart 以上かつ correctRateEnd 以下ならOK（境界値も含む）
-          if (computedCorrectRate < correctRateStart || computedCorrectRate > correctRateEnd) {
-            print('Filtered out by correctRate range: ${doc.id} (computedCorrectRate: $computedCorrectRate)');
+          // ────────── 各種フィルター ──────────
+          // 記憶度
+          final lastMemory = stat['memoryLevel'] as String?;
+          if (lastMemory != null && !selectedMemoryLevels.contains(lastMemory)) {
             return null;
           }
-        }
 
-        // フラグフィルタ
-        if (flagFilterOn && statData['isFlagged'] != true) {
-          return null;
-        }
+          // 正答率
+          if (correctRateStart != null &&
+              correctRateEnd != null &&
+              (rate < correctRateStart || rate > correctRateEnd)) {
+            return null;
+          }
 
-        // questionSetName と folderRef を追加
-        // ここでは questionSetId を questionData から直接取得する
-        final String questionSetId = questionData['questionSetId'] as String;
-        final folderRef = questionSetFolderRefs[questionSetId];
+          // フラグ
+          if (flagFilterOn && stat['isFlagged'] != true) return null;
 
-        return {
-          'questionId': doc.id,
-          ...questionData,
-          'statsData': statData,
-          'questionSetName': questionSetNames[questionSetId] ?? 'Unknown',
-          'questionSetId': questionSetId, // 明示的に追加済み
-          'folderId': folderRef != null ? folderRef.id : '', // folderRef が存在すればその id、なければ空文字を設定
-          'folderRef': folderRef,
-          'memoCount': questionData['memoCount'] ?? 0,
-        };
-      }));
+          // ★ 正誤フィルター（true_false のときだけ適用）
+          if (correctChoiceFilter != 'all' && q['questionType'] == 'true_false') {
+            final String answerText = q['correctChoiceText'] ?? '';
+            if (correctChoiceFilter == 'correct' && answerText != '正しい') return null;
+            if (correctChoiceFilter == 'incorrect' && answerText != '間違い')
+              return null;
+          }
 
+          // 参照情報を付与
+          final String qsid = q['questionSetId'];
+          final folderRef = questionSetFolderRefs[qsid];
 
-        // null を除去
-      var validQuestions = filteredQuestions.whereType<Map<String, dynamic>>().toList();
+          return {
+            'questionId': doc.id,
+            ...q,
+            'statsData': stat,
+            'questionSetName': questionSetNames[qsid] ?? 'Unknown',
+            'questionSetId': qsid,
+            'folderId': folderRef?.id ?? '',
+            'folderRef': folderRef,
+            'memoCount': q['memoCount'] ?? 0,
+          };
+        },
+      ));
 
-      // 出題順のソート
+      // ───────────────── ソート・抽選 ─────────────────
+      var validQuestions =
+      filteredQuestions.whereType<Map<String, dynamic>>().toList();
+
       if (selectedOrder == 'random') {
         validQuestions.shuffle();
       } else if (selectedOrder == 'accuracyDescending') {
-        validQuestions.sort((a, b) {
-          final double aRate = a['statsData']['correctRate'] as double? ?? 0.0;
-          final double bRate = b['statsData']['correctRate'] as double? ?? 0.0;
-          return bRate.compareTo(aRate);
-        });
+        validQuestions.sort((a, b) =>
+            (b['statsData']['correctRate'] ?? 0.0)
+                .compareTo(a['statsData']['correctRate'] ?? 0.0));
       } else if (selectedOrder == 'accuracyAscending') {
-        validQuestions.sort((a, b) {
-          final double aRate = a['statsData']['correctRate'] as double? ?? 0.0;
-          final double bRate = b['statsData']['correctRate'] as double? ?? 0.0;
-          return aRate.compareTo(bRate);
-        });
+        validQuestions.sort((a, b) =>
+            (a['statsData']['correctRate'] ?? 0.0)
+                .compareTo(b['statsData']['correctRate'] ?? 0.0));
       }
 
-      print('Final selected questions: ${validQuestions.take(numberOfQuestions).toList()}');
-
+      // ───────────────── State 更新 ─────────────────
       setState(() {
         _questionsWithStats = validQuestions.take(numberOfQuestions).toList();
 
-        // 各問題の選択肢（true_false, single_choice 用）
-        _shuffledChoices = _questionsWithStats.map((question) {
-          if (question['questionType'] == 'true_false') {
+        // 選択肢生成
+        _shuffledChoices = _questionsWithStats.map((q) {
+          if (q['questionType'] == 'true_false') {
             return {
-              'questionId': question['questionId'],
+              'questionId': q['questionId'],
               'choices': ['正しい', '間違い'],
             };
-          } else if (question['questionType'] == 'single_choice') {
-            List<String> choices = [
-              question['correctChoiceText'] as String,
-              question['incorrectChoice1Text'] as String,
-              question['incorrectChoice2Text'] as String,
-              question['incorrectChoice3Text'] as String,
-            ].where((choice) => choice.isNotEmpty).toList();
+          } else if (q['questionType'] == 'single_choice') {
+            final List<String> choices = [
+              q['correctChoiceText'] ?? '',
+              q['incorrectChoice1Text'] ?? '',
+              q['incorrectChoice2Text'] ?? '',
+              q['incorrectChoice3Text'] ?? '',
+            ]..removeWhere((c) => c.isEmpty);
             choices.shuffle(Random());
             return {
-              'questionId': question['questionId'],
+              'questionId': q['questionId'],
               'choices': choices,
             };
-          } else {
-            return {
-              'questionId': question['questionId'],
-              'choices': <String>[],
-            };
           }
+          return {'questionId': q['questionId'], 'choices': <String>[]};
         }).toList();
 
         _isLoading = false;
@@ -243,12 +246,9 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
       });
     } catch (e) {
       print('Error fetching questions: $e');
-      setState(() {
-        _isLoading = false;
-      });
+      setState(() => _isLoading = false);
     }
   }
-
 
   /// 回答選択時の処理（選択肢ウィジェットから呼ばれる）
   void _handleAnswerSelection(BuildContext context, String selectedChoice) {

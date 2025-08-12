@@ -28,7 +28,7 @@ class _HomePageState extends State<HomePage>
     with TickerProviderStateMixin, RouteAware {
   /* ─────────────── Firestore 関連 ─────────────── */
   final String _uid = FirebaseAuth.instance.currentUser!.uid;
-  late final StreamSubscription<QuerySnapshot<Map<String, dynamic>>> _statsSub;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _statsSub; // nullable
 
   /* ──────────── 直近 7 日分のデータ ──────────── */
   List<int> _counts = List.filled(7, 0); // answerCount
@@ -36,6 +36,9 @@ class _HomePageState extends State<HomePage>
   int _weekTotalAnswers = 0; // 7 日合計回答数
   int _weekAccuracyPct = 0; // 7 日総合正答率
   int _streakCount = 0; // 🔥 連続学習日数
+
+  /* ──────────── 集計期間（週） ──────────── */
+  int _weekOffset = 0; // ★ 追加: 0=今週, 1=先週, 2=先々週...
 
   /* ───────── LearningNow リビルド用 ───────── */
   late Key _learningNowKey;
@@ -64,21 +67,8 @@ class _HomePageState extends State<HomePage>
         .chain(CurveTween(curve: Curves.easeOutBack))
         .animate(_streakAnimCtrl);
 
-    /* ───── 直近 7 日間の日次統計を監視 ───── */
-    final DateTime today = DateTime.now();
-    final DateTime fromDate =
-    DateTime(today.year, today.month, today.day).subtract(
-      const Duration(days: 6),
-    ); // 今日含め 7 日
-    _statsSub = FirebaseFirestore.instance
-        .collection('users')
-        .doc(_uid)
-        .collection('dailyStudyStats')
-        .where('dateTimestamp',
-        isGreaterThanOrEqualTo: Timestamp.fromDate(fromDate))
-        .orderBy('dateTimestamp')
-        .snapshots()
-        .listen(_onDailyStats);
+    /* ───── 直近 7 日間の日次統計を監視（集計期間対応） ───── */
+    _subscribeDailyStats(); // 固定7日→週オフセットで購読
   }
 
   /* ───────── RouteObserver 登録 ───────── */
@@ -94,7 +84,7 @@ class _HomePageState extends State<HomePage>
   @override
   void dispose() {
     routeObserver.unsubscribe(this);
-    _statsSub.cancel();
+    _statsSub?.cancel();
     _streakAnimCtrl.dispose();
     super.dispose();
   }
@@ -107,19 +97,40 @@ class _HomePageState extends State<HomePage>
     });
   }
 
+  /* ──────────── Firestore 購読（週オフセット対応） ──────────── */
+  void _subscribeDailyStats() {
+    _statsSub?.cancel();
+    final now = DateTime.now();
+    final lastDay = now.subtract(Duration(days: 7 * _weekOffset)); // 期間の最終日
+    final start = DateTime(lastDay.year, lastDay.month, lastDay.day)
+        .subtract(const Duration(days: 6)); // 7日間の開始日
+    final end = DateTime(lastDay.year, lastDay.month, lastDay.day, 23, 59, 59);
+
+    _statsSub = FirebaseFirestore.instance
+        .collection('users')
+        .doc(_uid)
+        .collection('dailyStudyStats')
+        .where('dateTimestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+        .where('dateTimestamp', isLessThanOrEqualTo: Timestamp.fromDate(end))
+        .orderBy('dateTimestamp')
+        .snapshots()
+        .listen(_onDailyStats);
+  }
+
   /* ──────────── 直近 7 日分の統計が更新された ──────────── */
   void _onDailyStats(QuerySnapshot<Map<String, dynamic>> qs) {
-    final DateTime today = DateTime.now();
-
+    final now = DateTime.now();
+    final lastDay = now.subtract(Duration(days: 7 * _weekOffset));
     final List<int> counts = List.filled(7, 0);
     final List<int> corrects = List.filled(7, 0);
 
     for (final doc in qs.docs) {
       final data = doc.data();
       final ts = (data['dateTimestamp'] as Timestamp).toDate();
-      final diff = today.difference(ts).inDays;
-      if (diff >= 0 && diff < 7) {
-        final idx = 6 - diff; // 並べ替え
+      final date = DateTime(ts.year, ts.month, ts.day);
+      final diff = lastDay.difference(date).inDays; // 0:最終日, 6:開始日
+      if (diff >= 0 && diff <= 6) {
+        final idx = 6 - diff; // 左から開始日→最終日の順に
         counts[idx] = (data['answerCount'] ?? 0) as int;
         corrects[idx] = (data['correctCount'] ?? 0) as int;
       }
@@ -136,20 +147,22 @@ class _HomePageState extends State<HomePage>
     final int accPct =
     totalAnswers == 0 ? 0 : (totalCorrect * 100 / totalAnswers).round();
 
-    /* ───── Duolingo 方式の連続学習日数 ───── */
+    /* ───── Duolingo 方式の連続学習日数（今週のときだけアニメ） ───── */
     int streak = 0;
-    final bool todayDone = counts[6] > 0;
-    for (int i = todayDone ? 6 : 5; i >= 0; i--) {
-      if (counts[i] > 0) {
-        streak++;
-      } else {
-        break;
+    if (_weekOffset == 0) {
+      final bool todayDone = counts[6] > 0;
+      for (int i = todayDone ? 6 : 5; i >= 0; i--) {
+        if (counts[i] > 0) {
+          streak++;
+        } else {
+          break;
+        }
       }
-    }
-
-    /* ───── streak が +1 以上増えたらアニメ再生 ───── */
-    if (streak > _streakCount) {
-      _streakAnimCtrl.forward(from: 0.0);
+      if (streak > _streakCount) {
+        _streakAnimCtrl.forward(from: 0.0);
+      }
+    } else {
+      streak = _streakCount; // 過去週では変えない
     }
 
     setState(() {
@@ -161,11 +174,32 @@ class _HomePageState extends State<HomePage>
     });
   }
 
+  /* ──────────── 期間ラベル（M/d〜M/d） ──────────── */
+  String _currentPeriodLabel() {
+    final now = DateTime.now();
+    final lastDay = now.subtract(Duration(days: 7 * _weekOffset));
+    final start = DateTime(lastDay.year, lastDay.month, lastDay.day)
+        .subtract(const Duration(days: 6));
+    final fmt = DateFormat('M/d');
+    return '${fmt.format(start)}〜${fmt.format(lastDay)}';
+  }
+
+  /* ──────────── ヘッダー用：期間移動 ──────────── */
+  void _prevPeriod() {
+    setState(() => _weekOffset += 1);
+    _subscribeDailyStats();
+  }
+
+  void _nextPeriod() {
+    if (_weekOffset == 0) return;
+    setState(() => _weekOffset -= 1);
+    _subscribeDailyStats();
+  }
+
   /* ───────────────── build ───────────────── */
   @override
   Widget build(BuildContext context) {
-    final todayStr =
-    DateFormat('yyyy年M月d日 EEEE', 'ja').format(DateTime.now());
+    final periodStr = _currentPeriodLabel();
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
@@ -177,14 +211,13 @@ class _HomePageState extends State<HomePage>
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                child: _buildHeader(context, todayStr, _streakCount),
+                child: _buildHeader(context, periodStr, _streakCount),
               ),
             ),
             /* ───── ステータス行 ───── */
             SliverToBoxAdapter(
               child: Padding(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                padding: const EdgeInsets.only(left: 20, right: 20, top: 8, bottom: 16),
                 child: _buildStatsRow(),
               ),
             ),
@@ -196,20 +229,7 @@ class _HomePageState extends State<HomePage>
                   counts: _counts,
                   accuracy: _accuracy,
                   barHeight: 160,
-                ),
-              ),
-            ),
-            // 週間グラフの注意書き
-            SliverToBoxAdapter(
-              child: Padding(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
-                child: Text(
-                  '※ ver2.7.3以前のデータは反映されておりません。',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: Colors.black54),
+                  weekOffset: _weekOffset, // ★ 追加：ホームの集計期間を同期
                 ),
               ),
             ),
@@ -224,22 +244,18 @@ class _HomePageState extends State<HomePage>
 
   /* ───────── ステータスカード列 ───────── */
   Widget _buildStatsRow() {
-    // 直近 7 日間の期間 (例: "6/23〜6/29")
-    final now = DateTime.now();
-    final from =
-    DateTime(now.year, now.month, now.day).subtract(const Duration(days: 6));
-    final fmt = DateFormat('M/d');
-    final range = '${fmt.format(from)}〜${fmt.format(now)}';
+    // 集計期間（例: "6/23〜6/29"）
+    final period = _currentPeriodLabel();
 
     return Row(
       children: [
         _StatCard(
           icon: Icons.cached_rounded,
-          iconColor: Colors.blue[800]!, // ★ 追加 ── アイコン色
+          iconColor: Colors.blue[800]!, // 既存配色を踏襲
           label: '回答数',
-          labelColor: Colors.black87, // ★ 追加 ── ラベル色
+          labelColor: Colors.black87,
           value: _weekTotalAnswers == 0 ? '-' : _weekTotalAnswers.toString(),
-          period: range,
+          period: period,
         ),
         const SizedBox(width: 12),
         _StatCard(
@@ -248,7 +264,7 @@ class _HomePageState extends State<HomePage>
           labelColor: Colors.black87,
           label: '正答率',
           value: _weekTotalAnswers == 0 ? '-' : '$_weekAccuracyPct%',
-          period: range,
+          period: period,
         ),
         const SizedBox(width: 12),
         const ExamCountdownCard(),
@@ -257,7 +273,7 @@ class _HomePageState extends State<HomePage>
   }
 
   /* ──────────── ヘッダー ──────────── */
-  Widget _buildHeader(BuildContext context, String today, int streak) => Row(
+  Widget _buildHeader(BuildContext context, String period, int streak) => Row(
     crossAxisAlignment: CrossAxisAlignment.center,
     children: [
       Expanded(
@@ -270,11 +286,33 @@ class _HomePageState extends State<HomePage>
                     .headlineSmall
                     ?.copyWith(color: Colors.black87)),
             const SizedBox(height: 4),
-            Text(today,
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: Colors.black54)),
+            // 期間表示（左右に chevron を配置）
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _HeaderIconButton(
+                  icon: Icons.arrow_left,
+                  onPressed: _prevPeriod,
+                  enabled: true,
+                ),
+                SizedBox(
+                  width: 130,
+                  child: Text(
+                    period,
+                    textAlign: TextAlign.center, // ★ 中央寄せ
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleLarge
+                        ?.copyWith(color: Colors.black87),
+                  ),
+                ),
+                _HeaderIconButton(
+                  icon: Icons.arrow_right,
+                  onPressed: _nextPeriod,
+                  enabled: _weekOffset > 0, // 今週のときは無効
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -294,7 +332,7 @@ class _HomePageState extends State<HomePage>
           const fallback = CircleAvatar(
             radius: 20,
             backgroundImage: AssetImage(
-                'assets/default_profile_icon/default_profile_icon_v1.0.png'), // ★ 修正
+                'assets/default_profile_icon/default_profile_icon_v1.0.png'),
           );
 
           if (snap.hasData && snap.data!.exists) {
@@ -317,18 +355,18 @@ class _HomePageState extends State<HomePage>
 // ───────── ステータスカード ─────────
 class _StatCard extends StatelessWidget {
   final IconData icon;
-  final Color iconColor;    // アイコン色
-  final Color labelColor;   // ラベル＆期間の文字色
-  final Color valueColor;   // 値の文字色
+  final Color iconColor; // アイコン色
+  final Color labelColor; // ラベル＆期間の文字色
+  final Color valueColor; // 値の文字色
   final String label;
   final String value;
   final String period;
 
   const _StatCard({
     required this.icon,
-    this.iconColor = Colors.grey,        // デフォルトはグレー
-    this.labelColor = Colors.black54,    // デフォルトは既存の薄い黒
-    this.valueColor = Colors.black87,    // デフォルトは既存の濃い黒
+    this.iconColor = Colors.grey, // デフォルトはグレー
+    this.labelColor = Colors.black54, // デフォルトは既存の薄い黒
+    this.valueColor = Colors.black87, // デフォルトは既存の濃い黒
     required this.label,
     required this.value,
     required this.period,
@@ -394,3 +432,32 @@ class _StatCard extends StatelessWidget {
   }
 }
 
+class _HeaderIconButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onPressed;
+  final bool enabled;
+
+  const _HeaderIconButton({
+    required this.icon,
+    required this.onPressed,
+    this.enabled = true, // デフォルト有効
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: enabled ? 1.0 : 0.25, // 無効時は半透明
+      child: IconButton(
+        visualDensity: VisualDensity.compact,
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(),
+        icon: Icon(
+          icon,
+          size: 32,
+          color: Colors.black54,
+        ),
+        onPressed: enabled ? onPressed : null,
+      ),
+    );
+  }
+}
