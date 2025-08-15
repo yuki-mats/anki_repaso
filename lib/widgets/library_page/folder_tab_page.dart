@@ -20,6 +20,7 @@ import 'package:repaso/widgets/list_page_widgets/reusable_progress_card.dart';
 import 'package:repaso/widgets/list_page_widgets/rounded_icon_box.dart';
 import 'package:repaso/widgets/list_page_widgets/skeleton_card.dart';
 import 'package:repaso/widgets/dialogs/delete_confirmation_dialog.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // ← 追加
 
 class FolderTabPage extends StatefulWidget {
   const FolderTabPage({super.key});
@@ -57,6 +58,15 @@ class FolderTabPageState extends State<FolderTabPage>
 
   List<String> _selectedLicenseNames = [];
 
+  // ───── ここからローカル永続化用の追加プロパティ ─────
+  String? _uid; // 現在ログインユーザーのUID（保存時の名前空間に使用）
+
+  static const _kSortKeyPrefix      = 'folderTab.sort.';      // + uid
+  static const _kOfficialKeyPrefix  = 'folderTab.official.';  // + uid
+  static const _kLicenseKeyPrefix   = 'folderTab.license.';   // + uid
+  static const _kCollapsedKeyPrefix = 'folderTab.collapsed.'; // + uid
+  // ───── 追加ここまで ─────
+
   /* ──────────────────────────────────────────
    * 初期化 / 後片付け
    * ────────────────────────────────────────── */
@@ -85,6 +95,51 @@ class FolderTabPageState extends State<FolderTabPage>
     super.dispose();
   }
 
+  // ───── ここからローカル永続化用メソッド（UI変更なし） ─────
+  Future<void> _loadPrefs(String uid) async {
+    final prefs = await SharedPreferences.getInstance();
+    final sort = prefs.getString('$_kSortKeyPrefix$uid');
+    final officialStr = prefs.getString('$_kOfficialKeyPrefix$uid'); // 'null'|'true'|'false'
+    final license = prefs.getString('$_kLicenseKeyPrefix$uid');       // '' or name
+    final collapsedList =
+        prefs.getStringList('$_kCollapsedKeyPrefix$uid') ?? const <String>[];
+
+    setState(() {
+      if (sort != null && _sortLabels.containsKey(sort)) {
+        _sortBy = sort;
+      }
+      if (officialStr != null) {
+        _officialFilter =
+        (officialStr == 'null') ? null : (officialStr == 'true');
+      }
+      _licenseFilter = (license == null || license.isEmpty) ? null : license;
+      _collapsed
+        ..clear()
+        ..addAll(collapsedList);
+    });
+  }
+
+  Future<void> _savePrefs() async {
+    if (_uid == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('$_kSortKeyPrefix$_uid', _sortBy ?? 'nameAsc');
+    await prefs.setString(
+      '$_kOfficialKeyPrefix$_uid',
+      _officialFilter == null ? 'null' : (_officialFilter! ? 'true' : 'false'),
+    );
+    await prefs.setString(
+      '$_kLicenseKeyPrefix$_uid',
+      _licenseFilter ?? '',
+    );
+  }
+
+  Future<void> _saveCollapsed() async {
+    if (_uid == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('$_kCollapsedKeyPrefix$_uid', _collapsed.toList());
+  }
+  // ───── 追加ここまで ─────
+
   /* ──────────────────────────────────────────
    * Firestore 取得
    * ────────────────────────────────────────── */
@@ -98,7 +153,11 @@ class FolderTabPageState extends State<FolderTabPage>
         return;
       }
       final uid     = user.uid;
+      _uid = uid; // ← 追加：保存の名前空間として保持
       final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
+
+      // ← 追加：ユーザーごとの表示状態を復元（フォルダ取得前でもOK）
+      await _loadPrefs(uid);
 
       // 1) ユーザー選択ライセンス
       final userDoc  = await userRef.get();
@@ -414,8 +473,8 @@ class FolderTabPageState extends State<FolderTabPage>
                 const SizedBox(width: 4),
                 Text(
                   _sortLabels[_sortBy]!,
-                  style:
-                  const TextStyle(fontSize: 13, color: AppColors.gray900),
+                  style: const TextStyle(
+                      fontSize: 13, color: AppColors.gray900),
                 ),
               ],
             ),
@@ -493,8 +552,8 @@ class FolderTabPageState extends State<FolderTabPage>
             ),
           ),
           ...sortedEntries.map((entry) {
-            final lic         = entry.key.isEmpty ? 'その他' : entry.key;
-            final list        = entry.value;
+            final lic = entry.key.isEmpty ? 'その他' : entry.key;
+            final list = entry.value;
             final isCollapsed = _collapsed.contains(lic);
 
             return SliverStickyHeader(
@@ -505,10 +564,11 @@ class FolderTabPageState extends State<FolderTabPage>
                   splashColor: Colors.transparent,
                   onTap: () => setState(() {
                     isCollapsed ? _collapsed.remove(lic) : _collapsed.add(lic);
+                    _saveCollapsed(); // ← 追加：開閉状態を保存
                   }),
                   child: Padding(
-                    padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 8),
                     child: Row(
                       children: [
                         Icon(
@@ -537,12 +597,12 @@ class FolderTabPageState extends State<FolderTabPage>
               sliver: SliverList(
                 delegate: SliverChildBuilderDelegate(
                       (context, i) {
-                    final item   = list[i];
-                    final doc    = item.folderDoc;
+                    final item = list[i];
+                    final doc = item.folderDoc;
                     final qCount = doc['questionCount'] as int;
 
                     // role → 権限判定
-                    final role          = _folderRoles[doc.id] ?? 'none';
+                    final role = _folderRoles[doc.id] ?? 'none';
                     final bool editable = role == 'owner' || role == 'editor';
 
                     return AnimatedSize(
@@ -551,24 +611,24 @@ class FolderTabPageState extends State<FolderTabPage>
                       child: isCollapsed
                           ? const SizedBox.shrink()
                           : ReusableProgressCard(
-                        iconData      : Icons.folder_outlined,
-                        iconColor     : Colors.white,
-                        iconBgColor   : Colors.blue[700]!,
-                        title         : doc['name'] as String,
-                        memoryLevels  : item.memoryLevels,
+                        iconData: Icons.folder_outlined,
+                        iconColor: Colors.white,
+                        iconBgColor: Colors.blue[700]!,
+                        title: doc['name'] as String,
+                        memoryLevels: item.memoryLevels,
                         correctAnswers: item.correct,
-                        totalAnswers  : item.total,
-                        count         : qCount,
-                        countSuffix   : ' 問',
-                        onTap         : () =>
-                            _navigateToQuestionSetsListPage(context, doc),
-                        onMorePressed : () =>
+                        totalAnswers: item.total,
+                        count: qCount,
+                        countSuffix: ' 問',
+                        onTap: () => _navigateToQuestionSetsListPage(
+                            context, doc),
+                        onMorePressed: () =>
                             _showFolderOptionsModal(context, doc),
-                        selectionMode : false,
-                        cardId        : doc.id,
-                        selectedId    : null,
-                        onSelected    : null,
-                        hasPermission : editable,                    // ← グレー表示用
+                        selectionMode: false,
+                        cardId: doc.id,
+                        selectedId: null,
+                        onSelected: null,
+                        hasPermission: editable, // ← グレー表示用
                       ),
                     );
                   },
@@ -620,6 +680,7 @@ class FolderTabPageState extends State<FolderTabPage>
         if (v == null) return;
         setState(() => _sortBy = v);
         setModal(() => _sortBy = v);
+        _savePrefs(); // ← 追加：並び順保存
         Navigator.pop(context);
       },
     );
@@ -647,8 +708,8 @@ class FolderTabPageState extends State<FolderTabPage>
     );
   }
 
-  Widget _buildFilterRadio(String label, bool? value,
-      void Function(void Function()) setModal) {
+  Widget _buildFilterRadio(
+      String label, bool? value, void Function(void Function()) setModal) {
     return RadioListTile<bool?>(
       activeColor: AppColors.blue500,
       title: Text(label),
@@ -657,16 +718,17 @@ class FolderTabPageState extends State<FolderTabPage>
       onChanged: (v) {
         setState(() => _officialFilter = v);
         setModal(() => _officialFilter = v);
+        _savePrefs(); // ← 追加：フィルター保存
         Navigator.pop(context);
       },
     );
   }
 
-/* ──────────────────────────────────────────
- * フォルダ操作モーダル
- *   ・削除確認を DeleteConfirmationDialog へ変更
- *   ・その他の挙動・UI は一切変更していません
- * ────────────────────────────────────────── */
+  /* ──────────────────────────────────────────
+   * フォルダ操作モーダル
+   *   ・削除確認を DeleteConfirmationDialog へ変更
+   *   ・その他の挙動・UI は一切変更していません
+   * ────────────────────────────────────────── */
   Future<void> _showFolderOptionsModal(
       BuildContext context, DocumentSnapshot folder) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -833,9 +895,6 @@ class FolderTabPageState extends State<FolderTabPage>
         onTap: onTap,
       );
 
-
-
-
   /* ──────────────────────────────────────────
    * 学習履歴クリア
    * ────────────────────────────────────────── */
@@ -846,14 +905,14 @@ class FolderTabPageState extends State<FolderTabPage>
 
     try {
       final firestore = FirebaseFirestore.instance;
-      final batch     = firestore.batch();
+      final batch = firestore.batch();
 
       // 1) フォルダ自身
       batch.set(
         folder.reference.collection('folderSetUserStats').doc(uid),
         {
           'memoryLevels': <String, String>{},
-          'updatedAt'   : FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
         },
         SetOptions(merge: true), // lastStudiedAt を保持
       );
@@ -869,13 +928,23 @@ class FolderTabPageState extends State<FolderTabPage>
         batch.set(
           qs.reference.collection('questionSetUserStats').doc(uid),
           {
-            'memoryLevels'     : <String, String>{},
-            'attemptCount'     : 0,
-            'correctCount'     : 0,
-            'incorrectCount'   : 0,
-            'memoryLevelStats' : {'again': 0, 'hard': 0, 'good': 0, 'easy': 0},
-            'memoryLevelRatios': {'again': 0, 'hard': 0, 'good': 0, 'easy': 0},
-            'updatedAt'        : FieldValue.serverTimestamp(),
+            'memoryLevels': <String, String>{},
+            'attemptCount': 0,
+            'correctCount': 0,
+            'incorrectCount': 0,
+            'memoryLevelStats': {
+              'again': 0,
+              'hard': 0,
+              'good': 0,
+              'easy': 0
+            },
+            'memoryLevelRatios': {
+              'again': 0,
+              'hard': 0,
+              'good': 0,
+              'easy': 0
+            },
+            'updatedAt': FieldValue.serverTimestamp(),
           },
           SetOptions(merge: true), // lastStudiedAt を保持
         );
@@ -900,13 +969,12 @@ class FolderTabPageState extends State<FolderTabPage>
    * フォルダ削除（soft delete）
    * ────────────────────────────────────────── */
   Future<void> _softDeleteFolder(DocumentSnapshot folder) async {
-    final firestore  = FirebaseFirestore.instance;
-    final batch      = firestore.batch();
-    final deletedAt  = FieldValue.serverTimestamp();
+    final firestore = FirebaseFirestore.instance;
+    final batch = firestore.batch();
+    final deletedAt = FieldValue.serverTimestamp();
 
     // フォルダ
-    batch.update(folder.reference,
-        {'isDeleted': true, 'deletedAt': deletedAt});
+    batch.update(folder.reference, {'isDeleted': true, 'deletedAt': deletedAt});
 
     // 配下の問題集 & 問題
     final qsSnap = await firestore
@@ -914,15 +982,13 @@ class FolderTabPageState extends State<FolderTabPage>
         .where('folderRef', isEqualTo: folder.reference)
         .get();
     for (var qs in qsSnap.docs) {
-      batch.update(qs.reference,
-          {'isDeleted': true, 'deletedAt': deletedAt});
+      batch.update(qs.reference, {'isDeleted': true, 'deletedAt': deletedAt});
       final qSnap = await firestore
           .collection('questions')
           .where('questionSetRef', isEqualTo: qs.reference)
           .get();
       for (var q in qSnap.docs) {
-        batch.update(q.reference,
-            {'isDeleted': true, 'deletedAt': deletedAt});
+        batch.update(q.reference, {'isDeleted': true, 'deletedAt': deletedAt});
       }
     }
     await batch.commit();

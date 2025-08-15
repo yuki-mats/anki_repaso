@@ -1,7 +1,8 @@
 // lib/screens/my_page.dart
 //
-// 寄付プランを最上部に配置し、すべてのカードを白背景・影なしに統一した版。
-// 「レビューで応援」タイルを追加。
+// 寄付プランを最上部にカード1枚で表示（アップグレード＋レビューで応援を1枚に集約）。
+// 「購入の復元」はログアウトの直前に表示（同じセキュリティカード内）。
+// 白背景・影なしで統一。ステータス表示や解約リンクは表示しない。
 
 import 'dart:io' show Platform;
 
@@ -10,13 +11,20 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:material_symbols_icons/symbols.dart';
 import 'package:repaso/screens/paywall_page.dart';
 import 'package:repaso/screens/profile_edit_page.dart';
 import 'package:repaso/screens/lobby_page.dart';
 import 'package:repaso/utils/entitlement_gate.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+// RevenueCat（購入復元）
+import 'package:purchases_flutter/purchases_flutter.dart';
+// AppOpen広告の復帰抑制（既存方針）
+import 'package:repaso/ads/app_open_ad_manager.dart';
+
+// 共通削除確認ダイアログ
+import 'package:repaso/widgets/dialogs/delete_confirmation_dialog.dart';
 
 class MyPage extends StatefulWidget {
   const MyPage({Key? key}) : super(key: key);
@@ -30,11 +38,11 @@ class _MyPageState extends State<MyPage> {
       'https://firebasestorage.googleapis.com/v0/b/repaso-rbaqy4.appspot.com/o/profile_images%2Fdefault_profile_icon_v1.0.png?alt=media';
   String userName = 'user';
 
-  // ──────────────── 追加: ストアレビュー URL と起動ヘルパ ────────────────
+  // ストアレビュー URL と起動ヘルパ
   static const String _iosReviewUrl =
-      'itms-apps://itunes.apple.com/app/id6740453092?action=write-review'; // YOUR_APP_ID を実際の ID に置換
+      'itms-apps://itunes.apple.com/app/id6740453092?action=write-review'; // 実アプリIDに置換
   static const String _androidReviewUrl =
-      'https://play.google.com/store/apps/details?id=YOUR_PACKAGE_NAME'; // YOUR_PACKAGE_NAME を実際の ID に置換
+      'https://play.google.com/store/apps/details?id=YOUR_PACKAGE_NAME'; // 実パッケージ名に置換
 
   Future<void> _launchReviewPage() async {
     final url = Platform.isIOS ? _iosReviewUrl : _androidReviewUrl;
@@ -46,7 +54,9 @@ class _MyPageState extends State<MyPage> {
       );
     }
   }
-  // ────────────────────────────────────────────────────────────────
+
+  // 復元中フラグ
+  bool _restoring = false;
 
   @override
   void initState() {
@@ -71,7 +81,26 @@ class _MyPageState extends State<MyPage> {
     }
   }
 
-  /* ────────────── アカウント削除まわり（ロジック変更なし） ────────────── */
+  // 購入の復元（RevenueCat）
+  Future<void> _restoreFromMyPage() async {
+    AppOpenAdManager.instance.ignoreNextResume(); // AppOpen広告の復帰抑制
+    setState(() => _restoring = true);
+    try {
+      await Purchases.restorePurchases();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('購入履歴を復元しました')));
+    } catch (e) {
+      debugPrint('復元エラー: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('復元に失敗しました')));
+    } finally {
+      if (mounted) setState(() => _restoring = false);
+    }
+  }
+
+  /* ────────────── アカウント削除（ロジック変更なし） ────────────── */
   Future<void> _reauthenticateAndDeleteAccount(BuildContext context) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -79,8 +108,19 @@ class _MyPageState extends State<MyPage> {
     final providerId =
     user.providerData.isNotEmpty ? user.providerData.first.providerId : 'password';
 
-    final confirmed = await _showConfirmDialog(context, providerId);
-    if (!confirmed) return;
+    // 共通ダイアログ（説明文なし）
+    final res = await DeleteConfirmationDialog.show(
+      context,
+      title: 'アカウント削除',
+      bulletPoints: const [
+        'ユーザーデータが削除されます',
+        'この操作は取り消せません',
+      ],
+      confirmText: '削除する',
+      cancelText: 'キャンセル',
+      confirmColor: Colors.redAccent,
+    );
+    if (res?.confirmed != true) return;
 
     try {
       switch (providerId) {
@@ -148,35 +188,8 @@ class _MyPageState extends State<MyPage> {
     }
   }
 
-  /* ──────────────── ダイアログ系ヘルパー（ロジック変更なし） ──────────────── */
-  Future<bool> _showConfirmDialog(BuildContext context, String providerId) async {
-    final providerLabel = {
-      'password': 'メールアドレス',
-      'google.com': 'Google',
-      'apple.com': 'Apple',
-    }[providerId]!;
-    return await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        backgroundColor: Colors.white,
-        title: const Text('アカウントの削除'),
-        content: Text('$providerLabel で登録したアカウントを削除します。よろしいですか？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('キャンセル'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('削除する', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
-    ) ??
-        false;
-  }
-
+  /* ──────────────── 再認証ダイアログ（入力） ────────────────
+     ※ 確認ダイアログではないため、既存UIのまま維持（共通ダイアログ対象外） */
   Future<String?> _askPassword(BuildContext context) async {
     final controller = TextEditingController();
     final ok = await showDialog<bool>(
@@ -273,7 +286,6 @@ class _MyPageState extends State<MyPage> {
   /* -------- 設定カード群 -------- */
   Widget _buildSettingsList(BuildContext context, bool isPro) {
     final donateTitle = isPro ? 'Anki Pro 加入中' : 'アップグレード';
-    // 寄付アイコン（Proユーザーは特別なアイコンを使用）
     final donateIcon = Icons.diamond_outlined;
 
     // ListTile 生成ヘルパ
@@ -294,8 +306,8 @@ class _MyPageState extends State<MyPage> {
           ),
         ];
 
-    // ── 寄付プランカード（最上部） ──
-    final planCard = _buildCard(
+    // ── アップグレード & レビューで応援（1枚に集約） ──
+    final upgradeAndReviewCard = _buildCard(
       context,
       tiles: [
         ..._tile(
@@ -314,13 +326,6 @@ class _MyPageState extends State<MyPage> {
               ? const Icon(Icons.verified, color: Colors.white, size: 18)
               : const Icon(Icons.chevron_right, size: 18),
         ),
-      ],
-    );
-
-    // ── レビューで応援カード（追加） ──
-    final reviewCard = _buildCard(
-      context,
-      tiles: [
         ..._tile(
           Icons.thumb_up_alt_outlined,
           'レビューで応援',
@@ -330,25 +335,7 @@ class _MyPageState extends State<MyPage> {
       ],
     );
 
-    // ── アカウント管理 ──
-    final accountCard = _buildCard(
-      context,
-      tiles: [
-        ..._tile(
-          Icons.person,
-          'プロフィール',
-              () async {
-            final updated = await Navigator.push<bool>(
-              context,
-              MaterialPageRoute(builder: (_) => ProfileEditPage()),
-            );
-            if (updated == true) _fetchUserData();
-          },
-        ),
-      ],
-    );
-
-    // ── アプリ情報 ──
+    // ── アプリ情報（プライバシーポリシー＋利用規約） ──
     final infoCard = _buildCard(
       context,
       tiles: [
@@ -381,14 +368,63 @@ class _MyPageState extends State<MyPage> {
       ],
     );
 
-    // ── セキュリティ ──
-    final securityCard = _buildCard(
+    // ── アカウント管理 ──
+    final accountCard = _buildCard(
       context,
       tiles: [
         ..._tile(
+          Icons.person,
+          'プロフィール',
+              () async {
+            final updated = await Navigator.push<bool>(
+              context,
+              MaterialPageRoute(builder: (_) => ProfileEditPage()),
+            );
+            if (updated == true) {
+              _fetchUserData();
+            }
+          },
+        ),
+      ],
+    );
+
+    // ── セキュリティ（購入の復元 → ログアウト → アカウント削除） ──
+    final securityCard = _buildCard(
+      context,
+      tiles: [
+        // 「ログアウトの上」に配置する復元
+        ListTile(
+          leading: const Icon(Icons.restore, size: 22, color: Colors.black87),
+          title: const Text('購入の復元', style: TextStyle(fontSize: 14)),
+          trailing: _restoring
+              ? SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor:
+                  AlwaysStoppedAnimation<Color>(Colors.blue[800]!)))
+              : const Icon(Icons.chevron_right, size: 18),
+          onTap: _restoring ? null : _restoreFromMyPage,
+          visualDensity: VisualDensity.compact,
+        ),
+        ..._tile(
           Icons.logout,
           'ログアウト',
-              () {
+              () async {
+            // 共通ダイアログ（説明文なし）
+            final res = await DeleteConfirmationDialog.show(
+              context,
+              title: 'ログアウト',
+              bulletPoints: const [
+                '現在のアカウントからサインアウトします',
+                '再度利用するにはログインが必要です',
+              ],
+              confirmText: 'ログアウト',
+              cancelText: 'キャンセル',
+            );
+            if (res?.confirmed != true) return;
+
             FirebaseAuth.instance.signOut().then((_) {
               Navigator.pushAndRemoveUntil(
                 context,
@@ -408,15 +444,13 @@ class _MyPageState extends State<MyPage> {
 
     return Column(
       children: [
-        planCard,
-        const SizedBox(height: 8),
-        reviewCard,           // ← 追加したカード
-        const SizedBox(height: 8),
         accountCard,
+        const SizedBox(height: 8),
+        upgradeAndReviewCard, // ← 1枚に集約
         const SizedBox(height: 8),
         infoCard,
         const SizedBox(height: 8),
-        securityCard,
+        securityCard, // ← 復元はこのカード内でログアウトの直前
       ],
     );
   }

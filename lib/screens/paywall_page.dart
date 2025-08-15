@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // PlatformException
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:intl/intl.dart'; // 年額の月割表示を通貨書式で出すため
 
 import '../ads/app_open_ad_manager.dart';
 import '../utils/app_colors.dart'; // ← リンク用
@@ -22,7 +23,7 @@ class PaywallPage extends StatefulWidget {
 }
 
 class _PaywallPageState extends State<PaywallPage> {
-  int _selectedIndex = 1; // 0: 月額, 1: 年額
+  int _selectedIndex = 1; // 0: 月額, 1: 年額（デフォルトは年額）
   Package? _monthlyPackage;
   Package? _annualPackage;
 
@@ -79,19 +80,6 @@ class _PaywallPageState extends State<PaywallPage> {
     }
   }
 
-  Future<void> _onRestore() async {
-    AppOpenAdManager.instance.ignoreNextResume(); // ★ 追加
-    try {
-      await Purchases.restorePurchases();
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('購入履歴を復元しました')));
-    } catch (e) {
-      debugPrint('Restore error: $e');
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('復元に失敗しました')));
-    }
-  }
-
   Future<void> _launchUrl(String url) async {
     final uri = Uri.parse(url);
     if (await canLaunchUrl(uri)) {
@@ -105,7 +93,15 @@ class _PaywallPageState extends State<PaywallPage> {
     final monthlyPrice = _monthlyPackage?.storeProduct.priceString ?? '---';
     final annualPrice = _annualPackage?.storeProduct.priceString ?? '---';
 
-    // 24px padding ×2 + 16px gap
+    // 年額の月割表示（通貨表記をストア通貨に合わせる）
+    final annualCurrency = _annualPackage?.storeProduct.currencyCode;
+    final annualTotal = _annualPackage?.storeProduct.price;
+    final annualMonthlyEq = (annualCurrency != null && annualTotal != null)
+        ? NumberFormat.simpleCurrency(name: annualCurrency)
+        .format(annualTotal / 12)
+        : '---';
+
+    // 24px padding ×2 + 16px gap（既存計算そのまま）
     final cardWidth = (MediaQuery.of(context).size.width - 24 * 2 - 16) / 2;
 
     return Scaffold(
@@ -135,8 +131,7 @@ class _PaywallPageState extends State<PaywallPage> {
               ),
               const SizedBox(width: 4),
               Container(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
                 decoration: BoxDecoration(
                   color: Colors.blue[700],
                   borderRadius: BorderRadius.circular(2),
@@ -187,118 +182,102 @@ class _PaywallPageState extends State<PaywallPage> {
                         children: [
                           Text(
                             widget.subtitle ??
-                                'Anki Proプランで、学習をもっと効率的に！',
+                                '1日15分の積み重ねで、合格率が変わる。\nAnki Proで、暗記を3倍速に。',
                             textAlign: TextAlign.center,
                             style:
-                            TextStyle(fontSize: 14, color: Colors.black54),
+                            TextStyle(fontSize: 14, color: Colors.black87),
                           ),
-                          const SizedBox(height: 16),
-                          // ─── 機能リスト ────────────────────────────────
-                          Padding(
-                            padding: const EdgeInsets.only(left: 8.0),
-                            child: Column(
-                              children: [
-                                _FeatureRow(
-                                  icon: Icons.library_books,
-                                  bgColor: Colors.blueAccent,
-                                  text: '暗記セットを無制限に保存',
-                                ),
-                                _FeatureRow(
-                                  icon: Icons.summarize,
-                                  bgColor: Colors.purpleAccent,
-                                  text: 'より効率的にまとめて学習',
-                                ),
-                                _FeatureRow(
-                                  icon: Icons.thumb_up,
-                                  bgColor: Colors.cyan,
-                                  text: '今すぐ学習でよりスムーズに',
-                                ),
-                                _FeatureRow(
-                                  icon: Icons.rocket_launch,
-                                  bgColor: Colors.indigoAccent,
-                                  text: '今なら7日間無料',
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 24),
                           // ─── プランセレクター ─────────────────────────
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
+                              // 年額を上に。文字と割引率の配置を画像イメージに合わせる
                               _PlanSelectorCard(
                                 width: double.infinity,
-                                title: '月額',
+                                title: '年額プラン',
+                                price: annualMonthlyEq, // 月割表示（例: ¥300）
+                                period: '/月',
+                                // 画像の注釈テキストに合わせて右下に小さく表示
+                                smallNote: '$annualPriceで毎年更新',
+                                discountLabel: '55％割引', // 左上のピルで強調
+                                selected: !isMonthly,
+                                onTap: () => _onSelectPlan(1),
+                              ),
+                              const SizedBox(height: 16),
+                              // 月額（下）
+                              _PlanSelectorCard(
+                                width: double.infinity,
+                                title: '月額プラン',
                                 price: monthlyPrice,
                                 period: '/月',
                                 smallNote: '自動更新',
                                 selected: isMonthly,
                                 onTap: () => _onSelectPlan(0),
                               ),
-                              const SizedBox(height: 16),
-                              _PlanSelectorCard(
-                                width: double.infinity,
-                                title: '年額',
-                                price: annualPrice,
-                                period: '/年',
-                                smallNote: '自動更新',
-                                badge: '55%オフ',
-                                selected: !isMonthly,
-                                onTap: () => _onSelectPlan(1),
-                              ),
                             ],
                           ),
                           const SizedBox(height: 24),
-                          // ─── 利用規約・プライバシー・解約リンク ────────────
+                          // ─── 機能リスト ────────────────────────────────
                           Padding(
-                            padding:
-                            const EdgeInsets.symmetric(horizontal: 24),
-                            child: Wrap(
-                              alignment: WrapAlignment.center,
-                              spacing: 12,
-                              children: [
-                                InkWell(
-                                  onTap: () => _launchUrl(_kTermsUrl),
-                                  child: const Text(
-                                    '利用規約',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.blue,
-                                      decoration: TextDecoration.underline,
-                                    ),
-                                  ),
+                            padding: const EdgeInsets.only(left: 8.0),
+                            child: Column(
+                              children: const [
+                                _FeatureRow(
+                                  icon: Icons.block, // 例: 広告の削除イメージ
+                                  bgColor: Colors.blueAccent,
+                                  title: '広告の削除',
+                                  description: 'アプリ内の広告をすべて削除します',
                                 ),
-                                InkWell(
-                                  onTap: () => _launchUrl(_kPolicyUrl),
-                                  child: const Text(
-                                    'プライバシーポリシー',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.blue,
-                                      decoration: TextDecoration.underline,
-                                    ),
-                                  ),
+                                _FeatureRow(
+                                  icon: Icons.auto_awesome, // 例: 記憶度サポート
+                                  bgColor: Colors.purpleAccent,
+                                  title: 'まとめて学習',
+                                  description: '覚えていない問題を重点的に復習できます',
                                 ),
-                                _PolicyLink(label: '解約方法', url: _kCancelUrl),
+                                _FeatureRow(
+                                  icon: Icons.sync, // 例: 進行状況の同期
+                                  bgColor: Colors.cyan,
+                                  title: 'お気に入り設定',
+                                  description: 'ホーム画面に問題集をセットし学習できます。',
+                                ),
                               ],
                             ),
                           ),
-                          const SizedBox(height: 8),
-                          const Text(
-                            '年額 ¥4,980 (¥415/月相当) – 期間終了 24 時間前までに解約しない限り自動更新されます。',
-                            textAlign: TextAlign.start,
-                            style:
-                            TextStyle(fontSize: 12, color: Colors.black54),
-                          ),
-                          TextButton(
-                            onPressed: _onRestore,
-                            child: const Text(
-                              '購入内容を復元する',
-                              style: TextStyle(
-                                  decoration: TextDecoration.underline,
-                                  fontSize: 12,
-                                  color: Colors.blue),
-                            ),
+                          const SizedBox(height: 24),
+                          // ─── 利用規約・プライバシー・解約リンク ────────────
+                          Wrap(
+                            alignment: WrapAlignment.center,
+                            spacing: 12,
+                            children: [
+                              InkWell(
+                                onTap: () => _launchUrl(_kTermsUrl),
+                                child: const Text(
+                                  '利用規約',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.black87, // 文字色
+                                    decoration: TextDecoration.underline, // 下線
+                                    decorationColor: Colors.black54,         // 下線の色
+                                    decorationThickness: 0.8,
+                                  ),
+                                ),
+                              ),
+                              InkWell(
+                                onTap: () => _launchUrl(_kPolicyUrl),
+                                child: const Text(
+                                  'プライバシーポリシー',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.black87, // 文字色
+                                    decoration: TextDecoration.underline, // 下線
+                                    decorationColor: Colors.black54,         // 下線の色
+                                    decorationThickness: 0.8,
+                                  ),
+                                ),
+                              ),
+                              _PolicyLink(label: 'プランの解約について', url: _kCancelUrl),
+                            ],
                           ),
                           const SizedBox(height: 24),
                         ],
@@ -324,9 +303,7 @@ class _PaywallPageState extends State<PaywallPage> {
                           borderRadius: BorderRadius.circular(32),
                         ),
                       ),
-                      // ─── 変更：ローディング中は無効 ────────────────
                       onPressed: _isLoading ? null : _onSubscribe,
-                      // ─── 変更：ローディング表示 ──────────────────
                       child: _isLoading
                           ? const SizedBox(
                         width: 24,
@@ -338,7 +315,7 @@ class _PaywallPageState extends State<PaywallPage> {
                         ),
                       )
                           : const Text(
-                        '初回7日無料 今すぐ登録',
+                        '７日間無料ではじめる',
                         style: TextStyle(
                             fontSize: 16,
                             color: Colors.white,
@@ -347,7 +324,11 @@ class _PaywallPageState extends State<PaywallPage> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
+                const Text(
+                  'App Storeにて、いつでもキャンセルできます。',
+                  style: TextStyle(fontSize: 12, color: Colors.black54),
+                ),
               ],
             ),
           ],
@@ -376,8 +357,10 @@ class _PolicyLink extends StatelessWidget {
         label,
         style: const TextStyle(
           fontSize: 12,
-          color: Colors.blue,
+          color: Colors.black87, // 文字色を統一
           decoration: TextDecoration.underline,
+          decorationColor: Colors.black54, // 下線の色
+          decorationThickness: 0.8,        // 下線の太さ
         ),
       ),
     );
@@ -387,34 +370,61 @@ class _PolicyLink extends StatelessWidget {
 class _FeatureRow extends StatelessWidget {
   final IconData icon;
   final Color bgColor;
-  final String text;
+  final String title;
+  final String description;
 
   const _FeatureRow({
+    super.key,
     required this.icon,
     required this.bgColor,
-    required this.text,
+    required this.title,
+    required this.description,
   });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // 左：角丸スクエア背景のアイコン
           Container(
-            width: 24,
-            height: 24,
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(
               color: bgColor,
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(icon, color: Colors.white, size: 16),
+            child: Icon(icon, color: Colors.white, size: 20),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 12),
+          // 右：タイトル（上）＋説明（下）
           Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(fontSize: 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // タイトル
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    height: 1.2,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                // 説明
+                Text(
+                  description,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    height: 1.4,
+                    color: Colors.black54,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -426,11 +436,11 @@ class _FeatureRow extends StatelessWidget {
 class _PlanSelectorCard extends StatelessWidget {
   final String? discountLabel;
   final double width;
-  final String title;
-  final String price;
-  final String period;
-  final String? smallNote;
-  final String? badge;
+  final String title;   // 「年額プラン」「月額プラン」
+  final String price;   // 表示価格
+  final String period;  // /月
+  final String? smallNote; // 右下の注釈
+  final String? badge;  // 互換のため残置（未使用でOK）
   final bool selected;
   final VoidCallback onTap;
 
@@ -456,9 +466,10 @@ class _PlanSelectorCard extends StatelessWidget {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
+          // 本体カード
           Container(
             width: width,
-            height: 100, // 縦幅を固定（必要に応じて値を調整）
+            height: 100, // 既存の高さを維持
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: bgColor,
@@ -466,52 +477,131 @@ class _PlanSelectorCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
             ),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center, // 縦方向は中央揃え
-              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center, // 既存仕様
               children: [
-                Text(title, style: const TextStyle(fontSize: 14)),
-                const SizedBox(height: 4),
+                // ── 1行目：チェック＋プラン名（左）／価格＋単位（右） ──
                 Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Text(
-                      price,
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: selected ? Colors.blue[800] : Colors.black,
+                    // ← 追加：選択中だけプラン名の左にチェックを表示
+                    if (selected) ...[
+                      const Icon(Icons.check_circle,
+                          size: 18, color: Colors.blue),
+                      const SizedBox(width: 6),
+                    ],
+
+                    // プラン名（年額プラン／月額プラン）
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: const TextStyle(fontSize: 20),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    const SizedBox(width: 4),
-                    Text(
-                      period,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: selected ? Colors.blue[800] : Colors.black54,
-                      ),
+
+                    // 右端：価格（数値大＋通貨記号小）＋単位（小）を横一列で右寄せ
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        RichText(
+                          textAlign: TextAlign.right,
+                          text: TextSpan(
+                            children: [
+                              TextSpan(
+                                text: price.isNotEmpty ? price.substring(0, 1) : '', // 通貨記号部分（例: ¥）
+                                style: TextStyle(
+                                  fontSize: 18, // 小さく
+                                  fontWeight: FontWeight.bold,
+                                  color: selected ? Colors.blue[800] : Colors.black,
+                                ),
+                              ),
+                              TextSpan(
+                                text: price.length > 1 ? price.substring(1) : '', // 数値部分
+                                style: TextStyle(
+                                  fontSize: 32, // 大きく
+                                  fontWeight: FontWeight.bold,
+                                  color: selected ? Colors.blue[800] : Colors.black,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                        Text(
+                          period, // /月
+                          textAlign: TextAlign.right,
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: selected ? Colors.blue[800] : Colors.black54,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
+
+                // 2行目：注釈（右寄せ）
                 if (smallNote != null)
                   Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Text(
-                      smallNote!,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: selected ? Colors.blue[700] : Colors.black45,
-                      ),
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Row(
+                      children: [
+                        const Spacer(),
+                        Text(
+                          smallNote!,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: selected ? Colors.blue[700] : Colors.black45,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
               ],
             ),
           ),
-          if (selected)
+
+          // 左上：割引率のピル（必要なときだけ）
+          if (discountLabel != null)
             Positioned(
-              bottom: 8,
-              right: 8,
-              child: Icon(Icons.check_circle, size: 20, color: Colors.blue),
+              top: -12,
+              left: 12,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                decoration: BoxDecoration(
+                  color: selected ? Colors.blue[700] : Colors.grey[200],
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: selected ? Colors.blue[700]! : Colors.grey[300]!,
+                    width: 1,
+                  ),
+                ),
+                child: RichText(
+                  text: TextSpan(
+                    children: [
+                      TextSpan(
+                        text: discountLabel!.replaceAll(RegExp(r'[^0-9]'), ''), // 数字部分
+                        style: TextStyle(
+                          color: selected ? Colors.white : Colors.black87,
+                          fontSize: 14, // 数字を大きく
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      TextSpan(
+                        text: discountLabel!.replaceAll(RegExp(r'[0-9]'), ''), // %割引部分
+                        style: TextStyle(
+                          color: selected ? Colors.white : Colors.black87,
+                          fontSize: 12, // 記号・文字を小さく
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
+
+          // 右上バッジ（互換のため残置）
           if (badge != null && selected)
             Positioned(
               top: -10,
@@ -537,3 +627,4 @@ class _PlanSelectorCard extends StatelessWidget {
     );
   }
 }
+
