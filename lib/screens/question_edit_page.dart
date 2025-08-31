@@ -227,9 +227,6 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
     }
   }
 
-  // ────────────────────────────────
-  // 更新
-  // ────────────────────────────────
   Future<void> _updateQuestion() async {
     _updateExamDateFromInput();
     if (!_isSaveEnabled || _isSaving || _isExamDateError) return;
@@ -238,9 +235,21 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
     _showLoadingDialog();
 
     try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) {
+        if (mounted) Navigator.pop(context);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('ログインが必要です')),
+          );
+        }
+        setState(() => _isSaving = false);
+        return;
+      }
+
       final questionRef = widget.question.reference;
 
-      // 画像アップロード
+      // 新規に追加されたローカル画像をアップロード
       final imageMap = <String, List<Uint8List>>{
         'questionImageUrls': _localImagesMap[_questionTextController] ?? const [],
         'correctChoiceImageUrls': _localImagesMap[_correctChoiceTextController] ?? const [],
@@ -260,7 +269,12 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
         'explanationText': _explanationTextController.text.trim(),
         'hintText': _hintTextController.text.trim(),
         'examDate': _selectedExamDate != null ? Timestamp.fromDate(_selectedExamDate!) : null,
+
+        // ルール用メタ
+        'updatedById': uid,
         'updatedAt': FieldValue.serverTimestamp(),
+
+        // 既存URLに今回アップロード分を結合
         'questionImageUrls': [
           ...uploadedImageUrls['questionImageUrls'] ?? const [],
           ...newUploadedImageUrls['questionImageUrls'] ?? const [],
@@ -297,8 +311,7 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
         });
       }
 
-      // ローディングを閉じてから更新（既存 UX のまま）
-      Navigator.pop(context);
+      if (mounted) Navigator.pop(context);
       await questionRef.update(questionData);
 
       if (!mounted) return;
@@ -313,16 +326,13 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('問題の更新に失敗しました')),
         );
-        Navigator.pop(context); // ローディングを閉じる
+        Navigator.pop(context);
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
   }
 
-  // ────────────────────────────────
-  // 削除（UI/UX は一覧のダイアログと統一）
-  // ────────────────────────────────
   Future<void> _deleteQuestion() async {
     final uid = FirebaseAuth.instance.currentUser!.uid;
 
@@ -349,7 +359,6 @@ class _QuestionEditPageState extends State<QuestionEditPage> {
       // 1) 質問ドキュメントを「削除済み」化（isDeleted を true に）
       await questionRef.update({
         'isDeleted': true,
-        'deletedAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
         'updatedById': uid,
       });

@@ -72,6 +72,7 @@ class _QuestionSetEditPageState extends State<QuestionSetEditPage> {
           .doc(widget.questionSetId)
           .update({
         'name': questionSetName,
+        'updatedById': FirebaseFirestore.instance.app.options.projectId,
         'updatedAt': FieldValue.serverTimestamp(), // 更新日時を記録
       });
 

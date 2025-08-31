@@ -1,11 +1,4 @@
 // lib/widgets/list_page_widgets/folder_selection_page.dart
-//
-// 選択した questionSetIds（複数・単体どちらも可）を
-// 1 つのフォルダへ移動し、questionCount と memoryLevels を同期するページ。
-// 変更点：
-//   • 引数は questionSetIds: List<String> のみ（単体でも [id] で渡す）
-//   • 内部でループして移動処理を実行
-//   • UI は従来どおり（ラジオ + 「移動する」ボタン）
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -38,46 +31,45 @@ class _FolderSelectionPageState extends State<FolderSelectionPage> {
   }
 
   /// ─────────────────────────────────────────────
-  /// ログインユーザーが owner / editor のフォルダを取得
+  /// ログインユーザーが owner / editor 権限を持つフォルダを取得
+  /// （permissions サブコレクションを信頼）
   /// ─────────────────────────────────────────────
   Future<List<DocumentSnapshot>> _fetchEditableFolders() async {
     final uid = FirebaseAuth.instance.currentUser!.uid;
-    final fs  = FirebaseFirestore.instance;
+    final fs = FirebaseFirestore.instance;
 
-    // ① 自分が owner のフォルダ
-    final ownerSnap = await fs
-        .collection('folders')
-        .where('isDeleted', isEqualTo: false)
-        .where('createdById', isEqualTo: uid)
-        .get();
-
-    // ② editor 権限を持つフォルダ
-    final editorSnap = await fs
+    // 自分の permissions（owner / editor）のみ取得
+    final permSnap = await fs
         .collectionGroup('permissions')
         .where('userId', isEqualTo: uid)
-        .where('role', isEqualTo: 'editor')
+        .where('role', whereIn: ['owner', 'editor'])
         .get();
 
-    // 重複除外して参照をまとめる
-    final Map<String, DocumentReference> refs = {
-      for (final d in ownerSnap.docs) d.id: d.reference,
-    };
-    for (final p in editorSnap.docs) {
-      final ref = p.reference.parent.parent; // /folders/{folderId}
-      if (ref != null) refs[ref.id] = ref;
+    // 親フォルダ参照をユニーク化
+    final Map<String, DocumentReference> refs = {};
+    for (final p in permSnap.docs) {
+      final parentFolderRef = p.reference.parent.parent; // /folders/{folderId}
+      if (parentFolderRef != null) {
+        refs[parentFolderRef.id] = parentFolderRef;
+      }
     }
 
-    // ドキュメントを取得
+    // 実体のフォルダを取得（isDeleted はローカルで判定）
     final List<DocumentSnapshot> folders = [];
     for (final ref in refs.values) {
-      final doc = await ref.get();
-      final isDeleted = doc.data() is Map
-          ? (doc.data() as Map<String, dynamic>)['isDeleted'] as bool? ?? false
-          : false;
-      if (doc.exists && !isDeleted) folders.add(doc);
+      final doc = await ref.get(); // ここで folders の read ルールが評価される
+      if (!doc.exists) continue;
+      final data = doc.data();
+      bool isDeleted = false;
+      if (data is Map<String, dynamic>) {
+        isDeleted = (data['isDeleted'] as bool?) ?? false;
+      }
+      if (!isDeleted) {
+        folders.add(doc);
+      }
     }
 
-    // 名前順ソート
+    // 名前順ソート（UI 変更なし）
     folders.sort((a, b) => (a['name'] ?? '').compareTo(b['name'] ?? ''));
     return folders;
   }
@@ -88,7 +80,7 @@ class _FolderSelectionPageState extends State<FolderSelectionPage> {
   Future<void> _move() async {
     if (_selectedFolderId == null) return;
     final newFolderId = _selectedFolderId!;
-    final fs  = FirebaseFirestore.instance;
+    final fs = FirebaseFirestore.instance;
     final uid = FirebaseAuth.instance.currentUser!.uid;
 
     /// oldFolderId => {questionId: memoryLevel}
@@ -106,9 +98,9 @@ class _FolderSelectionPageState extends State<FolderSelectionPage> {
 
       // questionSet ドキュメントを更新
       await qsDoc.reference.update({
-        'folderId'  : newFolderId,
-        'folderRef' : fs.collection('folders').doc(newFolderId),
-        'updatedAt' : FieldValue.serverTimestamp(),
+        'folderId': newFolderId,
+        'folderRef': fs.collection('folders').doc(newFolderId),
+        'updatedAt': FieldValue.serverTimestamp(),
       });
 
       // その問題集での memoryLevels を取得
@@ -129,9 +121,9 @@ class _FolderSelectionPageState extends State<FolderSelectionPage> {
     /* ---------- 2) memoryLevels を同期（旧→新） ---------- */
     for (final oldId in moveMaps.keys) {
       await moveMemoryLevelsForUser(
-        userId      : uid,
-        oldFolderId : oldId,
-        newFolderId : newFolderId,
+        userId: uid,
+        oldFolderId: oldId,
+        newFolderId: newFolderId,
         memoryLevels: moveMaps[oldId]!,
       );
     }
@@ -144,8 +136,9 @@ class _FolderSelectionPageState extends State<FolderSelectionPage> {
 
     if (mounted) Navigator.pop(context, true);
   }
+
   /// ─────────────────────────────────────────────
-  /// UI
+  /// UI（従来どおり）
   /// ─────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {

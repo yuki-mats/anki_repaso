@@ -745,11 +745,9 @@ class _QuestionAddPageState extends State<QuestionAddPage> with SingleTickerProv
       'questionSetId': widget.questionSetId,
       'questionText': _questionTextController.text.trim(),
       'questionType': _selectedQuestionType,
-      'examDate': _selectedExamDate != null
-          ? Timestamp.fromDate(_selectedExamDate!)
-          : null,
-      'createdByRef':
-      FirebaseFirestore.instance.collection('users').doc(user.uid),
+      'examDate': _selectedExamDate != null ? Timestamp.fromDate(_selectedExamDate!) : null,
+      'createdById': user.uid,
+      'updatedById': user.uid,
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
       'explanationText': _explanationTextController.text.trim(),
@@ -757,7 +755,7 @@ class _QuestionAddPageState extends State<QuestionAddPage> with SingleTickerProv
       'questionImageUrls': uploadedImageUrls['questionImageUrls'],
       'explanationImageUrls': uploadedImageUrls['explanationImageUrls'],
       'hintImageUrls': uploadedImageUrls['hintImageUrls'],
-      'isOfficialQuestion': false,
+      'isOfficial': false,
       'isDeleted': false,
       'isFlagged': false,
       'questionTags': _questionTags,

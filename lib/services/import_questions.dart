@@ -181,7 +181,7 @@ class ImportQuestionsService {
         'examYear': data['examYear'],
         'explanationText': data['explanationText'] ?? '',
         'hintText': data['hintText'] ?? '',
-        'isOfficialQuestion': false,
+        'isOfficial': false,
         'isDeleted': false,
         'isFlagged': false,
         'importKey': data['importKey'], // フィールドとして保持

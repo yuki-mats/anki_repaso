@@ -118,7 +118,7 @@ class _AnswerPageState extends State<AnswerPage> {
           'questionId': shuffledQuestions[i].id,
           ...questionData,
           'examSource': questionData['examSource'] ?? '', // 🔹 `examSource` を追加
-          'isOfficialQuestion': questionData['isOfficialQuestion'] ?? false,
+          'isOfficial': questionData['isOfficial'] ?? false,
           'isFlagged': statData['isFlagged'] ?? false,
           'attemptCount': statData['attemptCount'] ?? 0,
           'correctCount': statData['correctCount'] ?? 0,
@@ -472,7 +472,7 @@ class _AnswerPageState extends State<AnswerPage> {
                                       footerButtonType         : _footerButtonType,
                                       flashCardHasBeenRevealed : _flashCardHasBeenRevealed,
                                       isFlagged                : question['isFlagged'] == true,
-                                      isOfficialQuestion       : question['isOfficialQuestion'] == true,
+                                      isOfficial               : question['isOfficial'] == true,
                                       memoCount                : question['memoCount'],
 
                                       /* --- コールバック ---------------------------------- */

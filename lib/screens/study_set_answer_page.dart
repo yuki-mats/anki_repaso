@@ -575,7 +575,7 @@ class _StudySetAnswerPageState extends State<StudySetAnswerPage> {
                                       footerButtonType: _footerButtonType,
                                       flashCardHasBeenRevealed: _flashCardHasBeenRevealed,
                                       isFlagged: question['statsData']['isFlagged'] == true,
-                                      isOfficialQuestion: question['isOfficialQuestion'] == true,
+                                      isOfficial: question['isOfficial'] == true,
                                       memoCount: question['memoCount'],
                                       onShowHintDialog: _showHintDialog,
                                       onShowExplanationDialog: _showExplanationDialog,

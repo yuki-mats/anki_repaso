@@ -19,7 +19,7 @@ class CommonQuestionFooter extends StatelessWidget {
   final String?      hintText;
   final String?      footerButtonType;
   final bool         flashCardHasBeenRevealed;
-  final bool         isOfficialQuestion;
+  final bool         isOfficial;
   final bool         isFlagged;
   final VoidCallback? onShowHintDialog;
   final VoidCallback? onShowExplanationDialog;
@@ -37,7 +37,7 @@ class CommonQuestionFooter extends StatelessWidget {
     /* UI 必須 */
     required this.flashCardHasBeenRevealed,
     required this.isFlagged,
-    required this.isOfficialQuestion,
+    required this.isOfficial,
   /* 統計情報を受け取る */
     this.correctRate,
     this.totalAnswers,
@@ -234,7 +234,7 @@ class CommonQuestionFooter extends StatelessWidget {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (isOfficialQuestion) _aiButton(context),
+            if (isOfficial) _aiButton(context),
             if (hasHint) ...[
               const SizedBox(width: 8),
               _roundBtn(Icons.lightbulb_outline, onShowHintDialog),
@@ -243,7 +243,7 @@ class CommonQuestionFooter extends StatelessWidget {
               const SizedBox(width: 8),
               _roundBtn(Icons.description_outlined, onShowExplanationDialog),
             ],
-            if (isOfficialQuestion) ...[
+            if (isOfficial) ...[
               const SizedBox(width: 8),
               _memoIcon(),
             ],

@@ -378,7 +378,6 @@ class _QuestionListPageState extends State<QuestionListPage> {
           fs.collection('questions').doc(qid),
           {
             'isDeleted': true,
-            'deletedAt': FieldValue.serverTimestamp(),
             'updatedAt': FieldValue.serverTimestamp(),
             'updatedById': uid,
           },

@@ -72,8 +72,8 @@ class _FolderEditPageState extends State<FolderEditPage> {
     try {
       await FirebaseFirestore.instance.collection('folders').doc(widget.folderId).update({
         'name': folderName,
+        'updatedById': currentUserId,
         'updatedAt': FieldValue.serverTimestamp(),
-        'updatedById': currentUserId, // IDのみで管理
       });
 
       ScaffoldMessenger.of(context).showSnackBar(

@@ -138,12 +138,10 @@ module.exports = onCall({ region: "us-central1" }, async (req) => {
         questionType   : questionType || q.questionType,
         explanationText: q.explanationText || "",
         memoCount      : 0,
-        isOfficialQuestion:false,
+        isOfficial     : false,
         isDeleted      : false,
         createdById    : uid,
         updatedById    : uid,
-        createdByRef   : userRef,
-        updatedByRef   : userRef,
         createdAt      : now,
         updatedAt      : now,
       };

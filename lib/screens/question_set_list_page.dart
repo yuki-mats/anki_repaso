@@ -421,7 +421,6 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage>
     try {
       final firestore = FirebaseFirestore.instance;
       final uid = FirebaseAuth.instance.currentUser?.uid;
-      final deletedAt = FieldValue.serverTimestamp();
 
       for (final qsId in questionSetIds) {
         final batch = firestore.batch();
@@ -430,7 +429,6 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage>
         /* ---------- 1) questionSet 本体 ---------- */
         batch.update(qsRef, {
           'isDeleted': true,
-          'deletedAt': deletedAt,
         });
 
         /* ---------- 2) 配下 questions の論理削除 ---------- */
@@ -441,7 +439,6 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage>
         for (var q in qsnap.docs) {
           batch.update(q.reference, {
             'isDeleted': true,
-            'deletedAt': deletedAt,
           });
         }
 
@@ -454,7 +451,9 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage>
               .doc(uid);
 
           // ドキュメントが存在しない場合でも失敗しないように、まず merge:true で作成
-          batch.set(folderStatRef, {'updatedAt': deletedAt}, SetOptions(merge: true));
+          batch.set(folderStatRef, {
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
 
           final Map<String, dynamic> delPayload = {};
           for (final q in qsnap.docs) {
@@ -637,17 +636,39 @@ class _QuestionSetListPageState extends State<QuestionSetsListPage>
               builder: (ctx, statSnap) {
                 final base = {'again': 0, 'hard': 0, 'good': 0, 'easy': 0};
                 int correct = 0, total = 0;
+
                 if (statSnap.hasData && statSnap.data!.exists) {
-                  final m = statSnap.data!['memoryLevels'] as Map<String, dynamic>? ?? {};
-                  for (final v in m.values) {
-                    if (base.containsKey(v)) base[v] = base[v]! + 1;
+                  final Map<String, dynamic>? docMap =
+                  statSnap.data!.data() as Map<String, dynamic>?;
+
+                  // 1) 数値カウントがある場合はそれを優先
+                  final Map<String, dynamic>? memoryLevelStats =
+                  docMap?['memoryLevelStats'] as Map<String, dynamic>?;
+                  if (memoryLevelStats != null && memoryLevelStats.isNotEmpty) {
+                    memoryLevelStats.forEach((k, v) {
+                      if (base.containsKey(k) && v is num) {
+                        base[k] = v.toInt();
+                      }
+                    });
+                  } else {
+                    // 2) なければ questionId→level のマップから集計
+                    final Map<String, dynamic>? memoryLevels =
+                    docMap?['memoryLevels'] as Map<String, dynamic>?;
+                    if (memoryLevels != null && memoryLevels.isNotEmpty) {
+                      for (final lv in memoryLevels.values) {
+                        if (lv is String && base.containsKey(lv)) {
+                          base[lv] = base[lv]! + 1;
+                        }
+                      }
+                    }
                   }
+
                   correct = base['easy']! + base['good']! + base['hard']!;
                   total = correct + base['again']!;
                 }
+
                 base['unanswered'] = questionCount > correct ? questionCount - correct : 0;
 
-                // ====== ここから置き換え：外側にチェック、右はカードそのまま ======
                 final bool selected = _selectedIds.contains(qs.id);
 
                 return Row(

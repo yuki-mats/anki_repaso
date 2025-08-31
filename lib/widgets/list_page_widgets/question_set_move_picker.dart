@@ -55,58 +55,57 @@ class _QuestionSetMovePickerPageState extends State<QuestionSetMovePickerPage> {
   }
 
   // ─────────────────────────────────────────────────────────────
-  // 権限（owner / editor）のみ許可
+  // 権限（owner / editor）のみ許可（従来関数：UI/シグネチャは残す）
   // ─────────────────────────────────────────────────────────────
   Future<bool> _hasOwnerOrEditorPermission(
       DocumentReference<Map<String, dynamic>> folderRef,
       ) async {
     final snap = await folderRef
         .collection('permissions')
-        .where(
-      'userRef',
-      isEqualTo:
-      FirebaseFirestore.instance.doc('users/${widget.userId}'),
-    )
+        .where('userId', isEqualTo: widget.userId) // ← UID で判定
         .where('role', whereIn: <String>['owner', 'editor'])
         .limit(1)
         .get(const GetOptions(source: Source.serverAndCache));
     return snap.docs.isNotEmpty;
   }
 
+  // ─────────────────────────────────────────────────────────────
   // フォルダ & 配下の questionSets を収集（owner/editor のみ）
+  // ルール回避のため、まず permissions(CG) から親フォルダを辿る。
+  // ─────────────────────────────────────────────────────────────
   Future<void> _fetchData() async {
     setState(() => isLoading = true);
 
     try {
       final fetched = <String, Map<String, dynamic>>{};
       final expandInit = <String, bool>{};
-      final processedIds = <String>{};
 
-      // ① 公式フォルダ（※ owner/editor 権限がある場合のみ許可）
-      final officialSnap = await FirebaseFirestore.instance
-          .collection('folders')
-          .where('isDeleted', isEqualTo: false)
-          .where('isOfficial', isEqualTo: true)
+      // 1) 自分の permissions（UID一致）かつ role in ['owner','editor'] を収集
+      final QuerySnapshot<Map<String, dynamic>> permissionSnap =
+      await FirebaseFirestore.instance
+          .collectionGroup('permissions')
+          .where('userId', isEqualTo: widget.userId) // ← UID で判定
+          .where('role', whereIn: <String>['owner', 'editor'])
           .get(const GetOptions(source: Source.serverAndCache));
 
-      for (final f in officialSnap.docs) {
-        final ok = await _hasOwnerOrEditorPermission(f.reference);
-        if (!ok) continue; // viewer / 無権限は除外
-        processedIds.add(f.id);
-        await _collectFolderData(f, fetched, expandInit);
-      }
+      // 2) 親フォルダを1つずつ取得し、配下の questionSets を収集
+      for (final permissionDoc in permissionSnap.docs) {
+        final DocumentReference<Map<String, dynamic>>? parentFolderRef =
+        permissionDoc.reference.parent.parent
+        as DocumentReference<Map<String, dynamic>>?;
+        if (parentFolderRef == null) continue;
 
-      // ② 権限付きフォルダ（owner/editor のみ）
-      final allFoldersSnap = await FirebaseFirestore.instance
-          .collection('folders')
-          .where('isDeleted', isEqualTo: false)
-          .get(const GetOptions(source: Source.serverAndCache));
+        // フォルダ本体（ここで /folders の read ルールが評価される）
+        final DocumentSnapshot<Map<String, dynamic>> folderDoc =
+        await parentFolderRef.get();
 
-      for (final f in allFoldersSnap.docs) {
-        if (processedIds.contains(f.id)) continue;
-        final ok = await _hasOwnerOrEditorPermission(f.reference);
-        if (!ok) continue; // viewer / 無権限は除外
-        await _collectFolderData(f, fetched, expandInit);
+        if (!folderDoc.exists) continue;
+        final Map<String, dynamic>? folderMap = folderDoc.data();
+        final bool isDeleted =
+        folderMap != null ? (folderMap['isDeleted'] as bool? ?? false) : false;
+        if (isDeleted) continue;
+
+        await _collectFolderData(folderDoc, fetched, expandInit);
       }
 
       setState(() {
@@ -120,26 +119,28 @@ class _QuestionSetMovePickerPageState extends State<QuestionSetMovePickerPage> {
     }
   }
 
+  // DocumentSnapshot で受け取れるようにして、呼び出し元を選ばないようにする
   Future<void> _collectFolderData(
-      QueryDocumentSnapshot<Map<String, dynamic>> f,
+      DocumentSnapshot<Map<String, dynamic>> folderDoc,
       Map<String, Map<String, dynamic>> fetched,
       Map<String, bool> expandInit,
       ) async {
-    final fid = f.id;
-    final folderName = f.data()['name'] as String? ?? '';
+    final String folderId = folderDoc.id;
+    final String folderName = folderDoc.data()?['name'] as String? ?? '';
 
-    final qsSnap = await FirebaseFirestore.instance
+    final QuerySnapshot<Map<String, dynamic>> qsSnap = await FirebaseFirestore
+        .instance
         .collection('questionSets')
-        .where('folderId', isEqualTo: fid)
+        .where('folderId', isEqualTo: folderId)
         .where('isDeleted', isEqualTo: false)
         .get(const GetOptions(source: Source.serverAndCache));
 
-    final qsList = <Map<String, dynamic>>[];
-    for (var dq in qsSnap.docs) {
-      final id = dq.id;
-      final data = dq.data();
-      final name = data['name'] as String? ?? '';
-      final count = data['questionCount'] as int? ?? 0;
+    final List<Map<String, dynamic>> qsList = <Map<String, dynamic>>[];
+    for (final dq in qsSnap.docs) {
+      final String id = dq.id;
+      final Map<String, dynamic> data = dq.data();
+      final String name = data['name'] as String? ?? '';
+      final int count = data['questionCount'] as int? ?? 0;
 
       qsList.add({
         'id': id,
@@ -149,14 +150,14 @@ class _QuestionSetMovePickerPageState extends State<QuestionSetMovePickerPage> {
       });
     }
 
-    // 名前順で並べる
+    // 名前順で並べる（UI そのまま）
     qsList.sort((a, b) => (a['name'] as String).compareTo(b['name'] as String));
 
-    fetched[fid] = {
+    fetched[folderId] = {
       'name': folderName,
       'questionSets': qsList,
     };
-    expandInit.putIfAbsent(fid, () => false);
+    expandInit.putIfAbsent(folderId, () => false);
   }
 
   void _toggleFolderOpen(String fid) {

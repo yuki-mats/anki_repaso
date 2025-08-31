@@ -1,28 +1,21 @@
-// lib/ads/banner_ad_widget.dart
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
-/// プラットフォームごとに適切なバナー広告ユニット ID を返す
 String getAdBannerUnitId() {
   if (Platform.isAndroid) {
     return kDebugMode
-    // デバッグ用の Android テスト広告 ID
         ? 'ca-app-pub-3940256099942544/6300978111'
-    // リリース用の Android 広告ユニット ID
         : 'ca-app-pub-4495844115981683/8175496111';
   } else if (Platform.isIOS) {
     return kDebugMode
-    // デバッグ用の iOS テスト広告 ID
         ? 'ca-app-pub-3940256099942544/2435281174'
-    // リリース用の iOS 広告ユニット ID
         : 'ca-app-pub-4495844115981683/8175496111';
   }
   return '';
 }
 
-/// バナー広告を表示するウィジェット
 class BannerAdWidget extends StatefulWidget {
   const BannerAdWidget({Key? key}) : super(key: key);
 
@@ -38,6 +31,9 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
   void initState() {
     super.initState();
 
+    // ★ Web の場合は広告をロードしない
+    if (kIsWeb) return;
+
     _bannerAd = BannerAd(
       adUnitId: getAdBannerUnitId(),
       size: AdSize.banner,
@@ -46,7 +42,7 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
         onAdLoaded: (Ad ad) {
           if (mounted) {
             setState(() {
-              _isAdReady = true;       // 読み込み完了→表示
+              _isAdReady = true;
             });
           }
         },
@@ -54,7 +50,7 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
           ad.dispose();
           if (mounted) {
             setState(() {
-              _isAdReady = false;      // 読み込み失敗→非表示
+              _isAdReady = false;
             });
           }
         },
@@ -70,19 +66,20 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
 
   @override
   Widget build(BuildContext context) {
-    // 広告が準備できていない場合はウィジェットごと隠す
+    // Web の場合は常に非表示
+    if (kIsWeb) return const SizedBox.shrink();
     if (!_isAdReady) return const SizedBox.shrink();
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const SizedBox(height: 8), // 上マージン
+        const SizedBox(height: 8),
         SizedBox(
           width: _bannerAd!.size.width.toDouble(),
           height: _bannerAd!.size.height.toDouble(),
           child: AdWidget(ad: _bannerAd!),
         ),
-        const SizedBox(height: 8), // 下マージン（誤タップ防止用）
+        const SizedBox(height: 8),
       ],
     );
   }

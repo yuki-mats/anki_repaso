@@ -76,7 +76,7 @@ class _QuestionSetsAddPageState extends State<QuestionSetsAddPage> {
         'questionCount': 0,
         'isDeleted': false,
         'createdById': userId,
-        'updatedId': userId,
+        'updatedById': userId,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });

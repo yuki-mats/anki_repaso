@@ -4,6 +4,8 @@
 //   カードをグレー表示しつつタップ遷移は許可。
 //   UI／UX そのものは一切変更していません（色分けのみ）.
 //
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -61,10 +63,22 @@ class FolderTabPageState extends State<FolderTabPage>
   // ───── ここからローカル永続化用の追加プロパティ ─────
   String? _uid; // 現在ログインユーザーのUID（保存時の名前空間に使用）
 
-  static const _kSortKeyPrefix      = 'folderTab.sort.';      // + uid
-  static const _kOfficialKeyPrefix  = 'folderTab.official.';  // + uid
-  static const _kLicenseKeyPrefix   = 'folderTab.license.';   // + uid
-  static const _kCollapsedKeyPrefix = 'folderTab.collapsed.'; // + uid
+  static const _kSortKeyPrefix         = 'folderTab.sort.';          // + uid
+  static const _kOfficialKeyPrefix     = 'folderTab.official.';      // + uid
+  static const _kLicenseKeyPrefix      = 'folderTab.license.';       // + uid
+  static const _kCollapsedKeyPrefix    = 'folderTab.collapsed.';     // + uid
+  static const _kScrollOffsetKeyPrefix = 'folderTab.scrollOffset.';  // + uid
+  static const _kIconBarKeyPrefix      = 'folderTab.iconBarVisible.';// + uid
+  static const _kLastFolderIdPrefix    = 'folderTab.lastFolderId.';  // + uid
+
+  bool _didRestoreScroll = false;
+  double _initialSavedOffset = 0.0;
+  DateTime _lastOffsetSavedAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+  // 直前に開いたフォルダ復帰用（描画済み判定のためのキー管理）
+  final Map<String, GlobalKey> _itemKeys = {};
+  String? _lastFolderId; // 直前に開いたフォルダID（復元に使用）
+  bool _ensureTried = false; // 多重実行防止
   // ───── 追加ここまで ─────
 
   /* ──────────────────────────────────────────
@@ -79,14 +93,20 @@ class FolderTabPageState extends State<FolderTabPage>
         final delta  = offset - _lastOffset;
         if (offset <= 0 && !_showIconBar) {
           setState(() => _showIconBar = true);
+          _saveIconBarVisible(true); // ← 追加：表示状態保存
         } else if (delta > 20 && _showIconBar) {
           setState(() => _showIconBar = false);
+          _saveIconBarVisible(false); // ← 追加：表示状態保存
         } else if (delta < -10 && !_showIconBar) {
           setState(() => _showIconBar = true);
+          _saveIconBarVisible(true); // ← 追加：表示状態保存
         }
         _lastOffset = offset;
+
+        // スクロール位置を間引き保存
+        _saveScrollOffset(offset);
       });
-    fetchFirebaseData();
+    fetchFirebaseData(); // 初回のみスケルトン表示
   }
 
   @override
@@ -98,11 +118,16 @@ class FolderTabPageState extends State<FolderTabPage>
   // ───── ここからローカル永続化用メソッド（UI変更なし） ─────
   Future<void> _loadPrefs(String uid) async {
     final prefs = await SharedPreferences.getInstance();
-    final sort = prefs.getString('$_kSortKeyPrefix$uid');
+    final sort        = prefs.getString('$_kSortKeyPrefix$uid');
     final officialStr = prefs.getString('$_kOfficialKeyPrefix$uid'); // 'null'|'true'|'false'
-    final license = prefs.getString('$_kLicenseKeyPrefix$uid');       // '' or name
+    final license     = prefs.getString('$_kLicenseKeyPrefix$uid');   // '' or name
     final collapsedList =
         prefs.getStringList('$_kCollapsedKeyPrefix$uid') ?? const <String>[];
+
+    // 追加項目
+    _initialSavedOffset = prefs.getDouble('$_kScrollOffsetKeyPrefix$uid') ?? 0.0;
+    final iconBarVisible = prefs.getBool('$_kIconBarKeyPrefix$uid');
+    _lastFolderId = prefs.getString('$_kLastFolderIdPrefix$uid'); // ← 追加
 
     setState(() {
       if (sort != null && _sortLabels.containsKey(sort)) {
@@ -116,6 +141,10 @@ class FolderTabPageState extends State<FolderTabPage>
       _collapsed
         ..clear()
         ..addAll(collapsedList);
+
+      if (iconBarVisible != null) {
+        _showIconBar = iconBarVisible;
+      }
     });
   }
 
@@ -138,18 +167,162 @@ class FolderTabPageState extends State<FolderTabPage>
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList('$_kCollapsedKeyPrefix$_uid', _collapsed.toList());
   }
+
+  Future<void> _saveScrollOffset(double offset) async {
+    if (_uid == null) return;
+    final now = DateTime.now();
+    if (now.difference(_lastOffsetSavedAt).inMilliseconds < 300) return; // 300ms間引き
+    _lastOffsetSavedAt = now;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('$_kScrollOffsetKeyPrefix$_uid', offset.clamp(0.0, double.infinity));
+  }
+
+  Future<void> _saveIconBarVisible(bool visible) async {
+    if (_uid == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('$_kIconBarKeyPrefix$_uid', visible);
+  }
+
+  Future<void> _saveLastFolderId(String folderId) async {
+    if (_uid == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('$_kLastFolderIdPrefix$_uid', folderId);
+    _lastFolderId = folderId; // メモリ上にも保持
+  }
+
+  GlobalKey _getItemKey(String id) {
+    return _itemKeys.putIfAbsent(id, () => GlobalKey());
+  }
+
+  void _scrollToFolderIdIfVisible(String id) {
+    final key = _itemKeys[id];
+    final ctx = key?.currentContext;
+    if (ctx != null) {
+      Scrollable.ensureVisible(
+        ctx,
+        duration: const Duration(milliseconds: 250),
+        alignment: 0.1, // ちょい上めに表示
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
+  void _tryRestoreFocusOrOffsetOnce() {
+    if (_ensureTried || !_scrollController.hasClients) return;
+    _ensureTried = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // 1) 直前に開いたフォルダへ寄せる（描画済みのときのみ）
+      if (_lastFolderId != null) {
+        final key = _itemKeys[_lastFolderId!];
+        final ctx = key?.currentContext;
+        if (ctx != null) {
+          Scrollable.ensureVisible(
+            ctx,
+            duration: const Duration(milliseconds: 250),
+            alignment: 0.1,
+            curve: Curves.easeOut,
+          );
+          return; // フォルダ優先
+        }
+      }
+
+      // 2) できない場合はスクロールオフセットを復元
+      final max = _scrollController.position.maxScrollExtent + 200;
+      if (_initialSavedOffset > 0 && _initialSavedOffset < max) {
+        _scrollController.jumpTo(_initialSavedOffset);
+      }
+    });
+  }
   // ───── 追加ここまで ─────
+
+  /* ──────────────────────────────────────────
+   * 内部ユーティリティ（差分適用）
+   * ────────────────────────────────────────── */
+  int _indexOfFolder(String id) {
+    for (int i = 0; i < _folderItems.length; i++) {
+      if (_folderItems[i].folderDoc.id == id) return i;
+    }
+    return -1;
+  }
+
+  void _applyFolderShellDiff({
+    required List<FolderItem> newShellItems,
+    required Map<String, String> newRoles,
+    required bool silent,
+  }) {
+    // role は常に最新に
+    _folderRoles = newRoles;
+
+    if (!silent) {
+      // 初回など：丸ごと差し替え（既存の挙動維持）
+      _folderItems
+        ..clear()
+        ..addAll(newShellItems);
+      return;
+    }
+
+    // 以後：差分反映（追加／更新／削除）
+    final oldIds = _folderItems.map((e) => e.folderDoc.id).toSet();
+    final newIds = newShellItems.map((e) => e.folderDoc.id).toSet();
+
+    // 削除
+    final toRemove = oldIds.difference(newIds);
+    if (toRemove.isNotEmpty) {
+      _folderItems.removeWhere((e) => toRemove.contains(e.folderDoc.id));
+    }
+
+    // 追加＋更新（folderDoc のみ更新。memoryLevels は保持）
+    for (final newItem in newShellItems) {
+      final idx = _indexOfFolder(newItem.folderDoc.id);
+      if (idx == -1) {
+        // 追加：シェルを追加（memoryLevels は placeholder のまま）
+        _folderItems.add(newItem);
+      } else {
+        // 更新：folderDoc が変わっていれば差し替え（memoryLevels は現状維持）
+        final current = _folderItems[idx];
+        if (!identical(current.folderDoc, newItem.folderDoc)) {
+          _folderItems[idx] = FolderItem(
+            folderDoc: newItem.folderDoc,
+            memoryLevels: current.memoryLevels,
+          );
+        }
+      }
+    }
+  }
+
+  void _applyStatsDiff(List<FolderItem> statsItems) {
+    // memoryLevels（および派生値）だけを差し替え
+    for (final s in statsItems) {
+      final idx = _indexOfFolder(s.folderDoc.id);
+      if (idx != -1) {
+        final current = _folderItems[idx];
+        _folderItems[idx] = FolderItem(
+          folderDoc: current.folderDoc, // 既存の Doc は維持
+          memoryLevels: s.memoryLevels, // stats を更新
+        );
+      } else {
+        // もし新規（理論上あり得ないが念のため）
+        _folderItems.add(s);
+      }
+    }
+  }
 
   /* ──────────────────────────────────────────
    * Firestore 取得
    * ────────────────────────────────────────── */
-  Future<void> fetchFirebaseData() async {
-    setState(() => _isLoading = true);
+  Future<void> fetchFirebaseData({bool silent = false}) async {
+    if (!silent) {
+      setState(() => _isLoading = true);
+    }
 
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
-        setState(() => _isLoading = false);
+        if (!silent) {
+          setState(() => _isLoading = false);
+        }
         return;
       }
       final uid     = user.uid;
@@ -162,7 +335,9 @@ class FolderTabPageState extends State<FolderTabPage>
       // 1) ユーザー選択ライセンス
       final userDoc  = await userRef.get();
       final licenses = List<String>.from(userDoc.data()?['selectedLicenseNames'] ?? []);
-      setState(() => _selectedLicenseNames = licenses);
+      if (mounted) {
+        setState(() => _selectedLicenseNames = licenses);
+      }
 
       // 2) 公式フォルダ（licenseName whereIn 30 件ずつ）
       final List<Future<QuerySnapshot<Map<String, dynamic>>>> officialFutures = [];
@@ -230,25 +405,27 @@ class FolderTabPageState extends State<FolderTabPage>
         folderDocs[folderSnap.id] = folderSnap;
       }
 
-      // 5) プレースホルダで即表示
+      // 5) プレースホルダ（シェル）を作成
       const placeholder = {'again': 0, 'hard': 0, 'good': 0, 'easy': 0};
-      final initialItems = folderDocs.values
+      final newShellItems = folderDocs.values
           .map((d) => FolderItem(folderDoc: d, memoryLevels: placeholder))
           .toList();
       final studySnap = results.last as QuerySnapshot<Map<String, dynamic>>;
 
       if (mounted) {
         setState(() {
-          _folderRoles = tmpRoles;           // role 保持
-          _folderItems
-            ..clear()
-            ..addAll(initialItems);
           _studySets = studySnap.docs;
-          _isLoading = false;
+          // 差分適用（silent=true の時は既存 UI を保ったまま）
+          _applyFolderShellDiff(
+            newShellItems: newShellItems,
+            newRoles: tmpRoles,
+            silent: silent,
+          );
+          _isLoading = false; // 初回も含めここで解除
         });
       }
 
-      // 6) memoryLevels をバックグラウンドで取得
+      // 6) memoryLevels をバックグラウンドで取得（差分適用）
       Future<FolderItem> _withStats(
           DocumentSnapshot<Map<String, dynamic>> doc) async {
         final stat = await doc.reference
@@ -271,14 +448,18 @@ class FolderTabPageState extends State<FolderTabPage>
 
       if (mounted) {
         setState(() {
-          _folderItems
-            ..clear()
-            ..addAll(updatedItems);
+          _applyStatsDiff(updatedItems); // ← 行単位の差分更新
         });
+      }
+
+      // 7) スクロール復元：直前に開いたフォルダ優先 → できなければオフセット（初回のみ）
+      if (mounted && !_didRestoreScroll) {
+        _didRestoreScroll = true;
+        _tryRestoreFocusOrOffsetOnce();
       }
     } catch (e, st) {
       debugPrint('fetchFirebaseData error: $e\n$st');
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted && !silent) setState(() => _isLoading = false);
     }
   }
 
@@ -300,6 +481,9 @@ class FolderTabPageState extends State<FolderTabPage>
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
+    // 前回開いたフォルダIDを保存（UIはそのまま）
+    unawaited(_saveLastFolderId(folder.id)); // ← 追加
+
     final permSnap = await folder.reference
         .collection('permissions')
         .where('userRef',
@@ -319,7 +503,13 @@ class FolderTabPageState extends State<FolderTabPage>
       ),
     );
 
-    if (result == true) fetchFirebaseData();
+    // 戻ってきた直後に該当フォルダへスクロール（描画済みの場合のみ）
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToFolderIdIfVisible(folder.id);
+    });
+
+    // 戻り時はサイレントで差分更新（スケルトンは出さない）
+    await fetchFirebaseData(silent: true);
   }
 
   Future<void> _navigateToAddLicensePage(BuildContext context) async {
@@ -332,7 +522,7 @@ class FolderTabPageState extends State<FolderTabPage>
     );
     if (result is List<String>) {
       setState(() => _selectedLicenseNames = result);
-      await fetchFirebaseData();
+      await fetchFirebaseData(); // ライセンス変更は全体更新（既存挙動のまま）
     }
   }
 
@@ -437,7 +627,7 @@ class FolderTabPageState extends State<FolderTabPage>
   Widget build(BuildContext context) {
     super.build(context);
 
-    // ローディングスケルトン
+    // ローディングスケルトン（初回のみ）
     if (_isLoading) {
       return CustomScrollView(
         controller: _scrollController,
@@ -473,8 +663,8 @@ class FolderTabPageState extends State<FolderTabPage>
                 const SizedBox(width: 4),
                 Text(
                   _sortLabels[_sortBy]!,
-                  style: const TextStyle(
-                      fontSize: 13, color: AppColors.gray900),
+                  style:
+                  const TextStyle(fontSize: 13, color: AppColors.gray900),
                 ),
               ],
             ),
@@ -606,11 +796,14 @@ class FolderTabPageState extends State<FolderTabPage>
                     final bool editable = role == 'owner' || role == 'editor';
 
                     return AnimatedSize(
+                      key: _getItemKey(doc.id), // ← 追加：各行にキー付与（見た目は不変）
                       duration: const Duration(milliseconds: 300),
                       curve: Curves.easeInOut,
                       child: isCollapsed
                           ? const SizedBox.shrink()
                           : ReusableProgressCard(
+                        key: ValueKey(doc
+                            .id), // ← 追加：行自体にも安定キーを付与し差分描画を助ける
                         iconData: Icons.folder_outlined,
                         iconColor: Colors.white,
                         iconBgColor: Colors.blue[700]!,
@@ -954,7 +1147,7 @@ class FolderTabPageState extends State<FolderTabPage>
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('学習履歴をクリアしました。')));
-        await fetchFirebaseData();
+        await fetchFirebaseData(); // 既存挙動：全体更新
       }
     } catch (e, st) {
       debugPrint('clearFolderStudyRecords error: $e\n$st');
@@ -992,7 +1185,7 @@ class FolderTabPageState extends State<FolderTabPage>
       }
     }
     await batch.commit();
-    await fetchFirebaseData();
+    await fetchFirebaseData(); // 既存挙動：全体更新
   }
 
   /* ──────────────────────────────────────────

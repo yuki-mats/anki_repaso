@@ -126,12 +126,11 @@ class _LearningNowSectionState extends State<LearningNowSection> {
           'LearningNowSection: deleted invalid items, remaining=${items.length}');
     }
 
-    // ③ 無料ユーザーは 1 件制限
+    // ③ ★仕様変更：無料ユーザーは 0 件（訴求バナー表示へ）
     final bool isPro = EntitlementGate().isPro;
-    if (!isPro && items.length > 1) {
-      debugPrint(
-          'LearningNowSection: free user, trimming items from ${items.length} to 1');
-      items = items.sublist(0, 1);
+    if (!isPro) {
+      debugPrint('LearningNowSection: free user → hide items and show banner');
+      items = const []; // 表示には使わない（DBの値は保持）
     }
 
     if (!mounted) return;
@@ -145,7 +144,7 @@ class _LearningNowSectionState extends State<LearningNowSection> {
         'LearningNowSection: cards updated, _cards.length=${_cards.length}');
   }
 
-/* ───────────────── 参照先メタ & 記憶度取得 ───────────────── */
+  /* ───────────────── 参照先メタ & 記憶度取得 ───────────────── */
   Future<bool> _fillMeta(Map<String, dynamic> item) async {
     final bool isQs = item['type'] == 'questionSet';
     debugPrint(
@@ -303,9 +302,17 @@ class _LearningNowSectionState extends State<LearningNowSection> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _header(context),
-        if (_loading)                     _skeletonList()
-        else if (_cards.isEmpty)          _emptyArea()
-        else                              _cardsList(),
+        // ★ 無料ユーザー向け：訴求バナーを表示（ここで分岐）
+        if (!EntitlementGate().isPro)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+            child: _proPromoBanner(context),
+          )
+        else ...[
+          if (_loading)                     _skeletonList()
+          else if (_cards.isEmpty)          _emptyArea()
+          else                              _cardsList(),
+        ],
       ],
     ),
   );
@@ -426,9 +433,112 @@ class _LearningNowSectionState extends State<LearningNowSection> {
         hasPermission  : true,
       );
 
+  /* ───────── 訴求バナー（無料ユーザーのみ） ───────── */
+  Widget _proPromoBanner(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const PaywallPage(
+              subtitle: 'Proプランで「今すぐ学習」が使い放題。学習効率を一気にブースト！',
+            ),
+          ),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          // 既存UIに合わせて白カード＋薄い枠を踏襲
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Row(
+          children: [
+            // 左：アイコン背景（やさしいグラデーション）
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Colors.amber.shade300,
+                    Colors.amber.shade700,
+                  ],
+                ),
+              ),
+              child: const Icon(Icons.flash_on_rounded,
+                  size: 24, color: Colors.white),
+            ),
+            const SizedBox(width: 12),
+            // 中央：テキスト
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Text(
+                    'Proプランで解放',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'ホーム画面からアプリ起動後すぐに学習できます！',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.black54,
+                      height: 1.2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            // 右：CTAピル
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.black87,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: const Text(
+                '詳しく見る',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /* ───────── イベント ───────── */
   void _onCardTap(Map<String, dynamic> m) {
-    /* ★ requiresPro × 無料ユーザーなら Paywall へ */
+    // ★無料ユーザーは常にPaywallへ
+    if (!EntitlementGate().isPro) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const PaywallPage(
+            subtitle: 'この機能を利用するには Pro プランが必要です。',
+          ),
+        ),
+      );
+      return;
+    }
+
+    /* ★ requiresPro × 無料ユーザーなら Paywall へ（冗長保護） */
     final bool requiresPro = m['requiresPro'] == true;
     final bool isProUser   = EntitlementGate().isPro;
     if (requiresPro && !isProUser) {
@@ -464,7 +574,6 @@ class _LearningNowSectionState extends State<LearningNowSection> {
       );
     }
   }
-
 
   void _showMoreModal(String itemId) => showModalBottomSheet(
     backgroundColor: Colors.white,
@@ -620,14 +729,15 @@ class _LearningNowSectionState extends State<LearningNowSection> {
   Future<void> _handleAddPressed() async {
     final bool isPro = EntitlementGate().isPro;
     debugPrint('_handleAddPressed: isPro=$isPro cards=${_cards.length}');
-    if (!isPro && _cards.length >= 1) {
+    // ★無料ユーザーは常にペイウォールへ（件数に依らない）
+    if (!isPro) {
       if (!mounted) return;
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => const PaywallPage(
             subtitle:
-            '暗記プラス Proプランでは、今すぐ学習を無制限でセットすることができます。学習効率UP！',
+            '暗記プラス Proプランでは、今すぐ学習を無制限でセットできます。',
           ),
         ),
       );

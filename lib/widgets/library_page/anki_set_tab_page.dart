@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -6,6 +8,7 @@ import 'package:repaso/screens/study_set_edit_page.dart' as EditPage;
 import 'package:repaso/utils/app_colors.dart';
 import 'package:repaso/widgets/list_page_widgets/reusable_progress_card.dart';
 import 'package:repaso/widgets/list_page_widgets/rounded_icon_box.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // ← 追加（ローカル永続化）
 
 import '../dialogs/delete_confirmation_dialog.dart';
 
@@ -28,7 +31,21 @@ class _AnkiSetTabPageState extends State<AnkiSetTabPage>
     'correctRateDesc': '正答率（降順）',
   };
 
-/* ───────── 学習記録クリア ───────── */
+  // ───────── ここから：ローカル永続化用の追加プロパティ（UI変更なし） ─────────
+  String? _uid; // 現在ユーザーのUID（キーの名前空間用）
+
+  static const _kSortKeyPrefix        = 'ankiTab.sort.';           // + uid
+  static const _kScrollOffsetPrefix   = 'ankiTab.scrollOffset.';   // + uid
+  static const _kLastStudySetIdPrefix = 'ankiTab.lastStudySetId.'; // + uid
+
+  final ScrollController _listController = ScrollController();
+  bool _didAttachScrollListener = false;
+  bool _didRestoreScroll = false;
+  double _initialSavedOffset = 0.0;
+  DateTime _lastOffsetSavedAt = DateTime.fromMillisecondsSinceEpoch(0);
+  // ───────── 追加ここまで ─────────
+
+  /* ───────── 学習記録クリア ───────── */
   Future<void> _clearStudySetRecords(
       BuildContext context,
       DocumentReference<Map<String, dynamic>> studySetRef, {
@@ -79,6 +96,46 @@ class _AnkiSetTabPageState extends State<AnkiSetTabPage>
     );
   }
 
+  // ───────── ここから：ローカル永続化メソッド（UIは一切変更しない） ─────────
+  Future<void> _ensureUidAndLoadPrefsOnce() async {
+    _uid ??= FirebaseAuth.instance.currentUser?.uid;
+    if (_uid == null) return;
+
+    final prefs = await SharedPreferences.getInstance();
+
+    // sort
+    final savedSort = prefs.getString('$_kSortKeyPrefix$_uid');
+    if (savedSort != null && _studySortLabels.containsKey(savedSort)) {
+      _studySortBy = savedSort;
+    }
+
+    // scroll offset
+    _initialSavedOffset = prefs.getDouble('$_kScrollOffsetPrefix$_uid') ?? 0.0;
+  }
+
+  Future<void> _saveSortPref() async {
+    if (_uid == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('$_kSortKeyPrefix$_uid', _studySortBy);
+  }
+
+  Future<void> _saveScrollOffset(double offset) async {
+    if (_uid == null) return;
+    // 300msに1回程度に間引き
+    final now = DateTime.now();
+    if (now.difference(_lastOffsetSavedAt).inMilliseconds < 300) return;
+    _lastOffsetSavedAt = now;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('$_kScrollOffsetPrefix$_uid', offset.clamp(0.0, double.infinity));
+  }
+
+  Future<void> _saveLastStudySetId(String id) async {
+    if (_uid == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('$_kLastStudySetIdPrefix$_uid', id);
+  }
+  // ───────── 追加ここまで ─────────
 
   @override
   Widget build(BuildContext context) {
@@ -88,6 +145,19 @@ class _AnkiSetTabPageState extends State<AnkiSetTabPage>
     if (user == null) {
       return const Center(child: Text('ログインしてください'));
     }
+
+    // ユーザーごとの保存値を先に読んでおく（非同期だが軽量）
+    // build直後のフレームでスクロール復元に使う
+    // ignore: discarded_futures
+    _ensureUidAndLoadPrefsOnce().then((_) {
+      if (!_didAttachScrollListener) {
+        _didAttachScrollListener = true;
+        _listController.addListener(() {
+          // スクロール位置を間引き保存（UIは変更しない）
+          _saveScrollOffset(_listController.offset);
+        });
+      }
+    });
 
     final stream = FirebaseFirestore.instance
         .collection('users')
@@ -112,6 +182,18 @@ class _AnkiSetTabPageState extends State<AnkiSetTabPage>
             child: Text('暗記セットがまだありません',
                 style: TextStyle(fontSize: 16, color: Colors.grey)),
           );
+        }
+
+        // 初回描画後にスクロール復元（UIはそのまま）
+        if (!_didRestoreScroll) {
+          _didRestoreScroll = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (_initialSavedOffset > 0 &&
+                _initialSavedOffset < _listController.position.maxScrollExtent + 200) {
+              // 多少の件数変化でも違和感が少ない jumpTo を使用
+              _listController.jumpTo(_initialSavedOffset);
+            }
+          });
         }
 
         return Column(
@@ -185,6 +267,7 @@ class _AnkiSetTabPageState extends State<AnkiSetTabPage>
                   });
 
                   return ListView.builder(
+                    controller: _listController, // ← 追加（見た目は変わらない）
                     padding: const EdgeInsets.only(top: 8, bottom: 80),
                     itemCount: list.length,
                     itemBuilder: (_, i) {
@@ -224,16 +307,19 @@ class _AnkiSetTabPageState extends State<AnkiSetTabPage>
                         cardId         : doc.id,
                         selectedId     : null,
                         onSelected     : null,
-                        onTap          : () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                StudySetAnswerPage(studySetId: doc.id),
-                          ),
-                        ),
+                        onTap          : () {
+                          _saveLastStudySetId(doc.id); // ← 追加（前回の続き用）
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  StudySetAnswerPage(studySetId: doc.id),
+                            ),
+                          );
+                        },
                         onMorePressed  : () =>
                             _showStudySetOptions(context, doc),
-                        hasPermission  : true, // ← 追加
+                        hasPermission  : true, // ← 既存通り
                       );
                     },
                   );
@@ -269,6 +355,7 @@ class _AnkiSetTabPageState extends State<AnkiSetTabPage>
                   if (v == null) return;
                   setState(() => _studySortBy = v);
                   setModalState(() => _studySortBy = v);
+                  _saveSortPref(); // ← 追加（選択時に保存）
                   Navigator.pop(ctx);
                 },
               ),
@@ -369,7 +456,7 @@ class _AnkiSetTabPageState extends State<AnkiSetTabPage>
                 onTap: () async {
                   Navigator.pop(context);
 
-                  // 汎用ダイアログ呼び出し
+                  // 汎用ダイアログ呼び出し（UI変更なし）
                   final res = await DeleteConfirmationDialog.show(
                     context,
                     title: '学習データをクリア',

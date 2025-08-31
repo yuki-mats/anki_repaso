@@ -54,9 +54,9 @@ class _FolderAddPageState extends State<FolderAddPage> {
           'isOfficial': false,
           'aggregatedQuestionTags': [],
           'licenseName': '',
-          'createdById': userId,
-          'createdByRef': userRef,
           'questionCount': 0,
+          'createdById': userId,
+          'updatedById': userId,
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         });
@@ -65,7 +65,10 @@ class _FolderAddPageState extends State<FolderAddPage> {
           'userId': userId,
           'userRef': userRef,
           'role': 'owner',
-          'isHidden': false,
+          'isHidden': false, //削除予定
+          'isDeleted': false,
+          'createdById': userId,
+          'updatedById': userId,
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         });
